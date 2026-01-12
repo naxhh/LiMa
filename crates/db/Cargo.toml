@@ -1,0 +1,9 @@
+[package]
+name = "lima-db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lima-domain = { version = "0.1.0", path = "../domain" }
+serde = "1.0.228"
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls", "macros"] }

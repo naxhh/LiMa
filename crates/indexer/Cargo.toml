@@ -1,0 +1,13 @@
+[package]
+name = "lima-indexer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blake3 = "1.8.3"
+image = "0.25.9"
+lima-db = { version = "0.1.0", path = "../db" }
+lima-domain = { version = "0.1.0", path = "../domain" }
+notify = "8.2.0"
+tokio = "1.49.0"
+tracing = "0.1.44"
