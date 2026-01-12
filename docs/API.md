@@ -367,9 +367,13 @@ Response (example):
 ### Health check
 `GET /health`
 
-Response:
+Response: 200 Ok
 ```json
-{ "ok": true }
+{ "db": true }
+```
+
+Response: 500 Internal Server error
+```json
 ```
 
 ### Library info
