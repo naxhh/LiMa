@@ -3,11 +3,29 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use utoipa::ToSchema;
+use serde::Serialize;
+
 use crate::state::AppState;
 
-pub async fn health_check(State(state): State<AppState>) -> Result<Json<serde_json::Value>, StatusCode> {
+#[derive(Serialize, ToSchema)]
+pub struct HealthResponse {
+    db: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Health check successful", body = HealthResponse),
+        (status = 503, description = "Database connection failed")
+    )
+)]
+pub async fn health_check(
+    State(state): State<AppState>
+) -> Result<Json<HealthResponse>, StatusCode> {
     match lima_db::queries::ping(state.db.pool()).await {
-        Ok(_) => Ok(Json(serde_json::json!({"db": true}))),
+        Ok(_) => Ok(Json(HealthResponse { db: true })),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }

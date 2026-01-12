@@ -1,6 +1,8 @@
 use axum::{routing::get, Router};
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 mod routes;
 mod state;
@@ -22,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
+        .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .with_state(state);
 
     let addr: SocketAddr = format!("0.0.0.0:{}", server_port).parse()?;
@@ -33,3 +36,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        routes::health::health_check,
+    ),
+    components(schemas(
+        routes::health::HealthResponse,
+    )),
+    tags(
+        (name = "Health", description = "Health check endpoint"),
+    )
+)]
+pub struct ApiDoc;
