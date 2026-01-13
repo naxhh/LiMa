@@ -1,6 +1,6 @@
 # LIMA API Reference
 
-Base URL: `/api`  
+Base URL: `/`  
 All endpoints use JSON unless stated otherwise.  
 No authentication required.
 

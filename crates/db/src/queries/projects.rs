@@ -1,14 +1,15 @@
 use sqlx::{Sqlite, Pool};
 use lima_domain::models::project::ProjectRow;
+use lima_domain::pagination::Cursor;
 
 pub async fn list_projects(
     pool: &Pool<Sqlite>,
     limit: i64,
-    cursor: Option<(String, String)>, // update_at, id
+    cursor: Option<Cursor>,
 ) -> Result<Vec<ProjectRow>, sqlx::Error> {
     match cursor {
         None => { list_projects_from_start(pool, limit).await },
-        Some((updated_at, id)) => { list_projects_from_cursor(pool, limit, &updated_at, &id).await },
+        Some(cursor) => { list_projects_from_cursor(pool, limit, &cursor.updated_at, &cursor.id).await },
     }
 }
 
