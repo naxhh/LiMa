@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{Router, extract::DefaultBodyLimit, routing::{get, post}};
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use utoipa::OpenApi;
@@ -25,6 +25,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/projects", get(routes::project::list_projects))
+        .route ("/projects", post(routes::project_create::create_project))
+        .route("/projects/{project_id}/assets", post(routes::project_assets::upload_assets)
+            .route_layer(DefaultBodyLimit::disable()),
+        )
         .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .with_state(state);
 
@@ -43,11 +47,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     paths(
         routes::health::health_check,
         routes::project::list_projects,
+        routes::project_create::create_project,
+        routes::project_assets::upload_assets,
     ),
     components(schemas(
         routes::health::HealthResponse,
         routes::project::ListProjectsResponse,
         routes::project::ListProjectsParams,
+        routes::project_create::CreateProjectRequest,
+        routes::project_create::CreateProjectResponse,
+        routes::project_assets::UploadAssetsResponse,
+        routes::project_assets::UploadedAsset,
     )),
 )]
 pub struct ApiDoc;

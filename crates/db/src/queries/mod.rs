@@ -10,3 +10,6 @@ pub async fn ping(pool: &Pool<Sqlite>) -> Result<i64, sqlx::Error> {
 
 pub mod projects;
 pub mod projects_search;
+pub mod projects_create;
+pub mod tags;
+pub mod assets;

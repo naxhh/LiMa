@@ -99,3 +99,7 @@ Metadata can be backed up and restored into a new database.
 ## Deliverables (Phase 2)
 
 To be defined
+
+Options:
+- Improve upload by using something like tus protocol
+- Add token for API authorization
