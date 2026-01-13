@@ -1,6 +1,21 @@
 sqlite3 data/state/lima.db <<'SQL'
+DELETE FROM projects;
+DELETE FROM tags;
+DELETE FROM project_tags;
+
 INSERT INTO projects(id, folder_path, name, description, created_at, updated_at)
-VALUES ('p1','Demo','Demo','', '2026-01-12T00:00:00Z','2026-01-12T00:00:00Z');
+VALUES
+('p1','Demo1','Demo 1','', '2026-01-12T00:00:00Z','2026-01-12T00:00:00Z'),
+('p2','Demo2','Demo 2','', '2026-01-13T00:00:00Z','2026-01-12T00:00:00Z'),
+('p3','Demo3','Demo 3','', '2026-01-14T00:00:00Z','2026-01-12T00:00:00Z'),
+('p4','Demo4','Demo 4','', '2026-01-15T00:00:00Z','2026-01-12T00:00:00Z'),
+('p5','Demo5','Demo 5','', '2026-01-16T00:00:00Z','2026-01-12T00:00:00Z'),
+('p6','Demo6','Demo 6','', '2026-01-17T00:00:00Z','2026-01-12T00:00:00Z'),
+('p7','Demo7','Demo 7','', '2026-01-18T00:00:00Z','2026-01-12T00:00:00Z'),
+('p8','Demo8','Demo 8','', '2026-01-19T00:00:00Z','2026-01-12T00:00:00Z')
+;
+
+
 
 INSERT INTO tags(id, name, color, created_at, updated_at)
 VALUES ('t1','printable','#FF00FF','2026-01-12T00:00:00Z','2026-01-12T00:00:00Z');

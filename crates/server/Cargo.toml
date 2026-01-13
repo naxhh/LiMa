@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.8"
+base64 = "0.22.1"
 lima-db = { version = "0.1.0", path = "../db" }
 lima-domain = { version = "0.1.0", path = "../domain" }
 lima-indexer = { version = "0.1.0", path = "../indexer" }

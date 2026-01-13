@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_projects_updated_id ON projects(updated_at DESC, id DESC);

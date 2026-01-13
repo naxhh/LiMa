@@ -7,3 +7,5 @@ pub async fn ping(pool: &Pool<Sqlite>) -> Result<i64, sqlx::Error> {
     
     Ok(v)
 }
+
+pub mod projects;

@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
+        .route("/projects", get(routes::project::list_projects))
         .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .with_state(state);
 
@@ -41,12 +42,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[openapi(
     paths(
         routes::health::health_check,
+        routes::project::list_projects,
     ),
     components(schemas(
         routes::health::HealthResponse,
+        routes::project::ListProjectsResponse,
+        routes::project::ListProjectsParams,
     )),
-    tags(
-        (name = "Health", description = "Health check endpoint"),
-    )
 )]
 pub struct ApiDoc;
