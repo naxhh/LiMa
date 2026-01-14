@@ -10,7 +10,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 
 use crate::state::AppState;
-use crate::models::http_error::ApiErrorResponse;
+use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
 
 #[derive(Serialize, ToSchema)]
 pub struct UploadAssetsResponse {
@@ -35,8 +35,8 @@ pub struct UploadedAsset {
     ),
     responses(
         (status = 201, description = "Assets uploaded", body = UploadAssetsResponse),
-        (status = 409, description = "Assets with same names exist in the project"),
-        (status = 503, description = "Failure to connect to the database"),
+        (status = 409, description = "Assets with same names exist in the project", body = ApiErrorBody),
+        (status = 503, description = "Failure to connect to the database", body = ApiErrorBody),
     )
 )]
 pub async fn upload_assets(

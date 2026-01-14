@@ -1,14 +1,15 @@
 use axum::{Json, response::IntoResponse, http::StatusCode, response::Response};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiErrorBody {
     pub error: ApiError,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiError {
     pub code: String,
     pub message: String,

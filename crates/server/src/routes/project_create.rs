@@ -4,7 +4,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 
 use crate::state::AppState;
-use crate::models::http_error::ApiErrorResponse;
+use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateProjectRequest {
@@ -25,8 +25,8 @@ pub struct CreateProjectResponse {
     request_body = CreateProjectRequest,
     responses(
         (status = 201, description = "Project created", body = CreateProjectResponse),
-        (status = 409, description = "Project with same name or path already exists"),
-        (status = 503, description = "Failure to connect to the database"),
+        (status = 409, description = "Project with same name or path already exists", body = ApiErrorBody),
+        (status = 503, description = "Failure to connect to the database", body = ApiErrorBody),
     )
 )]
 pub async fn create_project(

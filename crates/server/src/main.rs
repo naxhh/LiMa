@@ -1,4 +1,6 @@
-use axum::{Router, extract::DefaultBodyLimit, routing::{get, post}};
+use axum::{Router, error_handling::HandleErrorLayer, extract::DefaultBodyLimit, routing::{get, post}};
+use tower::ServiceBuilder;
+use tower_http::catch_panic::CatchPanicLayer;
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use utoipa::OpenApi;
@@ -31,7 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .route_layer(DefaultBodyLimit::disable()),
         )
         .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
-        .with_state(state);
+        .with_state(state)
+        .layer(
+            ServiceBuilder::new()
+                .layer(CatchPanicLayer::new())
+        );
 
     let addr: SocketAddr = format!("0.0.0.0:{}", server_port).parse()?;
 
@@ -52,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_assets::upload_assets,
     ),
     components(schemas(
+        crate::models::http_error::ApiErrorBody,
         routes::health::HealthResponse,
         routes::project::ListProjectsResponse,
         routes::project::ListProjectsParams,

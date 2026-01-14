@@ -7,7 +7,7 @@ use base64::{Engine as _, engine::general_purpose};
 use lima_domain::models::project::ProjectRow;
 use lima_domain::pagination::Cursor;
 
-use crate::state::AppState;
+use crate::{models::http_error::ApiErrorBody, state::AppState};
 use crate::models::http_error::ApiErrorResponse;
 
 #[derive(Deserialize, ToSchema)]
@@ -34,8 +34,8 @@ pub struct ListProjectsResponse {
     ),
     responses(
         (status = 200, description = "List of projects", body = ListProjectsResponse),
-        (status = 400, description = "Invalid parameter provided"),
-        (status = 503, description = "Failure to connect to the database"),
+        (status = 400, description = "Invalid parameter provided", body = ApiErrorBody),
+        (status = 503, description = "Failure to connect to the database", body = ApiErrorBody),
     )
 )]
 pub async fn list_projects(
