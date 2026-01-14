@@ -1,5 +1,3 @@
 /target
-/data/state
-/data/library
-!.gitkeep
+/data
 .env
