@@ -10,6 +10,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 
 use crate::state::AppState;
+use crate::models::http_error::ApiErrorResponse;
 
 #[derive(Serialize, ToSchema)]
 pub struct UploadAssetsResponse {
@@ -42,17 +43,15 @@ pub async fn upload_assets(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     mut multipart: Multipart,
-) -> Result<(StatusCode, Json<UploadAssetsResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<UploadAssetsResponse>), ApiErrorResponse> {
     let folder_path = lima_db::queries::assets::get_project_folder_path(&state.db.pool(), &project_id)
         .await
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
+        .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to get project folder path").with_cause(&e.to_string()))?
+        .ok_or(ApiErrorResponse::new(StatusCode::NOT_FOUND, "no_project", "Project not found"))?;
     let upload_id = uuid::Uuid::new_v4().to_string();
     // TODO: i may want to use the actual TMP path.
     let staging_dir: PathBuf = ["data", "state", "uploads", &upload_id].iter().collect();
-    fs::create_dir_all(&staging_dir).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
+    fs::create_dir_all(&staging_dir).await.map_err(|e| ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "dir_creation_failed", "Failed to create staging directory").with_cause(&e.to_string()))?;
     let mut staged: Vec<(String, PathBuf, i64)> = Vec::new(); // (filename, path, size)
     let mut main_image: Option<String> = None;
 
@@ -61,14 +60,14 @@ pub async fn upload_assets(
     // Upload to temporary folder first so we don't pollute the data folder with wrong uploads.
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         tracing::error!("multipart next_field error: {e}");
-        StatusCode::BAD_REQUEST
+        ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_multipart", "Invalid multipart data").with_cause(&e.to_string())
     })? {
         let field_name = field.name().unwrap_or("").to_string();
 
         if field_name == "main_image" {
             main_image = Some(field.text().await.map_err(|e| {
                 tracing::error!("main_image error: {e}");
-                StatusCode::BAD_REQUEST
+                ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_main_image", "Invalid main_image field").with_cause(&e.to_string())
             })?);
             tracing::debug!("Main image requested: {}", main_image.as_deref().unwrap_or(""));
             continue;
@@ -83,22 +82,22 @@ pub async fn upload_assets(
 
         let filename = field
             .file_name()
-            .and_then(|s| sanitize_filename(s))
-            .ok_or(StatusCode::BAD_REQUEST)?;
+            .and_then(|s: &str| sanitize_filename(s))
+            .ok_or(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_filename", "Invalid filename"))?;
 
         let destination = staging_dir.join(&filename);
-        let mut file = fs::File::create(&destination).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let mut file = fs::File::create(&destination).await.map_err(|e| ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "file_creation_failed", "Failed to create file").with_cause(&e.to_string()))?;
 
         let mut size: i64 = 0;
         let mut field = field;
         while let Some(chunk) = field.chunk().await.map_err(|e| {
             tracing::error!("error reading chunk for file {}: {}", filename, e);
-            StatusCode::BAD_REQUEST
+            ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_chunk", "Invalid chunk in file upload").with_cause(&e.to_string())
         })? {
             size += chunk.len() as i64;
             file.write_all(&chunk)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(|e| ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "file_write_failed", "Failed to write to file").with_cause(&e.to_string()))?;
         }
 
         tracing::debug!("Staged file: {}, dst: {}, size: {}", filename, destination.display(), size);
@@ -107,7 +106,7 @@ pub async fn upload_assets(
 
     // Move uploaded files to the final destination.
     let project_dir: PathBuf = ["data", "library", &folder_path].iter().collect();
-    fs::create_dir_all(&project_dir).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    fs::create_dir_all(&project_dir).await.map_err(|e| ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "dir_creation_failed", "Failed to create project directory").with_cause(&e.to_string()))?;
 
     tracing::debug!("Project directory will be: {}", project_dir.display());
 
@@ -118,11 +117,11 @@ pub async fn upload_assets(
         if fs::try_exists(&destination).await.unwrap_or(false) {
             // Cleanup duplicate file.
             let _ = fs::remove_dir_all(&staging_dir).await;
-            return Err(StatusCode::CONFLICT);
+            return Err(ApiErrorResponse::new(StatusCode::CONFLICT, "file_exists", "File already exists"));
         }
 
         tracing::debug!("Renaming file: {}, dst: {}, size: {}", &source.display(), destination.display(), size);
-        fs::rename(&source, &destination).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        fs::rename(&source, &destination).await.map_err(|e| ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "file_rename_failed", "Failed to rename file").with_cause(&e.to_string()))?;
         moved.push((filename, destination, size));
         // TODO: rework this more. I want to update DB first and move files after.
     }
@@ -130,7 +129,7 @@ pub async fn upload_assets(
     let now = now();
     let mtime = now.as_str(); // TODO: this should use fs metadata
 
-    let mut tx = state.db.pool().begin().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let mut tx = state.db.pool().begin().await.map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to begin database transaction").with_cause(&e.to_string()))?;
     let mut assets_out = Vec::new();
 
     for (filename, _dst, size) in &moved {
@@ -146,7 +145,7 @@ pub async fn upload_assets(
             mtime,
             mime,
             &now,
-        ).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        ).await.map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to insert asset").with_cause(&e.to_string()))?;
 
 
         tracing::debug!("Asset uploaded: {}, dst: {}, kind: {}", inserted.id, inserted.file_path, inserted.kind);
@@ -161,12 +160,11 @@ pub async fn upload_assets(
         if let Some(uploaded_asset) = assets_out.iter().find(|asset| asset.file_path == main_image) {
             tracing::debug!("Setting main image: {} for project: {}", main_image, project_id);
             lima_db::queries::assets::set_project_main_image(&mut tx, &project_id, &uploaded_asset.id, &now)
-            .await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+            .await.map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to set main image").with_cause(&e.to_string()))?;
         }
     }
 
-    tx.commit().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-
+    tx.commit().await.map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to commit database transaction").with_cause(&e.to_string()))?;
     let _ = fs::remove_dir_all(&staging_dir).await;
 
     Ok((

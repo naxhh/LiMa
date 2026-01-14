@@ -4,6 +4,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
 
 use crate::state::AppState;
+use crate::models::http_error::ApiErrorResponse;
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateProjectRequest {
@@ -31,12 +32,12 @@ pub struct CreateProjectResponse {
 pub async fn create_project(
     State(state): State<AppState>,
     Json(body): Json<CreateProjectRequest>,
-) -> Result<(StatusCode, Json<CreateProjectResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<CreateProjectResponse>), ApiErrorResponse> {
     // TODO: we probably should create & check folders can be created for the project here
 
     let name = body.name.trim();
     if name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "empty_name", "Project name cannot be empty"));
     }
 
     let description = body.description.unwrap_or_default();
@@ -66,9 +67,9 @@ pub async fn create_project(
             let msg = e.to_string();
             tracing::warn!("Failed to create project: {}", msg);
             if msg.contains("UNIQUE") || msg.contains("unique") {
-                return Err(StatusCode::CONFLICT);
+                return Err(ApiErrorResponse::new(StatusCode::CONFLICT, "existing_project", "Project with same name or path already exists").with_cause(&msg));
             } else {
-                return Err(StatusCode::SERVICE_UNAVAILABLE);
+                return Err(ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to create project").with_cause(&msg));
             }
         }
     }

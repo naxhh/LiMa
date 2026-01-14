@@ -1,7 +1,5 @@
 use axum::{
-    extract::{State, Query},
-    http::StatusCode,
-    Json,
+    Json, extract::{Query, State}, http::StatusCode
 };
 use utoipa::ToSchema;
 use serde::{Serialize, Deserialize};
@@ -10,6 +8,7 @@ use lima_domain::models::project::ProjectRow;
 use lima_domain::pagination::Cursor;
 
 use crate::state::AppState;
+use crate::models::http_error::ApiErrorResponse;
 
 #[derive(Deserialize, ToSchema)]
 pub struct ListProjectsParams {
@@ -42,11 +41,11 @@ pub struct ListProjectsResponse {
 pub async fn list_projects(
     State(state): State<AppState>,
     Query(params): Query<ListProjectsParams>,
-) -> Result<Json<ListProjectsResponse>, StatusCode> {
+) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
 
     let cursor = match params.cursor {
-        Some(ref c) => Some(decode_cursor(c).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?),
+        Some(ref c) => Some(decode_cursor(c).map_err(|e| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(&e))?),
         None => None,
     };
 
@@ -55,7 +54,7 @@ pub async fn list_projects(
 
         if let Some(ref c) = cursor {
             if c.rank.is_none() {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause("Cursor is missing rank"));
             }
         }
 
@@ -66,7 +65,7 @@ pub async fn list_projects(
             cursor,
         )
         .await
-        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+        .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed searching projects").with_cause(&e.to_string()))?;
 
         let next_cursor = search_projects.last().map(|row| {
             encode_cursor(&Cursor {
@@ -91,7 +90,7 @@ pub async fn list_projects(
         cursor,
     )
     .await
-    .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()))?;
 
     let next_cursor = projects.last().map(|project| {
         encode_cursor(&Cursor {
@@ -109,9 +108,9 @@ pub async fn list_projects(
 
 
 // TODO: move to wherever. domain maybe?
-fn decode_cursor(cursor: &str) -> Result<Cursor, ()> {
-    let bytes = general_purpose::STANDARD.decode(cursor).map_err(|_| ())?;
-    let cursor: Cursor = serde_json::from_slice(&bytes).map_err(|_| ())?;
+fn decode_cursor(cursor: &str) -> Result<Cursor, String> {
+    let bytes = general_purpose::STANDARD.decode(cursor).map_err(|e| e.to_string())?;
+    let cursor: Cursor = serde_json::from_slice(&bytes).map_err(|e: serde_json::Error| e.to_string())?;
     
     Ok(cursor)
 }
