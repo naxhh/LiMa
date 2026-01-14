@@ -20,7 +20,7 @@ pub async fn insert_asset(
     let id = Uuid::new_v4().to_string();
 
     sqlx::query(
-        r#"INSERT INTO assets (id, project_id, file_path, kind, size_bytes, mtime, mime, file_hash created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8)"#,
+        r#"INSERT INTO assets (id, project_id, file_path, kind, size_bytes, mtime, mime, file_hash, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8)"#,
     )
     .bind(&id)
     .bind(project_id)
@@ -47,7 +47,7 @@ pub async fn set_project_main_image(
     now: &str,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        r#"UPDATE projects SET main_image_asset_id = ?1, updated_at = ?2 WHERE id = ?3"#,
+        r#"UPDATE projects SET main_image_id = ?1, updated_at = ?2 WHERE id = ?3"#,
     )
     .bind(asset_id)
     .bind(now)
