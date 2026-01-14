@@ -1,4 +1,4 @@
-use axum::{Router, error_handling::HandleErrorLayer, extract::DefaultBodyLimit, routing::{get, post}};
+use axum::{Router, extract::DefaultBodyLimit, routing::{get, post}};
 use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
 use std::{env, net::SocketAddr, sync::Arc};
@@ -32,6 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/{project_id}/assets", post(routes::project_assets::upload_assets)
             .route_layer(DefaultBodyLimit::disable()),
         )
+        .route("/bundles", post(routes::bundle_create::create_bundle)
+            .route_layer(DefaultBodyLimit::disable()),
+        )
         .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .with_state(state)
         .layer(
@@ -56,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::list_projects,
         routes::project_create::create_project,
         routes::project_assets::upload_assets,
+        routes::bundle_create::create_bundle,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -66,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_create::CreateProjectResponse,
         routes::project_assets::UploadAssetsResponse,
         routes::project_assets::UploadedAsset,
+        routes::bundle_create::CreateBundleResponse,
     )),
 )]
 pub struct ApiDoc;

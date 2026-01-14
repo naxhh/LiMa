@@ -40,6 +40,10 @@ by type (model, image, other).
 
 Assets are **NOT** altered by this software in any way.
 
+### Bundle
+A bundle is a set of files uploaded into the server they are ment to be converted
+into assets and added into a project but serve a purpose of temporary files
+
 ### Metadata
 Metadata (tags, collections, main image, notes, etc) is stored in a SQL
 database and is not embedded into files or folders.
