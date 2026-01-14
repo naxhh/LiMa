@@ -9,8 +9,10 @@ base64 = "0.22.1"
 lima-db = { version = "0.1.0", path = "../db" }
 lima-domain = { version = "0.1.0", path = "../domain" }
 lima-indexer = { version = "0.1.0", path = "../indexer" }
+mime_guess = "2.0.5"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.10.9"
 time = { version = "0.3.45", features = ["formatting"] }
 tokio = { version = "1.49.0", features = ["full"] }
 tower = "0.5.3"
