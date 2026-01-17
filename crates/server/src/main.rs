@@ -1,4 +1,4 @@
-use axum::{Router, extract::DefaultBodyLimit, routing::{get, post}};
+use axum::{Router, extract::DefaultBodyLimit, routing::{get, post, delete}};
 use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
 use std::{env, net::SocketAddr, sync::Arc};
@@ -29,12 +29,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(routes::health::health_check))
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
+        .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}/assets", post(routes::project_assets::upload_assets)
             .route_layer(DefaultBodyLimit::disable()),
         )
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
+        .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete))
         .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .with_state(state)
         .layer(
@@ -58,8 +60,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::health::health_check,
         routes::project::list_projects,
         routes::project_create::create_project,
-        routes::project_assets::upload_assets,
+        routes::project_delete::project_delete,
+
         routes::bundle_create::create_bundle,
+        routes::bundle_delete::bundle_delete,
+
+        routes::project_assets::upload_assets,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -68,9 +74,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
+
+        routes::bundle_create::CreateBundleResponse,
+
         routes::project_assets::UploadAssetsResponse,
         routes::project_assets::UploadedAsset,
-        routes::bundle_create::CreateBundleResponse,
     )),
 )]
 pub struct ApiDoc;
