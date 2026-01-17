@@ -62,6 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::list_projects,
         routes::project_create::create_project,
         routes::project_delete::project_delete,
+        routes::project_detail::project_detail,
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
