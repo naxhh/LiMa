@@ -13,5 +13,6 @@ pub mod projects_search;
 pub mod projects_create;
 pub mod projects_delete;
 pub mod projects_detail;
+pub mod projects_update;
 pub mod tags;
 pub mod assets;

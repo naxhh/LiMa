@@ -1,4 +1,4 @@
-use sqlx::{Pool, Sqlite, Transaction};
+use sqlx::{Sqlite, Transaction};
 use uuid::Uuid;
 
 pub struct InsertedAsset {

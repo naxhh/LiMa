@@ -1,4 +1,4 @@
-use axum::{Router, extract::DefaultBodyLimit, routing::{get, post, delete}};
+use axum::{Router, extract::DefaultBodyLimit, routing::{get, post, delete, patch}};
 use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
 use std::{env, net::SocketAddr, sync::Arc};
@@ -31,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}", get(routes::project_detail::project_detail))
+        .route("/projects/{project_id}", patch(routes::project_update::project_update))
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -60,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_create::create_project,
         routes::project_delete::project_delete,
         routes::project_detail::project_detail,
+        routes::project_update::project_update,
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
@@ -72,6 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
+        routes::project_update::PatchProjectRequest,
+
         routes::project_detail::ProjectDetailResponse,
         routes::project_detail::ProjectAssetResponse,
         routes::project_detail::ProjectTagResponse,
