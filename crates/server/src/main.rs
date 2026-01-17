@@ -30,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
+        .route("/projects/{project_id}", get(routes::project_detail::project_detail))
         .route("/projects/{project_id}/assets", post(routes::project_assets::upload_assets)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -74,7 +75,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
-
+        routes::project_detail::ProjectDetailResponse,
+        routes::project_detail::ProjectAssetResponse,
+        routes::project_detail::ProjectTagResponse,
+        
         routes::bundle_create::CreateBundleResponse,
 
         routes::project_assets::UploadAssetsResponse,
