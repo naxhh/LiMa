@@ -31,9 +31,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}", get(routes::project_detail::project_detail))
-        .route("/projects/{project_id}/assets", post(routes::project_assets::upload_assets)
-            .route_layer(DefaultBodyLimit::disable()),
-        )
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -66,12 +63,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
-
-        routes::project_assets::upload_assets,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
         routes::health::HealthResponse,
+
         routes::project::ListProjectsResponse,
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
@@ -81,9 +77,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_detail::ProjectTagResponse,
         
         routes::bundle_create::CreateBundleResponse,
-
-        routes::project_assets::UploadAssetsResponse,
-        routes::project_assets::UploadedAsset,
     )),
 )]
 pub struct ApiDoc;

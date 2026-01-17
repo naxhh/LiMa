@@ -57,15 +57,3 @@ pub async fn set_project_main_image(
 
     Ok(())
 }
-
-pub async fn get_project_folder_path(
-    pool: &Pool<Sqlite>,
-    project_id: &str,
-) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar::<_, String>(
-        r#"SELECT folder_path FROM projects WHERE id = ?1"#,
-    )
-    .bind(project_id)
-    .fetch_optional(pool)
-    .await
-}
