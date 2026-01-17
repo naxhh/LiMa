@@ -33,8 +33,6 @@ pub async fn create_project(
     State(state): State<AppState>,
     Json(body): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<CreateProjectResponse>), ApiErrorResponse> {
-    // TODO: we probably should create & check folders can be created for the project here
-
     let name = body.name.trim();
     if name.is_empty() {
         return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "empty_name", "Project name cannot be empty"));
@@ -43,10 +41,12 @@ pub async fn create_project(
     let description = body.description.unwrap_or_default();
     let tags = body.tags.unwrap_or_default();
     let now = now();
+    let folder_path = slugify_string(name);
 
     match lima_db::queries::projects_create::create_project(
         state.db.pool(),
         name,
+        &folder_path,
         &description,
         None,
         &tags,
@@ -79,4 +79,18 @@ pub async fn create_project(
 
 fn now() -> String {
     OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
+}
+
+fn slugify_string(input: &str) -> String {
+    let out = input
+        .trim()
+        .to_lowercase()
+        .replace(" ", "-")
+        .replace("/", "-")
+        .replace("\0", "-")
+        .replace(".", "-")
+        .replace("..", "-");
+        
+
+    out.trim_matches('-').to_string()
 }

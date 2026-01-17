@@ -26,6 +26,8 @@ pub struct UploadedAsset {
     pub kind: String,
 }
 
+
+// NOTICE: MOST OF THIS CODE WILL BE REMOVED just here as an example for the new endpoints
 #[utoipa::path(
     post,
     path = "/projects/{project_id}/assets",
