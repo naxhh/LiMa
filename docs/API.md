@@ -84,7 +84,7 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 | GET | `/projects` | List projects (cursor pagination + search) | ✅ Done |
 | DELETE | `/projects/{project_id}` | Delete project (DB + filesystem) | ✅ Done |
 | GET | `/projects/{project_id}` | Get single project details | ✅ Done |
-| PATCH | `/projects/{project_id}` | Update project metadata (description, tags, main image) | 🟡 Planned (v0) |
+| PATCH | `/projects/{project_id}` | Update project metadata (name, description, main image) | ✅ Done |
 | POST | `/projects/{project_id}/imports` | Import bundle into project (move files, create assets, set main image) | 🟡 Planned (v0) |
 | GET | `/projects/{project_id}/assets` | List all assets for the project | 🟡 Planned (v0) |
 | DELETE | `/projects/{project_id}/assets/{asset_id}` | Remove asset | 🟡 Planned (v0) |
