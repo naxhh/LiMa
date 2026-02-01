@@ -7,6 +7,7 @@ use std::{path::PathBuf};
 use tokio::{fs, io::AsyncWriteExt};
 use utoipa::ToSchema;
 use std::io::{Error, ErrorKind};
+use lima_domain::models::bundle::{BundleMeta, FileMeta};
 
 use crate::state::AppState;
 use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
@@ -16,22 +17,6 @@ pub struct CreateBundleResponse {
     pub id: String,
     pub files: Vec<String>,
     pub failed_files: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BundleMeta {
-    pub uploaded_at: String,
-    pub files: Vec<FileMeta>
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub struct FileMeta {
-    pub name: String,
-    pub size: i64,
-    pub mtime: Option<String>,
-    pub mime: String,
-    pub kind: String,
-    pub checksum: Option<String>,
 }
 
 #[utoipa::path(
@@ -51,6 +36,7 @@ pub async fn create_bundle(
     State(_state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<CreateBundleResponse>), ApiErrorResponse> {
+    // TODO: move logic to db module
     let bundle_id = Uuid::new_v4().to_string();
     let bundle_folder: PathBuf = ["data", "state", "bundles", &bundle_id].iter().collect();
     let mut failed_files: Vec<String> = Vec::new();

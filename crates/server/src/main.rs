@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}", get(routes::project_detail::project_detail))
         .route("/projects/{project_id}", patch(routes::project_update::project_update))
+        .route("/projects/{project_id}/import", post(routes::project_import::project_import))
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -62,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_delete::project_delete,
         routes::project_detail::project_detail,
         routes::project_update::project_update,
+        routes::project_import::project_import,
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
@@ -75,6 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
         routes::project_update::PatchProjectRequest,
+        routes::project_import::ImportProjectRequest,
 
         routes::project_detail::ProjectDetailResponse,
         routes::project_detail::ProjectAssetResponse,

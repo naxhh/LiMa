@@ -28,3 +28,26 @@ pub async fn update_project(
 
     Ok(result.rows_affected())
 }
+
+pub async fn set_main_image(
+    pool: &Pool<Sqlite>,
+    project_id: &str,
+    main_image_id: &str,
+    now: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE projects
+        SET main_image_id = ?1,
+            updated_at = ?2
+        WHERE id = ?3
+        "#,
+    )
+    .bind(main_image_id)
+    .bind(now)
+    .bind(project_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}

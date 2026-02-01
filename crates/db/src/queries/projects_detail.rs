@@ -3,6 +3,7 @@ use sqlx::{Pool, Sqlite, FromRow};
 #[derive(Debug, FromRow)]
 pub struct ProjectDetailRow {
     pub id: String,
+    pub folder_path: String,
     pub name: String,
     pub description: String,
     pub main_image_id: Option<String>,
@@ -56,6 +57,7 @@ pub async fn get_project(
         r#"
         SELECT
             id,
+            folder_path,
             name,
             description,
             main_image_id,

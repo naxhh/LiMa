@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_BASE="${API_BASE:-http://localhost:6767}"
 FILES=(
   "$HOME/Descargas/ColumnSupport.3mf"
@@ -12,7 +13,13 @@ date_str="$(date -u +%Y%m%dT%H%M%SZ)"
 project_name="Test upload - ${date_str}"
 
 
-# bundle_json=$(./api_create_bundle.sh)
+bundle_json="$("$SCRIPT_DIR/api_create_bundle.sh")"
+bundle_id="$(jq -r '.id // empty' <<<"$bundle_json")"
+if [[ -z "$bundle_id" ]]; then
+  echo "Failed to create bundle. Response:" >&2
+  echo "$bundle_json" >&2
+  exit 1
+fi
 
 project_json="$(curl -sS -X POST "$API_BASE/projects" \
   -H 'content-type: application/json' \
@@ -24,6 +31,10 @@ if [[ -z "$project_id" ]]; then
   echo "$project_json" | jq -C . >&2 || echo "$project_json" >&2
   exit 1
 fi
+
+curl -sS -X POST "$API_BASE/projects/$project_id/import" \
+  -H 'content-type: application/json' \
+  -d "{\"bundle_id\":\"$bundle_id\"}"
 
 echo "Created project: $project_id ($project_name)"
 

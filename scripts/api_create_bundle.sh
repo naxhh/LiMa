@@ -14,4 +14,4 @@ for f in "${FILES[@]}"; do
     curl_args+=(-F "files[]=@$f")
 done
 
-curl "${curl_args[@]}" | jq
+curl "${curl_args[@]}" | jq .
