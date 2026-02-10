@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
+import { Link } from "react-router-dom";
 
 type Project = {
   id: string;
@@ -33,8 +34,10 @@ export function ProjectsPage() {
       <div className="space-y-2">
         {data?.items.map((p: Project) => (
           <div key={p.id} className="rounded-lg border p-3">
-            <div className="font-medium">{p.name}</div>
-            <div className="text-sm text-muted-foreground">{p.description}</div>
+            <Link to={`/projects/${p.id}`} className="block rounded-lg border p-3 hover:bg-muted/40">
+              <div className="font-medium">{p.name}</div>
+              <div className="text-sm text-muted-foreground">{p.description}</div>
+            </Link>
           </div>
         ))}
       </div>
