@@ -9,6 +9,7 @@ pub struct PatchProjectRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub main_image_id: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[utoipa::path(
@@ -34,9 +35,18 @@ pub async fn project_update(
     if payload.name.is_none()
         && payload.description.is_none()
         && payload.main_image_id.is_none()
+        && payload.tags.is_none()
     {
         return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "missing_fields", "At least one field must be provided for update."));
     }
+
+    let mut tx = app_state.db.pool().begin().await.map_err(|e| {
+        ApiErrorResponse::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_error",
+            "Failed to start database transaction",
+        ).with_cause(&e.to_string())
+    })?;
 
     let now = OffsetDateTime::now_utc().format(&Rfc3339).map_err(|e| {
         ApiErrorResponse::new(
@@ -46,31 +56,52 @@ pub async fn project_update(
         ).with_cause(&e.to_string())
     })?;
 
-    let updated_rows = lima_db::queries::projects_update::update_project(
-        app_state.db.pool(),
-        &project_id,
-        payload.name.as_deref(),
-        payload.description.as_deref(),
-        payload.main_image_id.as_deref(),
-        &now,
-    )
-    .await
-    .map_err(|e| {
-        ApiErrorResponse::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "database_error",
-            "Failed to update project",
-        ).with_cause(&e.to_string())
-    })?;
-    
-    // TODO: don't like this approach but for now will do.
-    if updated_rows == 0 {
-        return Err(ApiErrorResponse::new(
-            StatusCode::NOT_FOUND,
-            "no_update_done",
-            "Nothing was updated, possibly because the project does not exist or same data was given.",
-        ));
-    };
+    // TODO: make this use transaction
+    if payload.name.is_some() || payload.description.is_some() || payload.main_image_id.is_some() {
+        let updated_rows = lima_db::queries::projects_update::update_project(
+            app_state.db.pool(),
+            &project_id,
+            payload.name.as_deref(),
+            payload.description.as_deref(),
+            payload.main_image_id.as_deref(),
+            &now,
+        )
+        .await
+        .map_err(|e| {
+            ApiErrorResponse::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_error",
+                "Failed to update project",
+            ).with_cause(&e.to_string())
+        })?;
+        
+        // TODO: don't like this approach but for now will do.
+        if updated_rows == 0 {
+            return Err(ApiErrorResponse::new(
+                StatusCode::NOT_FOUND,
+                "no_update_done",
+                "Nothing was updated, possibly because the project does not exist or same data was given.",
+            ));
+        };
+    }
+
+    if let Some(tags) = payload.tags {
+        let tag_ids = lima_db::queries::tags::ensure_tags(&mut tx, &tags, &now).await.map_err(|e| {
+            ApiErrorResponse::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_error",
+                "Failed to ensure tags exist",
+            ).with_cause(&e.to_string())
+        })?;
+        
+        lima_db::queries::tags::set_project_tags(&mut tx, &project_id, &tag_ids).await.map_err(|e| {
+            ApiErrorResponse::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_error",
+                "Failed to set project tags",
+            ).with_cause(&e.to_string())
+        })?;
+    }
 
     Ok(StatusCode::OK)
 }

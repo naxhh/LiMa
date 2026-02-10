@@ -1,7 +1,7 @@
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Sqlite, Transaction};
 
 pub async fn update_project(
-    pool: &Pool<Sqlite>,
+    tx: &mut Transaction<'_, Sqlite>,
     project_id: &str,
     name: Option<&str>,
     description: Option<&str>,
@@ -23,7 +23,7 @@ pub async fn update_project(
     .bind(main_image_id)
     .bind(now)
     .bind(project_id)
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
 
     Ok(result.rows_affected())
