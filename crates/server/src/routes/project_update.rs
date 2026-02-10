@@ -59,7 +59,7 @@ pub async fn project_update(
     // TODO: make this use transaction
     if payload.name.is_some() || payload.description.is_some() || payload.main_image_id.is_some() {
         let updated_rows = lima_db::queries::projects_update::update_project(
-            app_state.db.pool(),
+            &mut tx,
             &project_id,
             payload.name.as_deref(),
             payload.description.as_deref(),
