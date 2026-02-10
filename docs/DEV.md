@@ -1,5 +1,25 @@
 # LIMA: Dev notes
 
+## Server
+
+```bash
+cargo watch -x "run -p lima-server"
+```
+
+
+## Frontend
+
+```bash
+pnpm dev
+```
+
+Update openapi definitions
+```bash
+pnpm exec openapi-typescript http://localhost:6767/openapi.json -o src/gen/openapi.ts
+
+pnpm gen:api
+```
+
 ## DB
 
 - Add migration
