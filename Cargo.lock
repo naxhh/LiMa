@@ -1265,7 +1265,9 @@ dependencies = [
 name = "lima-domain"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "serde",
+ "serde_json",
  "sqlx",
  "time",
  "utoipa",
@@ -1290,7 +1292,6 @@ name = "lima-server"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64",
  "lima-db",
  "lima-domain",
  "lima-indexer",

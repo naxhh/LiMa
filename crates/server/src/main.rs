@@ -34,6 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/{project_id}", patch(routes::project_update::project_update))
         .route("/projects/{project_id}/import", post(routes::project_import::project_import))
         .route("/projects/{project_id}/assets/{asset_id}", delete(routes::assets::delete::asset_delete))
+        
+        .route("/tags", get(routes::tags::list::list_tags))
+        .route("/tags", post(routes::tags::create::create_tag))
+        
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -68,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         routes::assets::delete::asset_delete,
 
+        routes::tags::list::list_tags,
+        routes::tags::create::create_tag,
+
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
     ),
@@ -85,6 +92,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_detail::ProjectDetailResponse,
         routes::project_detail::ProjectAssetResponse,
         routes::project_detail::ProjectTagResponse,
+
+        routes::tags::list::ListTagsResponse,
+        routes::tags::list::ListTagsParams,
+        routes::tags::list::Tag,
+
+        routes::tags::create::CreateTagRequest,
+        routes::tags::create::CreateTagResponse,
         
         routes::bundle_create::CreateBundleResponse,
     )),

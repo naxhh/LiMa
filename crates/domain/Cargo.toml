@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+base64 = "0.22.1"
 time = "0.3.44"
 uuid = "1.19.0"
 serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
 sqlx = { version = "0.8.6", features = ["macros"] }
 utoipa = "5.4.0"

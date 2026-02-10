@@ -95,8 +95,8 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
-| GET | `/tags` | List tags | 🟡 Planned (v0) |
-| POST | `/tags` | Create tag | 🟡 Planned (v0) |
+| GET | `/tags` | List tags | ✅ Done |
+| POST | `/tags` | Create tag | ✅ Done |
 | PATCH | `/tags/{tag_id}` | Rename / update tag | 🟡 Planned (v0) |
 | DELETE | `/tags/{tag_id}` | Delete tag | 🟡 Planned (v0) |
 

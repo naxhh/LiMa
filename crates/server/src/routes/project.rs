@@ -3,9 +3,8 @@ use axum::{
 };
 use utoipa::ToSchema;
 use serde::{Serialize, Deserialize};
-use base64::{Engine as _, engine::general_purpose};
 use lima_domain::models::project::ProjectRow;
-use lima_domain::pagination::Cursor;
+use lima_domain::pagination::{Cursor, decode_cursor, encode_cursor};
 
 use crate::{models::http_error::ApiErrorBody, state::AppState};
 use crate::models::http_error::ApiErrorResponse;
@@ -104,17 +103,4 @@ pub async fn list_projects(
         items: projects,
         next_cursor,
     }))
-}
-
-
-// TODO: move to wherever. domain maybe?
-fn decode_cursor(cursor: &str) -> Result<Cursor, String> {
-    let bytes = general_purpose::STANDARD.decode(cursor).map_err(|e| e.to_string())?;
-    let cursor: Cursor = serde_json::from_slice(&bytes).map_err(|e: serde_json::Error| e.to_string())?;
-    
-    Ok(cursor)
-}
-
-fn encode_cursor(cursor: &Cursor) -> String {
-    general_purpose::STANDARD.encode(serde_json::to_vec(&cursor).unwrap())
 }
