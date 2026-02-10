@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_BASE="${API_BASE:-http://localhost:6767}"
+API_BASE="${API_BASE:-http://localhost:6767/api}"
 
 if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <project_id>" >&2

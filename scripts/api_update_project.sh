@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_BASE="${API_BASE:-http://localhost:6767}"
+API_BASE="${API_BASE:-http://localhost:6767/api}"
 
 projects_json="$(curl -sS "$API_BASE/projects?limit=1")"
 

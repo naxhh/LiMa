@@ -15,7 +15,7 @@ pnpm dev
 
 Update openapi definitions
 ```bash
-pnpm exec openapi-typescript http://localhost:6767/openapi.json -o src/gen/openapi.ts
+pnpm exec openapi-typescript http://localhost:6767/api/openapi.json -o src/gen/openapi.ts
 
 pnpm gen:api
 ```

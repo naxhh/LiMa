@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db: Arc::new(db),
     };
 
-    let app = Router::new()
+    let api = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
@@ -41,13 +41,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
-        .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete))
-        .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
+        .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete));
+    
+    let app = Router::new()
+        .nest("/api", api)
         .with_state(state)
+        .merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()))
         .layer(
             ServiceBuilder::new()
                 .layer(CatchPanicLayer::new())
         );
+
 
     let addr: SocketAddr = format!("0.0.0.0:{}", server_port).parse()?;
 

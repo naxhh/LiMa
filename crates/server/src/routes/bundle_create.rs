@@ -21,7 +21,7 @@ pub struct CreateBundleResponse {
 
 #[utoipa::path(
     post,
-    path = "/bundles",
+    path = "/api/bundles",
     request_body(
         content_type = "multipart/form-data",
         description = "Set of files to upload using files or files[] fields."

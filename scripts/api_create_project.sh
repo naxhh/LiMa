@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-API_BASE="${API_BASE:-http://localhost:6767}"
+API_BASE="${API_BASE:-http://localhost:6767/api}"
 FILES=(
   "$HOME/Descargas/ColumnSupport.3mf"
   "$HOME/Descargas/disc.stl"

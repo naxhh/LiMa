@@ -32,7 +32,7 @@ pub struct ListTagsResponse {
 
 #[utoipa::path(
     get,
-    path = "/tags",
+    path = "/api/tags",
     params(
         ("limit" = Option<i64>, Query, description = "Maximum number of tags to return (default: 50, max: 200)"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor"),

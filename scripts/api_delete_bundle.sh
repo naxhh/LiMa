@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_BASE="${API_BASE:-http://localhost:6767}"
+API_BASE="${API_BASE:-http://localhost:6767/api}"
 BUNDLES_DIR="${BUNDLES_DIR:-data/state/bundles}"
 
 delete_bundle() {

@@ -21,7 +21,7 @@ pub struct CreateProjectResponse {
 
 #[utoipa::path(
     post,
-    path = "/projects",
+    path = "/api/projects",
     request_body = CreateProjectRequest,
     responses(
         (status = 201, description = "Project created", body = CreateProjectResponse),

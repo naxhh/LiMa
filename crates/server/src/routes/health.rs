@@ -15,7 +15,7 @@ pub struct HealthResponse {
 
 #[utoipa::path(
     get,
-    path = "/health",
+    path = "/api/health",
     responses(
         (status = 200, description = "Health check successful", body = HealthResponse),
         (status = 503, description = "Database connection failed")

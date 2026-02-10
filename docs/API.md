@@ -2,7 +2,7 @@
 
 NOTE: this document changes a lot. So it's likely that this doesn't reflect reality. Use openapi files for that.
 
-Base URL: `/`  
+Base URL: `/api`  
 All endpoints use JSON unless stated otherwise.  
 No authentication required.
 

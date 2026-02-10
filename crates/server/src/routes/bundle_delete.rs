@@ -7,7 +7,7 @@ use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
 
 #[utoipa::path(
     delete,
-    path = "/bundles/{bundle_id}",
+    path = "/api/bundles/{bundle_id}",
     params(
         ("bundle_id" = String, Path, description = "The ID of the bundle to delete"),
     ),

@@ -39,7 +39,7 @@ pub struct ProjectTagResponse {
 
 #[utoipa::path(
     get,
-    path = "/projects/{project_id}",
+    path = "/api/projects/{project_id}",
     params(
         ("project_id" = String, Path, description = "The ID of the project to retrieve"),
     ),

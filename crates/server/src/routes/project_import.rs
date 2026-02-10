@@ -21,7 +21,7 @@ pub struct ImportProjectRequest {
 
 #[utoipa::path(
     post,
-    path = "/projects/{project_id}/import",
+    path = "/api/projects/{project_id}/import",
     request_body = ImportProjectRequest,
     params(
         ("project_id" = String, Path, description = "The ID of the project to import assets into"),

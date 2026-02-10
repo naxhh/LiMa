@@ -25,7 +25,7 @@ pub struct ListProjectsResponse {
 
 #[utoipa::path(
     get,
-    path = "/projects",
+    path = "/api/projects",
     params(
         ("limit" = Option<i64>, Query, description = "Maximum number of projects to return (default: 50, max: 200)"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor"),

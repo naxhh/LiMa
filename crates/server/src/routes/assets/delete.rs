@@ -6,7 +6,7 @@ use lima_db::queries::assets::DeleteAssetError;
 
 #[utoipa::path(
     delete,
-    path = "/projects/{project_id}/assets/{asset_id}",
+    path = "/api/projects/{project_id}/assets/{asset_id}",
     params(
         ("project_id" = String, Path, description = "The ID of the project containing the asset"),
         ("asset_id" = String, Path, description = "The ID of the asset to delete"),

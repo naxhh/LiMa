@@ -27,7 +27,7 @@ pub struct CreateTagResponse {
 
 #[utoipa::path(
     post,
-    path = "/tags",
+    path = "/api/tags",
     request_body = CreateTagRequest,
     responses(
         (status = 200, description = "Tag created successfully", body = CreateTagResponse),
