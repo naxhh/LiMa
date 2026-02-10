@@ -9,7 +9,7 @@ FILES=(
   "$HOME/Descargas/pexels-francesco-ungaro-1526713.jpg"
 )
 
-date_str="$(date -u +%Y%m%dT%H%M%SZ)"
+date_str="$(date -u +%Y%m%dT%H%M%S.%3NZ)"
 project_name="Test upload - ${date_str}"
 
 
