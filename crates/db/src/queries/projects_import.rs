@@ -1,7 +1,7 @@
-use sqlx::{FromRow, Pool};
+use sqlx::Pool;
 use tokio::fs;
 use std::path::PathBuf;
-use lima_domain::models::bundle::{BundleMeta, FileMeta};
+use lima_domain::models::bundle::BundleMeta;
 use serde_json;
 
 use crate::queries::projects_detail::ProjectAssetRow;
