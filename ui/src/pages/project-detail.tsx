@@ -215,31 +215,14 @@ export function ProjectDetailPage() {
                 <MediaCard
                   title={a.file_path}
                   subtitle={`${a.kind} · ${formatBytes(a.size_bytes)}`}
-                  meta={isMain ? "Main image" : null}
-                  placeholder={a.kind === "image" ? "image preview" : a.kind === "model" ? "3D preview" : "file"}
-                  chips={[
-                    { label: a.kind, variant: "secondary" },
-                    ...(isMain ? [{ label: "Main", variant: "default" as const }] : []),
-                  ]}
+                  thumb={a.kind === "image" ? { projectId: project.id, assetId: a.id, failLabel: "IMAGE 404" } : undefined}
+                  placeholder={a.kind === "model" ? "3D preview" : "file"}
                   actions={[
                     ...(a.kind === "image"
-                      ? [
-                          {
-                            label: "Set as main image",
-                            onClick: () => setMainImageM.mutate(a.id),
-                            disabled: isMain || setMainImageM.isPending,
-                          },
-                          { label: "sep", onClick: () => {}, separatorBefore: true, disabled: true }, // (see note)
-                        ]
+                      ? [{ label: "Set as main image", onClick: () => setMainImageM.mutate(a.id), disabled: isMain }]
                       : []),
-                    {
-                      label: "Delete",
-                      destructive: true,
-                      onClick: () => deleteAssetM.mutate(a.id),
-                      disabled: deleteAssetM.isPending,
-                      separatorBefore: a.kind === "image",
-                    },
-                  ].filter((x) => x.label !== "sep")}
+                    { label: "Delete", destructive: true, onClick: () => deleteAssetM.mutate(a.id), separatorBefore: a.kind === "image" },
+                  ]}
                 />
               );
             })}

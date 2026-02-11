@@ -136,20 +136,15 @@ export function ProjectsPage() {
             <MediaCard
               href={`/projects/${p.id}`}
               title={p.name}
-              subtitle={p.description?.trim() ? p.description : "—"}
+              subtitle={p.description || "—"}
               meta={`Updated: ${p.updated_at}`}
-              chips={[
-                 ...tags.map((t: string) => ({ label: t })),  
-              ]}
-              placeholder={p.main_image_id ? "main image preview" : "no preview"}
-              actions={[
-                {
-                  label: "Delete",
-                  destructive: true,
-                  onClick: () => deleteProjectM.mutate(p.id),
-                  disabled: deleteProjectM.isPending,
-                },
-              ]}
+              thumb={
+                p.main_image_id
+                  ? { projectId: p.id, assetId: p.main_image_id, failLabel: "THUMB 404" }
+                  : undefined
+              }
+              placeholder="no preview"
+              actions={[{ label: "Delete", destructive: true, onClick: () => deleteProjectM.mutate(p.id) }]}
             />
           );
         })}

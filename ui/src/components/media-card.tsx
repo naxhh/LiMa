@@ -12,6 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { MediaImage } from "@/components/media-image";
+import { thumbUrl } from "@/lib/media";
+
 export type MediaCardAction = {
   label: string;
   onClick: () => void;
@@ -23,12 +26,11 @@ export type MediaCardAction = {
 export type MediaCardChip = {
   label: string;
   variant?: "default" | "secondary" | "outline";
-  // If you want a colored dot/chip.
   dotColor?: string;
 };
 
 export function MediaCard(props: {
-  href?: string; // if set, whole card is clickable
+  href?: string;
   title: string;
   subtitle?: string | null;
   meta?: string | null;
@@ -36,8 +38,14 @@ export function MediaCard(props: {
   chips?: MediaCardChip[];
   actions?: MediaCardAction[];
 
-  media?: React.ReactNode; // pass <img/> or viewer later
-  placeholder?: React.ReactNode; // shown if no media
+  // If you pass `media`, it wins (e.g. 3D viewer later).
+  media?: React.ReactNode;
+
+  // If no `media`, card can render a thumbnail automatically:
+  thumb?: { projectId: string; assetId: string; alt?: string; failLabel?: string };
+
+  // If neither `media` nor `thumb` is provided, show this.
+  placeholder?: React.ReactNode;
 }) {
   const {
     href,
@@ -47,6 +55,7 @@ export function MediaCard(props: {
     chips = [],
     actions = [],
     media,
+    thumb,
     placeholder,
   } = props;
 
@@ -68,6 +77,12 @@ export function MediaCard(props: {
         <div className="relative aspect-square bg-muted">
           {media ? (
             <div className="absolute inset-0">{media}</div>
+          ) : thumb ? (
+            <MediaImage
+              src={thumbUrl(thumb.projectId, thumb.assetId)}
+              alt={thumb.alt ?? title}
+              fallbackLabel={thumb.failLabel ?? "THUMB 404"}
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
               {placeholder ?? "preview"}
