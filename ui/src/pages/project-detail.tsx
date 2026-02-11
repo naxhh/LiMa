@@ -19,6 +19,17 @@ import {
 } from "@/components/ui/dialog";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
 
+import { MoreHorizontal } from "lucide-react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+
 
 type ProjectAsset = {
   id: string;
@@ -104,6 +115,16 @@ export function ProjectDetailPage() {
     },
   });
 
+  const setMainImageM = useMutation({
+    mutationFn: (assetId: string) =>
+      apiJson<void>("PATCH", `/projects/${projectId}`, { main_image_id: assetId }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["project", projectId] });
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
+
   if (projectQ.isLoading) return <div className="p-6">Loading…</div>;
   if (projectQ.isError) return <div className="p-6">Error: {getApiErrorMessage(projectQ.error)}</div>;
   if (!project) return <div className="p-6">Not found</div>;
@@ -174,32 +195,92 @@ export function ProjectDetailPage() {
       ) : null}
 
       {/* Assets */}
-      <div className="space-y-2">
-        <div className="text-lg font-semibold">Assets</div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold">Assets</div>
+          <div className="text-xs text-muted-foreground">
+            {project.assets.length} item(s)
+          </div>
+        </div>
 
         {project.assets.length === 0 ? (
           <div className="text-sm text-muted-foreground">No assets</div>
         ) : (
-          <div className="space-y-2">
-            {project.assets.map((a) => (
-              <div key={a.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{a.file_path}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {a.kind} · {formatBytes(a.size_bytes)}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {project.assets.map((a) => {
+              const isMain = project.main_image_id === a.id;
+
+              return (
+                <div
+                  key={a.id}
+                  className={[
+                    "rounded-xl border overflow-hidden bg-card",
+                    isMain ? "ring-2 ring-ring" : "",
+                  ].join(" ")}
+                >
+                  {/* Media area */}
+                  <div className="relative aspect-square bg-muted">
+                    {/* Placeholder for now */}
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                      {a.kind === "image" ? "image preview" : a.kind === "model" ? "3D preview" : "file"}
+                    </div>
+
+                    {/* Top chips */}
+                    <div className="absolute left-2 top-2 flex items-center gap-2">
+                      <Badge variant="secondary" className="capitalize">
+                        {a.kind}
+                      </Badge>
+                      {isMain ? <Badge className="bg-primary text-primary-foreground">Main</Badge> : null}
+                    </div>
+
+                    {/* Top-right actions */}
+                    <div className="absolute right-2 top-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="secondary" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent align="end">
+                          {a.kind === "image" ? (
+                            <>
+                              <DropdownMenuItem
+                                disabled={isMain || setMainImageM.isPending}
+                                onClick={() => setMainImageM.mutate(a.id)}
+                              >
+                                Set as main image
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          ) : null}
+
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            disabled={deleteAssetM.isPending}
+                            onClick={() => deleteAssetM.mutate(a.id)}
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* Meta */}
+                  <div className="p-3 space-y-1">
+                    <div className="text-sm font-medium truncate" title={a.file_path}>
+                      {a.file_path}
+                    </div>
+
+                    <div className="text-xs text-muted-foreground flex items-center justify-between gap-2">
+                      <span>{formatBytes(a.size_bytes)}</span>
+                      {/* room for later: mime/mtime */}
+                    </div>
                   </div>
                 </div>
-
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={deleteAssetM.isPending}
-                  onClick={() => deleteAssetM.mutate(a.id)}
-                >
-                  Delete
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -208,7 +289,14 @@ export function ProjectDetailPage() {
             Delete failed: {getApiErrorMessage(deleteAssetM.error)}
           </div>
         ) : null}
+
+        {setMainImageM.isError ? (
+          <div className="text-sm text-destructive">
+            Set main image failed: {getApiErrorMessage(setMainImageM.error)}
+          </div>
+        ) : null}
       </div>
+
     </div>
   );
 }
