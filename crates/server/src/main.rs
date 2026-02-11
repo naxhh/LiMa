@@ -1,6 +1,11 @@
-use axum::{Router, extract::DefaultBodyLimit, routing::{get, post, delete, patch}};
+use axum::{
+    Router,
+    extract::DefaultBodyLimit,
+    routing::{get, post, delete, patch, get_service},
+    http::StatusCode,
+};
 use tower::ServiceBuilder;
-use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::{catch_panic::CatchPanicLayer, services::ServeDir};
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use utoipa::OpenApi;
@@ -20,6 +25,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db = lima_db::Db::connect(&database_url).await?;
     db.migrate().await?;
+
+    let library_dir = ServeDir::new("data/library");
+    let thumbs_dir = ServeDir::new("data/state/thumbnails");
 
     let state = state::AppState {
         db: Arc::new(db),
@@ -50,7 +58,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(
             ServiceBuilder::new()
                 .layer(CatchPanicLayer::new())
-        );
+        )
+        .nest_service("/media/library", get_service(library_dir).handle_error(|_| async { StatusCode::NOT_FOUND }))
+        .nest_service("/media/thumbs", get_service(thumbs_dir).handle_error(|_| async { StatusCode::NOT_FOUND }));
 
 
     let addr: SocketAddr = format!("0.0.0.0:{}", server_port).parse()?;
