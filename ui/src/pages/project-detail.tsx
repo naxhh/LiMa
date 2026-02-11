@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MediaCard } from "../components/media-card";
+import { libraryUrl } from "@/lib/media";
 
 
 
@@ -213,15 +214,47 @@ export function ProjectDetailPage() {
 
               return (
                 <MediaCard
+                  key={a.id}
                   title={a.file_path}
                   subtitle={`${a.kind} · ${formatBytes(a.size_bytes)}`}
-                  thumb={a.kind === "image" ? { projectId: project.id, assetId: a.id, failLabel: "IMAGE 404" } : undefined}
+                  thumb={
+                    a.kind === "image"
+                      ? { projectId: project.id, assetId: a.id, failLabel: "IMAGE 404" }
+                      : undefined
+                  }
                   placeholder={a.kind === "model" ? "3D preview" : "file"}
                   actions={[
+                    {
+                      label: "Download",
+                      onClick: () => {
+                        console.log(project)
+                        const url = libraryUrl(project.folder_path, a.file_path);
+
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = a.file_path; // forces download
+                        link.target = "_blank";
+                        link.rel = "noopener";
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      },
+                    },
                     ...(a.kind === "image"
-                      ? [{ label: "Set as main image", onClick: () => setMainImageM.mutate(a.id), disabled: isMain }]
+                      ? [
+                          {
+                            label: "Set as main image",
+                            onClick: () => setMainImageM.mutate(a.id),
+                            separatorBefore: true,
+                          },
+                        ]
                       : []),
-                    { label: "Delete", destructive: true, onClick: () => deleteAssetM.mutate(a.id), separatorBefore: a.kind === "image" },
+                    {
+                      label: "Delete",
+                      destructive: true,
+                      onClick: () => deleteAssetM.mutate(a.id),
+                      separatorBefore: true,
+                    },
                   ]}
                 />
               );

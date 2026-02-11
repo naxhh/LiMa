@@ -11,5 +11,6 @@ export function thumbUrl(projectId: string, assetId: string) {
 }
 
 export function libraryUrl(projectFolderPath: string, filePath: string) {
+  console.log("libraryUrl", { projectFolderPath, filePath });
   return `/media/library/${joinUrlSegments(projectFolderPath, filePath)}`;
 }
