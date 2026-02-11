@@ -1,11 +1,25 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiNoBody } from "@/lib/api";
 
 import { apiGet } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
+
+import { Link } from "react-router-dom";
+import { MoreHorizontal } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
 
 
 type ProjectRow = {
@@ -42,9 +56,15 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 }
 
 export function ProjectsPage() {
+  const deleteProjectM = useMutation({
+    mutationFn: (projectId: string) => apiNoBody("DELETE", `/projects/${projectId}`),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebouncedValue(q, 250);
-
   const limit = 50;
 
   const projectsQ = useInfiniteQuery({
@@ -107,20 +127,103 @@ export function ProjectsPage() {
         </div>
       ) : null}
 
-      <div className="space-y-2">
-        {items.map((p) => (
-          <Link
-            key={p.id}
-            to={`/projects/${p.id}`}
-            className="block rounded-lg border p-3 hover:bg-muted/40"
-          >
-            <div className="font-medium">{p.name}</div>
-            <div className="text-sm text-muted-foreground">
-              {p.description?.trim() ? p.description : "—"}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {items.map((p) => {
+          const tags = (p as any).tags ?? [];
+
+          return (
+            <div
+              key={p.id}
+              className="group relative rounded-xl border overflow-hidden bg-card hover:shadow-md transition-shadow"
+            >
+              {/* Full clickable link layer */}
+              <Link
+                to={`/projects/${p.id}`}
+                className="absolute inset-0 z-0"
+              />
+
+              {/* Card content */}
+              <div className="relative z-10 pointer-events-none">
+                {/* Media */}
+                <div className="relative aspect-square bg-muted">
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                    {p.main_image_id ? "main image preview" : "no preview"}
+                  </div>
+                </div>
+
+                {/* Meta */}
+                <div className="p-3 space-y-2">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold truncate">
+                      {p.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground line-clamp-2">
+                      {p.description?.trim() ? p.description : "—"}
+                    </div>
+                  </div>
+
+                  {Array.isArray(tags) && tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.slice(0, 4).map((t: any) => (
+                        <Badge
+                          key={t.id ?? t.name}
+                          variant="secondary"
+                          className="max-w-[8rem] truncate"
+                          style={
+                            t.color
+                              ? { backgroundColor: t.color, color: "#fff", border: "none" }
+                              : undefined
+                          }
+                        >
+                          {t.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      No tags
+                    </div>
+                  )}
+
+                  <div className="text-xs text-muted-foreground">
+                    Updated: {p.updated_at}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions menu (must sit above link layer) */}
+              <div className="absolute right-2 top-2 z-20 pointer-events-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteProjectM.mutate(p.id);
+                      }}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-          </Link>
-        ))}
+          );
+        })}
       </div>
+
+
 
       <div ref={sentinelRef} className="h-8" />
       {projectsQ.isFetchingNextPage ? <div>Loading more…</div> : null}
