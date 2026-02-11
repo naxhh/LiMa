@@ -1,8 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api";
+import * as React from "react";
 import { Link } from "react-router-dom";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
-type Project = {
+import { apiGet } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+
+type ProjectRow = {
   id: string;
   folder_path: string;
   name: string;
@@ -14,33 +18,109 @@ type Project = {
 };
 
 type ListProjectsResponse = {
-  items: Project[];
+  items: ProjectRow[];
   next_cursor: string | null;
 };
 
+function buildUrl(params: { limit: number; cursor?: string | null; query?: string }) {
+  const usp = new URLSearchParams();
+  usp.set("limit", String(params.limit));
+  if (params.cursor) usp.set("cursor", params.cursor);
+  if (params.query && params.query.trim()) usp.set("query", params.query.trim());
+  return `/projects?${usp.toString()}`;
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function ProjectsPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["projects", { limit: 50 }],
-    queryFn: () => apiGet<ListProjectsResponse>(`/projects?limit=50`),
+  const [q, setQ] = React.useState("");
+  const debouncedQ = useDebouncedValue(q, 250);
+
+  const limit = 50;
+
+  const projectsQ = useInfiniteQuery({
+    queryKey: ["projects", { limit, query: debouncedQ }],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiGet<ListProjectsResponse>(
+        buildUrl({ limit, cursor: pageParam, query: debouncedQ })
+      ),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 
-  if (isLoading) return <div className="p-6">Loading…</div>;
-  if (error) return <div className="p-6">Error loading projects</div>;
+  const items =
+    projectsQ.data?.pages.flatMap((p) => p.items) ?? [];
+
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const io = new IntersectionObserver((entries) => {
+      const first = entries[0];
+      if (first?.isIntersecting && projectsQ.hasNextPage && !projectsQ.isFetchingNextPage) {
+        projectsQ.fetchNextPage();
+      }
+    });
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [projectsQ.hasNextPage, projectsQ.isFetchingNextPage, projectsQ.fetchNextPage]);
+
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Projects</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Projects</h1>
+        {/* Later: Create Project dialog */}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search projects…"
+        />
+        {q ? (
+          <Button variant="outline" onClick={() => setQ("")}>
+            Clear
+          </Button>
+        ) : null}
+      </div>
+
+      {projectsQ.isLoading ? <div>Loading…</div> : null}
+
+      {projectsQ.isError ? (
+        <div className="text-sm text-destructive">
+          Failed to load projects.
+        </div>
+      ) : null}
 
       <div className="space-y-2">
-        {data?.items.map((p: Project) => (
-          <div key={p.id} className="rounded-lg border p-3">
-            <Link to={`/projects/${p.id}`} className="block rounded-lg border p-3 hover:bg-muted/40">
-              <div className="font-medium">{p.name}</div>
-              <div className="text-sm text-muted-foreground">{p.description}</div>
-            </Link>
-          </div>
+        {items.map((p) => (
+          <Link
+            key={p.id}
+            to={`/projects/${p.id}`}
+            className="block rounded-lg border p-3 hover:bg-muted/40"
+          >
+            <div className="font-medium">{p.name}</div>
+            <div className="text-sm text-muted-foreground">
+              {p.description?.trim() ? p.description : "—"}
+            </div>
+          </Link>
         ))}
       </div>
+
+      <div ref={sentinelRef} className="h-8" />
+      {projectsQ.isFetchingNextPage ? <div>Loading more…</div> : null}
     </div>
   );
 }
