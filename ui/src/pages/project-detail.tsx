@@ -28,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { MediaCard } from "../components/media-card";
 
 
 
@@ -211,74 +212,35 @@ export function ProjectDetailPage() {
               const isMain = project.main_image_id === a.id;
 
               return (
-                <div
-                  key={a.id}
-                  className={[
-                    "rounded-xl border overflow-hidden bg-card",
-                    isMain ? "ring-2 ring-ring" : "",
-                  ].join(" ")}
-                >
-                  {/* Media area */}
-                  <div className="relative aspect-square bg-muted">
-                    {/* Placeholder for now */}
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                      {a.kind === "image" ? "image preview" : a.kind === "model" ? "3D preview" : "file"}
-                    </div>
-
-                    {/* Top chips */}
-                    <div className="absolute left-2 top-2 flex items-center gap-2">
-                      <Badge variant="secondary" className="capitalize">
-                        {a.kind}
-                      </Badge>
-                      {isMain ? <Badge className="bg-primary text-primary-foreground">Main</Badge> : null}
-                    </div>
-
-                    {/* Top-right actions */}
-                    <div className="absolute right-2 top-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="secondary" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-
-                        <DropdownMenuContent align="end">
-                          {a.kind === "image" ? (
-                            <>
-                              <DropdownMenuItem
-                                disabled={isMain || setMainImageM.isPending}
-                                onClick={() => setMainImageM.mutate(a.id)}
-                              >
-                                Set as main image
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          ) : null}
-
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            disabled={deleteAssetM.isPending}
-                            onClick={() => deleteAssetM.mutate(a.id)}
-                          >
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  {/* Meta */}
-                  <div className="p-3 space-y-1">
-                    <div className="text-sm font-medium truncate" title={a.file_path}>
-                      {a.file_path}
-                    </div>
-
-                    <div className="text-xs text-muted-foreground flex items-center justify-between gap-2">
-                      <span>{formatBytes(a.size_bytes)}</span>
-                      {/* room for later: mime/mtime */}
-                    </div>
-                  </div>
-                </div>
+                <MediaCard
+                  title={a.file_path}
+                  subtitle={`${a.kind} · ${formatBytes(a.size_bytes)}`}
+                  meta={isMain ? "Main image" : null}
+                  placeholder={a.kind === "image" ? "image preview" : a.kind === "model" ? "3D preview" : "file"}
+                  chips={[
+                    { label: a.kind, variant: "secondary" },
+                    ...(isMain ? [{ label: "Main", variant: "default" as const }] : []),
+                  ]}
+                  actions={[
+                    ...(a.kind === "image"
+                      ? [
+                          {
+                            label: "Set as main image",
+                            onClick: () => setMainImageM.mutate(a.id),
+                            disabled: isMain || setMainImageM.isPending,
+                          },
+                          { label: "sep", onClick: () => {}, separatorBefore: true, disabled: true }, // (see note)
+                        ]
+                      : []),
+                    {
+                      label: "Delete",
+                      destructive: true,
+                      onClick: () => deleteAssetM.mutate(a.id),
+                      disabled: deleteAssetM.isPending,
+                      separatorBefore: a.kind === "image",
+                    },
+                  ].filter((x) => x.label !== "sep")}
+                />
               );
             })}
           </div>
