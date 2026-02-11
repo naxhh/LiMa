@@ -5,6 +5,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
+
 
 type ProjectRow = {
   id: string;
@@ -80,8 +82,9 @@ export function ProjectsPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Projects</h1>
-        {/* Later: Create Project dialog */}
+        <CreateProjectDialog />
       </div>
+
 
       <div className="flex items-center gap-2">
         <Input
