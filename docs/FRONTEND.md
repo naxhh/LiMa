@@ -1,6 +1,7 @@
 # LIMA Frontend – Scope & Architecture
 
 Disclaimer: I'm not good and I don't enjoy doing frontend. So this part will probably AI assited for the 90% of it.
+In the future I'll rework this to get more quality code but for now I prefer to have something  ok rather than spend 2 months making something good.
 
 ## Goals
 

@@ -37,11 +37,40 @@ export async function apiJson<T>(method: "POST" | "PATCH" | "PUT", path: string,
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
   });
+
+  if (!res.ok) throw new ApiError(res.status, await parseBody(res));
+
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) return undefined as T;
+
+  const text = await res.text();
+  if (!text) return undefined as T;
+
+  return JSON.parse(text) as T;
+}
+
+
+export async function apiNoBody(method: "DELETE" | "POST", path: string): Promise<void> {
+  const res = await fetch(`/api${path}`, { method });
+  if (!res.ok) throw new ApiError(res.status, await parseBody(res));
+}
+
+export async function apiMultipart<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    body: form,
+  });
+
   if (!res.ok) throw new ApiError(res.status, await parseBody(res));
   return (await res.json()) as T;
 }
 
-export async function apiNoBody(method: "DELETE" | "POST", path: string): Promise<void> {
-  const res = await fetch(`/api${path}`, { method });
+export async function apiJsonNoResponse(method: "POST" | "PATCH" | "PUT", path: string, body: unknown): Promise<void> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
   if (!res.ok) throw new ApiError(res.status, await parseBody(res));
 }

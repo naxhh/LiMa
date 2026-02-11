@@ -2,10 +2,11 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiJson, ApiError } from "@/lib/api";
+import { apiJson, apiMultipart, apiJsonNoResponse, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { FileDropzone } from "@/components/file-dropzone";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,17 @@ type CreateProjectResponse = {
   folder_path: string;
 };
 
+type CreateBundleResponse = {
+  id: string;
+  files: string[];
+  failed_files: string[];
+};
+
+type ImportProjectRequest = {
+  bundle_id: string;
+  new_main_image?: string | null; // filename
+};
+
 function getApiErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     const body = e.body as any;
@@ -36,7 +48,6 @@ function getApiErrorMessage(e: unknown): string {
 }
 
 function parseTags(input: string): string[] {
-  // comma or newline separated, trimmed, unique, non-empty
   const raw = input
     .split(/[,|\n]/g)
     .map((s) => s.trim())
@@ -63,31 +74,87 @@ export function CreateProjectDialog() {
   const [description, setDescription] = React.useState("");
   const [tagsText, setTagsText] = React.useState("");
 
-  const createM = useMutation({
-    mutationFn: (payload: CreateProjectRequest) =>
-      apiJson<CreateProjectResponse>("POST", "/projects", payload),
-    onSuccess: async (res) => {
-      // refresh list
-      await qc.invalidateQueries({ queryKey: ["projects"] });
-      setOpen(false);
+  const [files, setFiles] = React.useState<File[]>([]);
+  const [mainImageName, setMainImageName] = React.useState<string>("");
 
-      // reset fields
-      setName("");
-      setDescription("");
-      setTagsText("");
+  const [bundleId, setBundleId] = React.useState<string | null>(null);
+  const [bundleError, setBundleError] = React.useState<string | null>(null);
 
-      // go to project
-      navigate(`/projects/${res.id}`);
+  // Create bundle immediately whenever files are added/changed
+  const createBundleM = useMutation({
+    mutationFn: async (currentFiles: File[]) => {
+      const form = new FormData();
+      for (const f of currentFiles) form.append("files[]", f, f.name);
+      return apiMultipart<CreateBundleResponse>("/bundles", form);
+    },
+    onSuccess: (bundle) => {
+      setBundleId(bundle.id);
+      setBundleError(null);
+    },
+    onError: (e) => {
+      setBundleId(null);
+      setBundleError(getApiErrorMessage(e));
     },
   });
 
-  const canSubmit = name.trim().length > 0;
+  // Fast project creation: create project then import using last bundleId
+  const createProjectM = useMutation({
+    mutationFn: async () => {
+      if (!bundleId) {
+        throw new Error("Missing bundleId (upload bundle first).");
+      }
+
+      const project = await apiJson<CreateProjectResponse>("POST", "/projects", {
+        name: name.trim(),
+        description: description.trim() ? description : "",
+        tags: (() => {
+          const t = parseTags(tagsText);
+          return t.length ? t : [];
+        })(),
+      } satisfies CreateProjectRequest);
+
+      const importPayload: ImportProjectRequest = { bundle_id: bundleId };
+      const chosenMain = mainImageName.trim();
+      if (chosenMain) importPayload.new_main_image = chosenMain;
+
+      await apiJsonNoResponse("POST", `/projects/${project.id}/import`, importPayload);
+
+      return { projectId: project.id };
+    },
+    onSuccess: async ({ projectId }) => {
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+      await qc.invalidateQueries({ queryKey: ["project", projectId] });
+
+      setOpen(false);
+
+      // reset form state (bundle can remain; but you asked "create project fast", so just reset)
+      setName("");
+      setDescription("");
+      setTagsText("");
+      setFiles([]);
+      setMainImageName("");
+      setBundleId(null);
+      setBundleError(null);
+      createBundleM.reset();
+
+      navigate(`/projects/${projectId}`);
+    },
+  });
+
+  const canSubmit = name.trim().length > 0 && !!bundleId && !createProjectM.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => {
-      setOpen(v);
-      if (!v) createM.reset();
-    }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) {
+          createProjectM.reset();
+          createBundleM.reset();
+          setBundleError(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button>Create project</Button>
       </DialogTrigger>
@@ -97,24 +164,15 @@ export function CreateProjectDialog() {
           <DialogTitle>Create project</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1">
             <div className="text-sm font-medium">Name</div>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Dice tray v2"
-              autoFocus
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
 
           <div className="space-y-1">
             <div className="text-sm font-medium">Description</div>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional"
-            />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
           <div className="space-y-1">
@@ -122,16 +180,72 @@ export function CreateProjectDialog() {
             <Textarea
               value={tagsText}
               onChange={(e) => setTagsText(e.target.value)}
-              placeholder="Comma or newline separated (e.g. tabletop, printing)"
+              placeholder="Comma or newline separated"
             />
-            <div className="text-xs text-muted-foreground">
-              Creates missing tags automatically.
-            </div>
           </div>
 
-          {createM.isError ? (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Files</div>
+
+            <FileDropzone
+              files={files}
+              onFiles={(next) => {
+                setFiles(next);
+
+                const firstImage = next.find((f) => f.type.startsWith("image/"));
+                setMainImageName(firstImage?.name ?? "");
+
+                // eager bundle creation
+                if (next.length === 0) {
+                  setBundleId(null);
+                  setBundleError(null);
+                  createBundleM.reset();
+                  return;
+                }
+                createBundleM.mutate(next);
+              }}
+            />
+
+            <div className="text-xs text-muted-foreground">
+              {createBundleM.isPending
+                ? "Uploading bundle…"
+                : bundleId
+                  ? `Bundle ready: ${bundleId}`
+                  : files.length > 0
+                    ? "Bundle not ready yet."
+                    : "Add files to create a bundle."}
+            </div>
+
+            {bundleError ? (
+              <div className="text-sm text-destructive">
+                Upload failed: {bundleError}
+              </div>
+            ) : null}
+
+            {files.length > 0 ? (
+              <div className="space-y-1">
+                <div className="text-sm font-medium">Main image (optional)</div>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={mainImageName}
+                  onChange={(e) => setMainImageName(e.target.value)}
+                >
+                  <option value="">(none)</option>
+                  {files
+                    .filter((f) => f.type.startsWith("image/"))
+                    .map((f) => (
+                      <option key={f.name} value={f.name}>
+                        {f.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ) : null}
+          </div>
+
+          {createProjectM.isError ? (
             <div className="text-sm text-destructive">
-              {getApiErrorMessage(createM.error)}
+              {getApiErrorMessage(createProjectM.error)}
             </div>
           ) : null}
         </div>
@@ -140,23 +254,16 @@ export function CreateProjectDialog() {
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
-            disabled={createM.isPending}
+            disabled={createProjectM.isPending || createBundleM.isPending}
           >
             Cancel
           </Button>
 
           <Button
-            disabled={!canSubmit || createM.isPending}
-            onClick={() => {
-              const tags = parseTags(tagsText);
-              createM.mutate({
-                name: name.trim(),
-                description: description.trim() ? description : "",
-                tags: tags.length ? tags : [],
-              });
-            }}
+            disabled={!canSubmit || createBundleM.isPending}
+            onClick={() => createProjectM.mutate()}
           >
-            {createM.isPending ? "Creating…" : "Create"}
+            {createProjectM.isPending ? "Creating…" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
