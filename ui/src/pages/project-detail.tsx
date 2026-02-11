@@ -2,7 +2,7 @@ import * as React from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiJson, apiNoBody, ApiError } from "@/lib/api";
+import { apiGet, apiJson, apiJsonNoResponse, apiNoBody, ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ImportAssetsDialog } from "@/components/import-assets-dialog";
+
 
 type ProjectAsset = {
   id: string;
@@ -95,7 +97,7 @@ export function ProjectDetailPage() {
 
   const importM = useMutation({
     mutationFn: (payload: ImportProjectRequest) =>
-      apiJson<void>("POST", `/projects/${projectId}/import`, payload),
+      apiJsonNoResponse<void>("POST", `/projects/${projectId}/import`, payload),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["project", projectId] });
       await qc.invalidateQueries({ queryKey: ["projects"] });
@@ -142,18 +144,19 @@ export function ProjectDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <ImportBundleDialog
-            isLoading={importM.isPending}
-            error={importM.error}
-            imageAssets={imageAssets}
-            onSubmit={(payload) => importM.mutate(payload)}
-          />
           <EditProjectDialog
             project={project}
             imageAssets={imageAssets}
             isLoading={patchM.isPending}
             error={patchM.error}
             onSave={(payload) => patchM.mutate(payload)}
+          />
+          <ImportAssetsDialog
+            projectId={projectId}
+            onImported={async () => {
+              await qc.invalidateQueries({ queryKey: ["project", projectId] });
+              await qc.invalidateQueries({ queryKey: ["projects"] });
+            }}
           />
         </div>
       </div>
@@ -296,90 +299,6 @@ function EditProjectDialog(props: {
             }}
           >
             Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ImportBundleDialog(props: {
-  isLoading: boolean;
-  error: unknown;
-  imageAssets: ProjectAsset[]; // only for suggestion list UI
-  onSubmit: (payload: ImportProjectRequest) => void;
-}) {
-  const { isLoading, error, imageAssets, onSubmit } = props;
-  const [open, setOpen] = React.useState(false);
-
-  const [bundleId, setBundleId] = React.useState("");
-  const [newMainImage, setNewMainImage] = React.useState<string>("");
-
-  React.useEffect(() => {
-    if (!open) {
-      setBundleId("");
-      setNewMainImage("");
-    }
-  }, [open]);
-
-  const canImport = bundleId.trim().length > 0;
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>Import bundle</Button>
-      </DialogTrigger>
-
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Import bundle</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">Bundle id</div>
-            <Input value={bundleId} onChange={(e) => setBundleId(e.target.value)} placeholder="uuid…" />
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-sm font-medium">Set main image (optional)</div>
-            <Input
-              value={newMainImage}
-              onChange={(e) => setNewMainImage(e.target.value)}
-              placeholder="filename in imported bundle (e.g. photo.jpg)"
-            />
-            <div className="text-xs text-muted-foreground">
-              This is the *file name* that will be searched among imported assets.
-            </div>
-          </div>
-
-          {imageAssets.length > 0 ? (
-            <div className="text-xs text-muted-foreground">
-              Existing images in project: {imageAssets.slice(0, 3).map((a) => a.file_path).join(", ")}
-              {imageAssets.length > 3 ? "…" : ""}
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="text-sm text-destructive">Import failed: {getApiErrorMessage(error)}</div>
-          ) : null}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!canImport || isLoading}
-            onClick={() => {
-              onSubmit({
-                bundle_id: bundleId.trim(),
-                new_main_image: newMainImage.trim() ? newMainImage.trim() : null,
-              });
-              setOpen(false);
-            }}
-          >
-            Import
           </Button>
         </DialogFooter>
       </DialogContent>
