@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
 };
 use tower::ServiceBuilder;
-use tower_http::{catch_panic::CatchPanicLayer, services::ServeDir};
+use tower_http::{catch_panic::CatchPanicLayer, services::{ServeDir, ServeFile}};
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use utoipa::OpenApi;
@@ -26,6 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = lima_db::Db::connect(&database_url).await?;
     db.migrate().await?;
 
+    let ui_dir = ServeDir::new("ui/dist").fallback(ServeFile::new("ui/dist/index.html"));
     let library_dir = ServeDir::new("data/library");
     let thumbs_dir = ServeDir::new("data/state/thumbnails");
 
@@ -60,7 +61,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .layer(CatchPanicLayer::new())
         )
         .nest_service("/media/library", get_service(library_dir).handle_error(|_| async { StatusCode::NOT_FOUND }))
-        .nest_service("/media/thumbs", get_service(thumbs_dir).handle_error(|_| async { StatusCode::NOT_FOUND }));
+        .nest_service("/media/thumbs", get_service(thumbs_dir).handle_error(|_| async { StatusCode::NOT_FOUND }))
+        .fallback_service(get_service(ui_dir).handle_error(|_| async { StatusCode::NOT_FOUND }));
 
 
     let addr: SocketAddr = format!("0.0.0.0:{}", server_port).parse()?;
