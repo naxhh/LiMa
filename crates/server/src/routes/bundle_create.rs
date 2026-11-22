@@ -1,13 +1,6 @@
 use axum::{Json, extract::{Multipart, State}, http::StatusCode};
-use mime_guess::MimeGuess;
-use serde::{Serialize};
-use time::OffsetDateTime;
-use uuid::Uuid;
-use std::{path::PathBuf};
-use tokio::{fs, io::AsyncWriteExt};
+use serde::Serialize;
 use utoipa::ToSchema;
-use std::io::{Error, ErrorKind};
-use lima_domain::models::bundle::{BundleMeta, FileMeta};
 
 use crate::state::AppState;
 use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
@@ -36,211 +29,43 @@ pub async fn create_bundle(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<CreateBundleResponse>), ApiErrorResponse> {
-    // TODO: move logic to db module
-    let bundle_id = Uuid::new_v4().to_string();
-    let bundle_folder = state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
-    let mut failed_files: Vec<String> = Vec::new();
-    let mut files_metadata: Vec<FileMeta> = Vec::new();
+    let mut bundle = crate::bundles::NewBundle::create(&state.paths).await.map_err(|e| {
+        ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "dir_creation_failed", "Failed to create bundle directory").with_cause(&e.to_string())
+    })?;
+    // Optional `mtime` field (ms since the epoch) right before a file: its original date.
     let mut next_mtime: Option<u64> = None;
 
-    fs::create_dir_all(&bundle_folder).await.map_err(|e| {
-        tracing::error!("Failed to create bundle directory: {}", e);
-        ApiErrorResponse::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "dir_creation_failed",
-            "Failed to create bundle directory"
-        ).with_cause(&e.to_string())
-    })?;
-
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        tracing::error!("bundle multipart next_field error: {e}");
-        ApiErrorResponse::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_multipart",
-            "Invalid multipart data"
-        ).with_cause(&e.to_string())
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
+        ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_multipart", "Invalid multipart data").with_cause(&e.to_string())
     })? {
         let field_name = field.name().unwrap_or("").to_string();
-        // Optional `mtime` field (ms since the epoch) right before a file: its original date.
         if field_name == "mtime" {
             next_mtime = field.text().await.ok().and_then(|t| t.trim().parse::<u64>().ok());
             continue;
         }
-        let original_mtime = next_mtime.take();
+        let mtime = next_mtime.take();
         if field_name != "files" && field_name != "files[]" {
-            tracing::debug!("Skipping unexpected field: {}", field_name);
             continue;
         }
-
         let raw_name = field.file_name().unwrap_or("").to_string();
-        let file_name = match field.file_name()
-            .and_then(sanitize_filename) {
-                Some(name ) => name,
-                None => {
-                    tracing::error!("Invalid filename in uploaded bundle: {}", raw_name);
-                    failed_files.push(raw_name);
-                    continue;
-                }
-            };
-
-        
-        let file_destination = bundle_folder.join(&file_name);
-        let mut file = match fs::File::create(&file_destination).await {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::error!("Failed to create file {}: {}", file_destination.display(), e);
-                failed_files.push(file_name);
-                continue;
-            }
-        };
-
-        let mut size: i64 = 0;
-        let mut field = field;
-
-        loop {
+        let Some(mut writer) = bundle.start_file(&raw_name).await else { continue };
+        let result = loop {
             match field.chunk().await {
                 Ok(Some(chunk)) => {
-                    size += chunk.len() as i64;
-                    if let Err(e) = file.write_all(&chunk).await {
-                        tracing::error!("Failed to write to file {}: {}", file_destination.display(), e);
-                        failed_files.push(file_name);
-                        let _ = fs::remove_file(&file_destination).await;
-                        break;
+                    if let Err(e) = writer.write(&chunk).await {
+                        break Err(e.to_string());
                     }
                 }
-                Ok(None) => {
-                    tracing::debug!("Uploaded file: {}, dst: {}, size: {}", file_name, file_destination.display(), size);
-                    if let Some(ms) = original_mtime {
-                        keep_original_date(&mut file, ms, &file_name).await;
-                    }
-                    files_metadata.push(FileMeta {
-                        name: file_name.clone(),
-                        size,
-                        mtime: extract_mtime(&file).await.ok(),
-                        mime: guess_mime(&file_name),
-                        kind: extract_kind(&file_name).to_string(),
-                        checksum: compute_checksum(file_destination.clone()).await.ok(),
-                    });
-                    break;
-                },
-                Err(e) => {
-                    tracing::error!("error reading chunk for file {}: {}", file_name, e);
-                    failed_files.push(file_name);
-                    let _ = fs::remove_file(&file_destination).await;
-                    break;
-                }
+                Ok(None) => break Ok(()),
+                Err(e) => break Err(e.to_string()),
             }
-        }
+        };
+        bundle.end_file(writer, result, mtime).await;
     }
 
-    if files_metadata.is_empty() {
-        let _ = fs::remove_dir_all(&bundle_folder).await;
-
-        return Err(ApiErrorResponse::new(
-            StatusCode::BAD_REQUEST,
-            "no_valid_files",
-            "No valid files were uploaded in the bundle"
-        ));
+    match bundle.finish().await {
+        Ok(Some((id, files, failed_files))) => Ok((StatusCode::CREATED, Json(CreateBundleResponse { id, files, failed_files }))),
+        Ok(None) => Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "no_valid_files", "No valid files were uploaded in the bundle")),
+        Err(e) => Err(ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "meta_creation_failed", "Failed creating the bundle meta file").with_cause(&e.to_string())),
     }
-
-    write_bundle_meta(
-        &bundle_folder,
-        files_metadata.clone(),
-    ).await.map_err(|e| {
-        tracing::error!("Failed creating the meta file for {} bundle", bundle_id);
-        ApiErrorResponse::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "meta_creation_failed",
-            "Failed creating the bundle meta file"
-        ).with_cause(&e.to_string())
-    })?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(CreateBundleResponse {
-            id: bundle_id,
-            files: files_metadata.iter().map(|f| f.name.clone()).collect(),
-            failed_files: failed_files,
-        }),
-    ))
-}
-
-fn sanitize_filename(name: &str) -> Option<String> {
-    if name.is_empty() {
-        tracing::error!("empty file name");
-        return None;
-    }
-
-    if name.contains("..") || name.contains('/') || name.contains('\\') || name.contains('\0') {
-        tracing::error!("file name contains invalid characters: {}", name);
-        return None;
-    }
-
-    Some(name.to_string())
-}
-
-pub async fn write_bundle_meta(
-    bundle_dir: &PathBuf,
-    files_meta: Vec<FileMeta>,
-) -> Result<(), Error> {
-    let bundle_meta = BundleMeta {
-        uploaded_at: OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_else(|_| "unknown".to_string()),
-        files: files_meta,
-    };
-
-
-    let meta_path = bundle_dir.join("meta.json");
-    let json = serde_json::to_vec_pretty(&bundle_meta)
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-
-    let mut file = fs::File::create(&meta_path).await?;
-    file.write_all(&json).await?;
-    file.flush().await?;
-    drop(file);
-
-    Ok(())
-}
-
-fn extract_kind(filename: &str) -> &'static str {
-    lima_domain::models::asset::asset_kind(filename)
-}
-
-pub(crate) fn guess_mime(path: &str) -> String {
-    MimeGuess::from_path(path)
-    .first_or_octet_stream()
-    .to_string()
-}
-
-/// Sets an uploaded file's modification date to the one the browser reported.
-async fn keep_original_date(file: &mut fs::File, ms: u64, name: &str) {
-    let time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms);
-    // Pending writes would bump the date again.
-    let result = match file.flush().await {
-        Ok(()) => match file.try_clone().await {
-            Ok(f) => f.into_std().await.set_modified(time),
-            Err(e) => Err(e),
-        },
-        Err(e) => Err(e),
-    };
-    if let Err(e) = result {
-        tracing::debug!("Could not keep the original date of {name}: {e}");
-    }
-}
-
-pub(crate) async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
-    let metadata = file.metadata().await?;
-
-    OffsetDateTime::from(metadata.modified()?)
-        .format(&time::format_description::well_known::Rfc3339)
-        .map_err(|e| {
-            Error::new(ErrorKind::Other, format!("Failed to format mtime: {}", e))
-        })
-}
-
-pub(crate) async fn compute_checksum(path: PathBuf) -> Result<String, Error> {
-    tokio::task::spawn_blocking(move || lima_indexer::hash::hash_file(&path))
-        .await
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?
 }

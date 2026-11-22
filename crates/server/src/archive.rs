@@ -1,9 +1,9 @@
 //! Extracting uploaded zips into their bundle before it's imported into a project.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use lima_domain::models::bundle::{BundleMeta, FileMeta};
+use lima_domain::models::bundle::BundleMeta;
 use lima_indexer::archive::{self, ArchiveError, Limits};
 
 #[derive(Debug, Default, serde::Serialize, utoipa::ToSchema)]
@@ -21,19 +21,6 @@ pub enum ExtractError {
     /// The named zip is broken, too big or otherwise unreadable.
     Archive { name: String, error: ArchiveError },
     Io(String),
-}
-
-async fn file_meta(path: PathBuf, name: &str) -> std::io::Result<FileMeta> {
-    let file = tokio::fs::File::open(&path).await?;
-    let size = file.metadata().await?.len() as i64;
-    Ok(FileMeta {
-        name: name.to_string(),
-        size,
-        mtime: crate::routes::bundle_create::extract_mtime(&file).await.ok(),
-        mime: crate::routes::bundle_create::guess_mime(name),
-        kind: lima_domain::models::asset::asset_kind(name).to_string(),
-        checksum: crate::routes::bundle_create::compute_checksum(path).await.ok(),
-    })
 }
 
 /// Replaces each zip in the bundle with its contents, keeping the archive's folders. Names
@@ -80,7 +67,7 @@ pub async fn extract_bundle_zips(bundle_dir: &Path, existing: &[String], keep_zi
         written.extend(extracted.files.iter().cloned());
 
         for rel in &extracted.files {
-            let m = file_meta(bundle_dir.join(rel), rel).await.map_err(|e| ExtractError::Io(e.to_string()))?;
+            let m = crate::bundles::file_meta(bundle_dir.join(rel), rel).await.map_err(|e| ExtractError::Io(e.to_string()))?;
             budget.max_bytes = budget.max_bytes.saturating_sub(m.size.max(0) as u64);
             meta.files.push(m);
         }

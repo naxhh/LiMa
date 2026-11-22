@@ -66,34 +66,24 @@ pub async fn delete_asset(
 ) -> Result<(), DeleteAssetError> {
     let mut tx = pool.begin().await.map_err(DeleteAssetError::Db)?;
 
-    // todo: we may want to store the full project/file path to avoid needing to do this.
-    let project_path = match sqlx::query_scalar::<_, String>(
-        r#"SELECT folder_path FROM projects WHERE id = ?1"#,
-    )
-    .bind(project_id)
-    .fetch_one(&mut *tx)
-    .await {
-        Ok(path) => path,
-        // todo: we keep a generic error since we want to remove this with above todo
-        Err(sqlx::Error::RowNotFound) => {
-            return Err(DeleteAssetError::NotFound { project_id: project_id.to_string() });
-        }
-        Err(e) => return Err(DeleteAssetError::Db(e))
-    };
-
-    let file_path: String = match sqlx::query_scalar::<_, String>(
-        r#"SELECT file_path FROM assets WHERE id = ?1 AND project_id = ?2"#,
+    // The asset must belong to the project; one lookup gives both paths.
+    let (project_path, file_path) = sqlx::query_as::<_, (String, String)>(
+        "SELECT p.folder_path, a.file_path FROM assets a JOIN projects p ON p.id = a.project_id WHERE a.id = ?1 AND a.project_id = ?2",
     )
     .bind(asset_id)
     .bind(project_id)
-    .fetch_one(&mut *tx)
-    .await {
-        Ok(path) => path,
-        Err(sqlx::Error::RowNotFound) => {
-            return Err(DeleteAssetError::NotFound { project_id: project_id.to_string() });
-        }
-        Err(e) => return Err(DeleteAssetError::Db(e))
-    };
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(DeleteAssetError::Db)?
+    .ok_or_else(|| DeleteAssetError::NotFound { project_id: project_id.to_string() })?;
+
+    // A deleted cover no longer points anywhere.
+    sqlx::query("UPDATE projects SET main_image_id = NULL WHERE id = ?1 AND main_image_id = ?2")
+        .bind(project_id)
+        .bind(asset_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(DeleteAssetError::Db)?;
 
     let result = sqlx::query(
         r#"DELETE FROM assets WHERE id = ?1 AND project_id = ?2"#,
