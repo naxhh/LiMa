@@ -1,10 +1,10 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, ChevronLeft, ChevronRight, Download, Image as ImageIcon, MoreHorizontal, Pencil, Star, Trash2, File as FileIcon } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
-import { apiGet, apiJson, apiNoBody } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import { formatBytes, timeAgo } from "@/lib/format";
 import { libraryUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
 import { apiErrorMessage } from "@/lib/tags";
@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
+import { useDeleteAsset, useDeleteProject, usePatchProject } from "@/lib/project-mutations";
 import { FavouriteButton } from "@/components/favourite-button";
 import { ProjectTagsEditor } from "@/components/project-tags-editor";
 import { ProjectCollectionsEditor } from "@/components/project-collections-editor";
@@ -73,26 +74,10 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
     ]);
   };
 
-  const patchM = useMutation({
-    mutationFn: (payload: PatchProjectRequest) => apiJson<void>("PATCH", `/projects/${projectId}`, payload),
-    onSuccess: refresh,
-  });
-  const deleteAssetM = useMutation({
-    mutationFn: (assetId: string) => apiNoBody("DELETE", `/projects/${projectId}/assets/${assetId}`),
-    onSuccess: refresh,
-  });
-  const deleteProjectM = useMutation({
-    mutationFn: () => apiNoBody("DELETE", `/projects/${projectId}`),
-    onSuccess: async () => {
-      qc.removeQueries({ queryKey: ["project", projectId] });
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["projects"] }),
-        qc.invalidateQueries({ queryKey: ["collections"] }),
-        qc.invalidateQueries({ queryKey: ["collection"] }),
-      ]);
-      navigate("/");
-    },
-  });
+  // All three update the page immediately and roll back with a toast if the server refuses.
+  const patchM = usePatchProject(projectId);
+  const deleteAssetM = useDeleteAsset(projectId);
+  const deleteProjectM = useDeleteProject(projectId, project?.name ?? "project");
 
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -127,7 +112,6 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
     images[0] ??
     null;
 
-  const mutationError = patchM.error ?? deleteAssetM.error ?? deleteProjectM.error;
 
   return (
     <PageBody className="flex flex-col gap-5 pt-5 pb-16">
@@ -227,9 +211,6 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
             <Spec label="Last scan" value={timeAgo(project.last_scanned_at)} />
           </dl>
 
-          {mutationError ? (
-            <div className="text-sm text-destructive">Something failed: {apiErrorMessage(mutationError)}</div>
-          ) : null}
         </aside>
       </div>
 
@@ -237,7 +218,6 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         project={project}
         onSetCover={(id) => patchM.mutate({ main_image_id: id })}
         onDelete={(id) => deleteAssetM.mutate(id)}
-        deleting={deleteAssetM.isPending ? deleteAssetM.variables : undefined}
       />
 
       <EditProjectDialog
@@ -245,8 +225,10 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         onOpenChange={setEditing}
         project={project}
         images={images}
-        saving={patchM.isPending}
-        onSave={(payload) => patchM.mutate(payload, { onSuccess: () => setEditing(false) })}
+        onSave={(payload) => {
+          patchM.mutate(payload);
+          setEditing(false);
+        }}
       />
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
@@ -258,14 +240,17 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
               {project.assets.length} file{project.assets.length === 1 ? "" : "s"} from the library. It can’t be undone.
             </DialogDescription>
           </DialogHeader>
-          {deleteProjectM.isError ? (
-            <div className="text-sm text-destructive">{apiErrorMessage(deleteProjectM.error)}</div>
-          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDelete(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" disabled={deleteProjectM.isPending} onClick={() => deleteProjectM.mutate()}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                deleteProjectM.mutate();
+                navigate("/");
+              }}
+            >
               Delete project
             </Button>
           </DialogFooter>
@@ -388,12 +373,10 @@ function FilesTable({
   project,
   onSetCover,
   onDelete,
-  deleting,
 }: {
   project: ProjectDetail;
   onSetCover: (assetId: string) => void;
   onDelete: (assetId: string) => void;
-  deleting?: string;
 }) {
   const [confirm, setConfirm] = React.useState<ProjectAsset | null>(null);
 
@@ -438,7 +421,7 @@ function FilesTable({
                 const url = libraryUrl(project.folder_path, a.file_path);
                 const Icon = a.kind === "model" ? Box : a.kind === "image" ? ImageIcon : FileIcon;
                 return (
-                  <tr key={a.id} className={cn("hover:bg-secondary/60", deleting === a.id && "opacity-50")}>
+                  <tr key={a.id} className="hover:bg-secondary/60">
                     <td className="border-b px-4 py-2.5">
                       <a href={url} download={fileName(a.file_path)} className="flex min-w-0 items-center gap-2.5 text-sm hover:text-signal">
                         <span
@@ -529,14 +512,12 @@ function EditProjectDialog({
   onOpenChange,
   project,
   images,
-  saving,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: ProjectDetail;
   images: ProjectAsset[];
-  saving: boolean;
   onSave: (payload: PatchProjectRequest) => void;
 }) {
   const [name, setName] = React.useState(project.name);
@@ -552,7 +533,7 @@ function EditProjectDialog({
     setCover(project.main_image_id ?? "");
   }, [open, project]);
 
-  const canSave = name.trim().length > 0 && !saving;
+  const canSave = name.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

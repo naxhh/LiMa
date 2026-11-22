@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import { AppHeader, MobileNav } from "@/components/layout";
+import { Toaster } from "@/components/toaster";
 import { ProjectsPage } from "@/pages/projects";
 import { ProjectDetailPage } from "@/pages/project-detail";
 import { AdminSyncPage } from "@/pages/admin-sync";
@@ -25,6 +26,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <MobileNav />
+      <Toaster />
     </div>
   );
 }

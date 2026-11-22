@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Plus } from "lucide-react";
 
-import { apiErrorMessage } from "@/lib/tags";
 import { TagBadge } from "@/components/tag-badge";
 import { TagPickerDialog } from "@/components/tag-picker-dialog";
 import { useSaveProjectTags, type ProjectTag } from "@/lib/project-mutations";
@@ -22,16 +21,12 @@ export function ProjectTagsEditor({ projectId, tags }: { projectId: string; tags
         <button
           type="button"
           onClick={() => setOpen(true)}
-          disabled={saveM.isPending}
           className="flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-line-strong px-2.5 text-xs text-muted-foreground transition-colors hover:border-signal hover:text-foreground disabled:opacity-50"
         >
           <Plus className="size-3" strokeWidth={2.5} />
           Add tag
         </button>
       </div>
-      {saveM.isError ? (
-        <div className="text-xs text-destructive">Could not update tags: {apiErrorMessage(saveM.error)}</div>
-      ) : null}
       {open ? <TagPickerDialog projectId={projectId} tags={tags} open={open} onOpenChange={setOpen} /> : null}
     </div>
   );

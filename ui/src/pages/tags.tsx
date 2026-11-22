@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Search, Tag as TagIcon, Trash2 } from "lucide-react";
 
 import { apiJson, apiNoBody } from "@/lib/api";
+import { PROJECT_CACHE_KEYS, optimisticHandlers, patchProjects } from "@/lib/optimistic";
 import { TAGS_QUERY_KEY, apiErrorMessage, tagTextColor, useAllTags, type Tag } from "@/lib/tags";
 import { useLibraryStats } from "@/lib/sync";
 import { PageBody, PageHero } from "@/components/layout";
@@ -132,6 +133,30 @@ export function TagsPage() {
   );
 }
 
+type TagChange = { name?: string; color?: string };
+
+/** Renames / recolors a tag everywhere it's shown, right away. */
+function useEditTag() {
+  const qc = useQueryClient();
+  // The tag travels with the call: the dialog forgets it as soon as it closes.
+  type Vars = { tag: Tag; body: TagChange };
+  return useMutation({
+    mutationFn: ({ tag, body }: Vars) => apiJson("PATCH", `/tags/${tag.id}`, body),
+    ...optimisticHandlers<Vars>(qc, {
+      mutationKey: ["tag-edit"],
+      keys: [...PROJECT_CACHE_KEYS, TAGS_QUERY_KEY],
+      apply: ({ tag, body }) => {
+        const change = <T extends { id: string; name: string; color: string }>(x: T): T =>
+          x.id === tag.id ? { ...x, ...(body.name ? { name: body.name } : {}), ...(body.color ? { color: body.color } : {}) } : x;
+        qc.setQueryData<Tag[]>(TAGS_QUERY_KEY, (list) => list?.map(change));
+        patchProjects(qc, (p) => (p.tags.some((x) => x.id === tag.id) ? { ...p, tags: p.tags.map(change) } : p));
+      },
+      errorTitle: ({ tag }) => `Couldn't update “${tag.name}”`,
+      invalidate: [...PROJECT_CACHE_KEYS, TAGS_QUERY_KEY],
+    }),
+  });
+}
+
 /** Create (no `tag`) or edit dialog. */
 function TagFormDialog({
   tag,
@@ -152,32 +177,32 @@ function TagFormDialog({
     setColor(tag?.color ?? null);
   }, [open, tag]);
 
-  const saveM = useMutation({
-    mutationFn: () => {
-      const body: { name?: string; color?: string } = {};
-      const clean = name.trim();
-      if (!tag || clean !== tag.name) body.name = clean;
-      if (color && color !== tag?.color) body.color = color;
-      if (tag && Object.keys(body).length === 0) return Promise.resolve();
-      return tag ? apiJson("PATCH", `/tags/${tag.id}`, body) : apiJson("POST", "/tags", body);
-    },
+  // Creating waits for the server (name clashes show inline); editing applies right away.
+  const createM = useMutation({
+    mutationFn: (body: TagChange) => apiJson("POST", "/tags", body),
     onSuccess: async () => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: TAGS_QUERY_KEY }),
-        // Projects show tag names and colors.
-        qc.invalidateQueries({ queryKey: ["project"] }),
-        qc.invalidateQueries({ queryKey: ["projects"] }),
-      ]);
+      await qc.invalidateQueries({ queryKey: TAGS_QUERY_KEY });
       onOpenChange(false);
     },
   });
+  const editM = useEditTag();
+
+  const submit = () => {
+    const body: TagChange = {};
+    const clean = name.trim();
+    if (!tag || clean !== tag.name) body.name = clean;
+    if (color && color !== tag?.color) body.color = color;
+    if (!tag) return createM.mutate(body);
+    if (Object.keys(body).length > 0) editM.mutate({ tag, body });
+    onOpenChange(false);
+  };
 
   React.useEffect(() => {
-    if (open) saveM.reset();
+    if (open) createM.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const canSave = name.trim().length > 0 && !saveM.isPending;
+  const canSave = name.trim().length > 0 && !createM.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,7 +211,7 @@ function TagFormDialog({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (canSave) saveM.mutate();
+            if (canSave) submit();
           }}
         >
           <DialogHeader>
@@ -215,7 +240,7 @@ function TagFormDialog({
             <TagBadge name={name.trim() || "tag"} color={color ?? tag?.color ?? "#64748B"} />
           </div>
 
-          {saveM.isError ? <div className="text-sm text-destructive">{apiErrorMessage(saveM.error)}</div> : null}
+          {createM.isError ? <div className="text-sm text-destructive">{apiErrorMessage(createM.error)}</div> : null}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -234,21 +259,18 @@ function TagFormDialog({
 function DeleteTagDialog({ tag, onOpenChange }: { tag: Tag | null; onOpenChange: (open: boolean) => void }) {
   const qc = useQueryClient();
   const deleteM = useMutation({
-    mutationFn: (id: string) => apiNoBody("DELETE", `/tags/${id}`),
-    onSuccess: async () => {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: TAGS_QUERY_KEY }),
-        qc.invalidateQueries({ queryKey: ["project"] }),
-        qc.invalidateQueries({ queryKey: ["projects"] }),
-      ]);
-      onOpenChange(false);
-    },
+    mutationFn: (t: Tag) => apiNoBody("DELETE", `/tags/${t.id}`),
+    ...optimisticHandlers<Tag>(qc, {
+      mutationKey: ["tag-edit"],
+      keys: [...PROJECT_CACHE_KEYS, TAGS_QUERY_KEY],
+      apply: (t) => {
+        qc.setQueryData<Tag[]>(TAGS_QUERY_KEY, (list) => list?.filter((x) => x.id !== t.id));
+        patchProjects(qc, (p) => (p.tags.some((x) => x.id === t.id) ? { ...p, tags: p.tags.filter((x) => x.id !== t.id) } : p));
+      },
+      errorTitle: (t) => `Couldn't delete “${t.name}”`,
+      invalidate: [...PROJECT_CACHE_KEYS, TAGS_QUERY_KEY],
+    }),
   });
-
-  React.useEffect(() => {
-    if (tag) deleteM.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tag]);
 
   return (
     <Dialog open={tag !== null} onOpenChange={onOpenChange}>
@@ -261,12 +283,16 @@ function DeleteTagDialog({ tag, onOpenChange }: { tag: Tag | null; onOpenChange:
               : "No projects use this tag."}
           </DialogDescription>
         </DialogHeader>
-        {deleteM.isError ? <div className="text-sm text-destructive">{apiErrorMessage(deleteM.error)}</div> : null}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" disabled={!tag || deleteM.isPending} onClick={() => tag && deleteM.mutate(tag.id)}>
+          <Button variant="destructive" disabled={!tag}
+            onClick={() => {
+              if (!tag) return;
+              deleteM.mutate(tag);
+              onOpenChange(false);
+            }}>
             Delete
           </Button>
         </DialogFooter>
