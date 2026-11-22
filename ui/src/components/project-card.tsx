@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Download, Layers, Tag as TagIcon, X } from "lucide-react";
+import { Check, Download, Layers, Tag as TagIcon, X } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { formatBytes, timeAgo } from "@/lib/format";
@@ -26,16 +26,19 @@ const overlayButton =
 /**
  * Project tile. Quick actions sit on the image: favourite star (top left), and
  * download all / tags / collections (bottom right). Pass `onRemove` to add a
- * remove button, e.g. "remove from this collection".
+ * remove button, e.g. "remove from this collection". With `selection` the card is
+ * in select mode: clicking toggles it (shift-click for a range) instead of opening it.
  */
 export function ProjectCard({
   project: p,
   onRemove,
   removeLabel = "Remove",
+  selection,
 }: {
   project: ProjectListItem;
   onRemove?: () => void;
   removeLabel?: string;
+  selection?: { selected: boolean; onToggle: (range: boolean) => void };
 }) {
   const [picker, setPicker] = React.useState<"tags" | "collections" | null>(null);
   const extraTags = p.tags.length - MAX_TAGS;
@@ -46,7 +49,17 @@ export function ProjectCard({
     <div className="group relative transition-transform hover:-translate-y-0.5">
       <Link
         to={`/projects/${p.id}`}
-        className="flex h-full flex-col overflow-hidden rounded-[14px] border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        onClick={(e) => {
+          if (!selection) return;
+          e.preventDefault();
+          selection.onToggle(e.shiftKey);
+        }}
+        aria-pressed={selection ? selection.selected : undefined}
+        className={cn(
+          "flex h-full flex-col overflow-hidden rounded-[14px] border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          selection?.selected && "border-signal ring-2 ring-signal group-hover:border-signal",
+          selection && "select-none",
+        )}
       >
         <div className="corners relative aspect-[4/3] overflow-hidden border-b bg-thumb">
           {cover ? (
@@ -101,8 +114,20 @@ export function ProjectCard({
         </div>
       </Link>
 
-      {/* Quick actions, positioned over the image (same 4:3 box as the thumbnail). */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 aspect-[4/3]">
+      {selection ? (
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute top-2.5 left-2.5 z-10 grid size-7 place-items-center rounded-lg border-2 shadow",
+            selection.selected ? "border-signal bg-signal text-primary-foreground" : "border-white/70 bg-black/40",
+          )}
+        >
+          {selection.selected ? <Check className="size-4" strokeWidth={3} /> : null}
+        </span>
+      ) : null}
+
+      {/* Quick actions, positioned over the image (same 4:3 box as the thumbnail). Hidden while selecting. */}
+      <div className={cn("pointer-events-none absolute inset-x-0 top-0 z-10 aspect-[4/3]", selection && "hidden")}>
         <div className={cn("pointer-events-auto absolute top-2.5 left-2.5 transition-opacity", !p.is_favourite && REVEAL)}>
           <FavouriteButton projectId={p.id} isFavourite={p.is_favourite} variant="overlay" />
         </div>

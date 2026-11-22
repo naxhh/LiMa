@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
+import { ListChecks, MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
 
 import { apiNoBody } from "@/lib/api";
 import { COLLECTIONS_QUERY_KEY, invalidateCollections, useCollection, type Collection, type CollectionDetail } from "@/lib/collections";
@@ -26,6 +26,8 @@ import {
 import { PageBody } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
 import { SortSelect } from "@/components/sort-select";
+import { BulkBar } from "@/components/bulk-bar";
+import { useSelection } from "@/lib/selection";
 import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
 
@@ -42,6 +44,7 @@ function CollectionDetailInner({ id }: { id: string }) {
   const view = useViewPrefs("lima.collection.view", COLLECTION_SORTS, searchParams);
   const collectionQ = useCollection(id, view.sort.id === COLLECTION_SORTS[0].id ? undefined : view.sort);
   const c = collectionQ.data;
+  const selection = useSelection(c?.projects.map((p) => p.id) ?? []);
   const setParams = (changes: Record<string, string | null>) =>
     setSearchParams(
       (prev) => {
@@ -199,6 +202,10 @@ function CollectionDetailInner({ id }: { id: string }) {
               {c.projects.length} project{c.projects.length === 1 ? "" : "s"}
             </span>
             <SortSelect options={COLLECTION_SORTS} sort={view.sort} onSort={(sortId) => setParams(view.chooseSort(sortId))} />
+            <Button variant={selection.active ? "default" : "outline"} size="sm" className="h-8" onClick={selection.active ? selection.exit : selection.start}>
+              <ListChecks />
+              {selection.active ? "Done" : "Select"}
+            </Button>
           </div>
         ) : null}
 
@@ -211,10 +218,12 @@ function CollectionDetailInner({ id }: { id: string }) {
                   project={p}
                   onRemove={() => removeM.mutate(p.id)}
                   removeLabel={c.is_favourites ? "Remove from favourites" : "Remove from this collection"}
+                  selection={selection.active ? { selected: selection.isSelected(p.id), onToggle: (range) => selection.toggle(p.id, range) } : undefined}
                 />
               ))}
         </div>
       </PageBody>
+      <BulkBar selection={selection} total={c?.projects.length ?? 0} />
 
       {c ? <CollectionFormDialog collection={c} open={editing} onOpenChange={setEditing} /> : null}
 

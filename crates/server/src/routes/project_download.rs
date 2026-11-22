@@ -1,9 +1,11 @@
 //! `GET /api/projects/{id}/download`: every indexed file of a project as one zip, streamed.
+//! `POST /api/projects/download`: several projects in one zip, one folder each.
 
 use std::io::{self, Write};
 use std::path::{Component, Path as FsPath, PathBuf};
 
 use axum::{
+    Form,
     body::Body,
     extract::{Path, State},
     http::{HeaderValue, StatusCode, header},
@@ -62,23 +64,74 @@ pub async fn project_download(
         })
         .collect();
 
+    Ok(stream_zip(entries, archive_name(&project.folder_path), project.folder_path.clone()))
+}
+
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+pub struct DownloadManyForm {
+    /// Comma-separated project ids.
+    pub ids: String,
+}
+
+/// Most projects in one multi-project zip.
+const MAX_ZIP_PROJECTS: usize = 500;
+
+#[utoipa::path(
+    post,
+    path = "/api/projects/download",
+    tag = "Projects",
+    request_body(content = DownloadManyForm, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Zip with one folder per project", content_type = "application/zip"),
+        (status = 400, description = "No ids, or too many", body = ApiErrorBody),
+        (status = 503, description = "Database failure", body = ApiErrorBody),
+    )
+)]
+pub async fn download_many(State(state): State<AppState>, Form(form): Form<DownloadManyForm>) -> Result<Response, ApiErrorResponse> {
+    let ids: Vec<&str> = form.ids.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if ids.is_empty() || ids.len() > MAX_ZIP_PROJECTS {
+        return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_ids", "Send between 1 and 500 project ids"));
+    }
+    let pool = state.db.pool();
+    let db_error = |e: sqlx::Error| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Database failure").with_cause(&e.to_string());
+    let mut entries = Vec::new();
+    for id in &ids {
+        // Missing projects are skipped.
+        let project = match lima_db::queries::projects_detail::get_project(pool, id).await {
+            Ok(p) => p,
+            Err(GetProjectError::NotFound) => continue,
+            Err(GetProjectError::Db(e)) => return Err(db_error(e)),
+        };
+        let Some(folder) = safe_relative(&project.folder_path) else { continue };
+        let root = state.paths.project_dir(&project.folder_path);
+        for a in lima_db::queries::projects_detail::get_project_assets(pool, id).await.map_err(db_error)? {
+            if let Some(rel) = safe_relative(&a.file_path) {
+                let name = folder.join(&rel).to_string_lossy().replace('\\', "/");
+                entries.push((name, root.join(&rel), a.size_bytes.max(0) as u64));
+            }
+        }
+    }
+    let name = format!("lima-{}-projects.zip", ids.len());
+    Ok(stream_zip(entries, name, format!("{} projects", ids.len())))
+}
+
+/// Streams a zip of `entries` (archive path, file on disk, size) as the response body.
+fn stream_zip(entries: Vec<(String, PathBuf, u64)>, name: String, what: String) -> Response {
     let (reader, writer) = tokio::io::duplex(PIPE_BUFFER);
-    let folder = project.folder_path.clone();
     tokio::task::spawn_blocking(move || {
         let sink = SyncIoBridge::new(writer);
         if let Err(e) = write_zip(sink, &entries) {
             // The client sees a truncated download; nothing else we can do mid-stream.
-            tracing::warn!("Zip download of {folder} failed: {e}");
+            tracing::warn!("Zip download of {what} failed: {e}");
         }
     });
 
-    let name = archive_name(&project.folder_path);
     let mut res = Response::new(Body::from_stream(ReaderStream::new(reader)));
     let headers = res.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     headers.insert(header::CONTENT_DISPOSITION, content_disposition(&name));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    Ok(res)
+    res
 }
 
 fn write_zip<W: Write>(sink: W, entries: &[(String, PathBuf, u64)]) -> io::Result<()> {

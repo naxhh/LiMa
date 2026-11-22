@@ -67,6 +67,8 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 | DELETE | `/projects/{project_id}` | Delete a project: it goes to the trash (`{trash_id}` in the response) unless the trash is off. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
 | GET | `/projects/{project_id}` | Get single project details |
 | GET | `/projects/{project_id}/download` | All of the project's files as a streamed zip |
+| POST | `/projects/download` | Several projects in one zip, one folder each (form field `ids`, comma-separated, up to 500) |
+| POST | `/projects/bulk` | One action on many projects: `{project_ids, action}` with `action` = `add_tags`/`remove_tags` (+`tags`), `add_to_collection`/`remove_from_collection` (+`collection_id`), `favourite`, `unfavourite`, `delete` (to the trash), `remove_keep_files`. Returns `{affected, trash_ids, failed}` |
 | PUT | `/projects/{project_id}/favourite` | Add the project to Favourites |
 | DELETE | `/projects/{project_id}/favourite` | Remove the project from Favourites |
 | PATCH | `/projects/{project_id}` | Update project metadata (name, description, main image) |

@@ -388,6 +388,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["download_many"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -746,6 +778,49 @@ export interface components {
             /** @description Access token copied from the `token` cookie of a logged-in makerworld.com session. */
             token: string;
         };
+        BulkAction: {
+            /** @enum {string} */
+            action: "add_tags";
+            tags: string[];
+        } | {
+            /** @enum {string} */
+            action: "remove_tags";
+            tags: string[];
+        } | {
+            /** @enum {string} */
+            action: "add_to_collection";
+            collection_id: string;
+        } | {
+            /** @enum {string} */
+            action: "remove_from_collection";
+            collection_id: string;
+        } | {
+            /** @enum {string} */
+            action: "favourite";
+        } | {
+            /** @enum {string} */
+            action: "unfavourite";
+        } | {
+            /** @enum {string} */
+            action: "delete";
+        } | {
+            /** @enum {string} */
+            action: "remove_keep_files";
+        };
+        BulkRequest: components["schemas"]["BulkAction"] & {
+            project_ids: string[];
+        };
+        BulkResponse: {
+            /**
+             * Format: int64
+             * @description Links added or removed, or projects deleted.
+             */
+            affected: number;
+            /** @description Projects that couldn't be changed (missing, or a move failed). */
+            failed: string[];
+            /** @description Trash items created by `delete`, to restore from. */
+            trash_ids: string[];
+        };
         Collection: {
             /** @description Main images of up to 4 of the most recently added projects, for previews. */
             covers: components["schemas"]["CollectionCover"][];
@@ -796,6 +871,10 @@ export interface components {
         DeleteProjectResponse: {
             /** @description The trash item to restore it from; null when nothing went to the trash. */
             trash_id?: string | null;
+        };
+        DownloadManyForm: {
+            /** @description Comma-separated project ids. */
+            ids: string;
         };
         HealthResponse: {
             db: boolean;
@@ -2455,6 +2534,99 @@ export interface operations {
                 };
             };
             /** @description Failure to connect to the database */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bulk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Applied; missing projects are skipped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResponse"];
+                };
+            };
+            /** @description Empty or too many ids, or bad tags */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Collection not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    download_many: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["DownloadManyForm"];
+            };
+        };
+        responses: {
+            /** @description Zip with one folder per project */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description No ids, or too many */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
             503: {
                 headers: {
                     [name: string]: unknown;
