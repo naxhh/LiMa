@@ -263,7 +263,7 @@ mod tests {
     }
 
     async fn search(pool: &Pool<Sqlite>, q: &str) -> Vec<String> {
-        crate::queries::projects_search::search_projects(pool, q, 50, None)
+        crate::queries::projects_search::search_projects(pool, q, 50, None, &Default::default())
             .await
             .unwrap()
             .into_iter()

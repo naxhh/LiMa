@@ -110,7 +110,7 @@ export function TagsPage() {
                     <div className="h-full" style={{ width: `${Math.max(pct, t.project_count > 0 ? 2 : 0)}%`, backgroundColor: t.color }} />
                   </div>
                   <Link
-                    to={`/?query=${encodeURIComponent(t.name)}`}
+                    to={`/?tags=${encodeURIComponent(t.id)}`}
                     className="flex justify-between font-mono text-xs text-muted-foreground hover:text-signal"
                   >
                     <span>

@@ -15,6 +15,35 @@ pub struct ListProjectsParams {
     pub limit: Option<i64>,
     pub cursor: Option<String>,
     pub query: Option<String>,
+    /// Comma-separated tag ids; projects must have all of them.
+    pub tags: Option<String>,
+    /// Comma-separated model file extensions (`STL,3MF`); projects must have one of them.
+    pub formats: Option<String>,
+    /// Only projects without images.
+    pub no_image: Option<bool>,
+}
+
+impl ListProjectsParams {
+    fn filter(&self) -> lima_db::queries::projects::ProjectFilter {
+        let split = |v: &Option<String>| -> Vec<String> {
+            v.as_deref()
+                .unwrap_or("")
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+        let mut formats: Vec<String> = split(&self.formats)
+            .into_iter()
+            .map(|f| f.trim_start_matches('.').to_ascii_uppercase())
+            .filter(|f| !f.is_empty() && f.len() <= 10 && f.chars().all(|c| c.is_ascii_alphanumeric()))
+            .collect();
+        formats.dedup();
+        let mut tag_ids = split(&self.tags);
+        tag_ids.truncate(20);
+        lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false) }
+    }
 }
 
 #[derive(Serialize, ToSchema)]
@@ -72,6 +101,9 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
         ("limit" = Option<i64>, Query, description = "Maximum number of projects to return (default: 50, max: 200)"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor"),
         ("query" = Option<String>, Query, description = "Search query to filter projects"),
+        ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
+        ("formats" = Option<String>, Query, description = "Comma-separated model extensions (STL,3MF,...); projects must have at least one"),
+        ("no_image" = Option<bool>, Query, description = "Only projects without images"),
     ),
     responses(
         (status = 200, description = "List of projects", body = ListProjectsResponse),
@@ -84,6 +116,7 @@ pub async fn list_projects(
     Query(params): Query<ListProjectsParams>,
 ) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
+    let filter = params.filter();
 
     let cursor = match params.cursor {
         Some(ref c) => Some(decode_cursor(c).map_err(|e| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(&e))?),
@@ -104,6 +137,7 @@ pub async fn list_projects(
             query,
             limit,
             cursor,
+            &filter,
         )
         .await
         .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed searching projects").with_cause(&e.to_string()))?;
@@ -129,6 +163,7 @@ pub async fn list_projects(
         state.db.pool(),
         limit,
         cursor,
+        &filter,
     )
     .await
     .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()))?;
