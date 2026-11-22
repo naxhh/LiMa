@@ -105,6 +105,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/metadata/backups/{name}/restore", post(routes::metadata::restore_backup))
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
+        .route("/projects/bulk", post(routes::project_bulk::bulk))
+        .route("/projects/download", post(routes::project_download::download_many))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}", get(routes::project_detail::project_detail))
         .route("/projects/{project_id}", patch(routes::project_update::project_update))
@@ -196,6 +198,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_update::project_update,
         routes::project_import::project_import,
         routes::project_download::project_download,
+        routes::project_download::download_many,
+        routes::project_bulk::bulk,
         routes::project_favourite::add_favourite,
         routes::project_favourite::remove_favourite,
 
@@ -261,6 +265,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::ignored_folders::ListIgnoredFoldersResponse,
         routes::ignored_folders::IgnoredFolderItem,
         routes::trash::ListTrashResponse,
+        routes::project_bulk::BulkRequest,
+        routes::project_bulk::BulkAction,
+        routes::project_bulk::BulkResponse,
+        routes::project_download::DownloadManyForm,
         routes::trash::TrashItem,
         routes::trash::RestoreTrashResponse,
         routes::project_delete::DeleteProjectResponse,

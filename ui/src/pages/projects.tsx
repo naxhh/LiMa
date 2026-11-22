@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
 import { SortSelect } from "@/components/sort-select";
+import { BulkBar } from "@/components/bulk-bar";
+import { Button } from "@/components/ui/button";
+import { useSelection } from "@/lib/selection";
+import { ListChecks } from "lucide-react";
 import { LIBRARY_SORTS, PAGE_SIZE, useViewPrefs, type SortOption } from "@/lib/view-prefs";
 
 type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
@@ -81,6 +85,7 @@ export function ProjectsPage() {
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
   const items = projectsQ.data?.pages.flatMap((p) => p.items) ?? [];
+  const selection = useSelection(items.map((p) => p.id));
 
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = projectsQ;
@@ -154,6 +159,10 @@ export function ProjectsPage() {
           
           <div className="flex flex-wrap items-center gap-3">
             <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={!!query} />
+            <Button variant={selection.active ? "default" : "outline"} size="sm" className="h-8" onClick={selection.active ? selection.exit : selection.start}>
+              <ListChecks />
+              {selection.active ? "Done" : "Select"}
+            </Button>
             <span className="font-mono text-xs text-muted-foreground">
               {projectsQ.isLoading
                 ? "loading…"
@@ -207,7 +216,13 @@ export function ProjectsPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
           {projectsQ.isLoading
             ? Array.from({ length: 8 }, (_, i) => <ProjectCardSkeleton key={i} />)
-            : items.map((p) => <ProjectCard key={p.id} project={p} />)}
+            : items.map((p) => (
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  selection={selection.active ? { selected: selection.isSelected(p.id), onToggle: (range) => selection.toggle(p.id, range) } : undefined}
+                />
+              ))}
         </div>
 
         <div ref={sentinelRef} className="h-8" />
@@ -219,6 +234,7 @@ export function ProjectsPage() {
           </div>
         ) : null}
       </PageBody>
+      <BulkBar selection={selection} total={items.length} />
     </div>
   );
 }
