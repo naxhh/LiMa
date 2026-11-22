@@ -119,8 +119,8 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
-| POST | `/sync/run` | Trigger filesystem sync | 🔵 Post-v0 |
-| GET | `/sync/status` | Current/last sync status | 🔵 Post-v0 |
-| GET | `/sync/runs` | List sync runs | 🔵 Post-v0 |
-| GET | `/sync/runs/{run_id}` | Get sync run details | 🔵 Post-v0 |
-| GET | `/sync/runs/{run_id}/events` | Sync event log | 🔵 Post-v0 |
+| POST | `/sync/run` | Trigger filesystem sync (`full` only for now) | ✅ Done |
+| GET | `/sync/status` | Current/last sync status | ✅ Done |
+| GET | `/sync/runs` | List sync runs | ✅ Done |
+| GET | `/sync/runs/{run_id}` | Get sync run details | ✅ Done |
+| GET | `/sync/runs/{run_id}/events` | Sync event log | ✅ Done |

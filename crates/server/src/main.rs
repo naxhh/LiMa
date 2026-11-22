@@ -30,8 +30,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let library_dir = ServeDir::new("data/library");
     let thumbs_dir = ServeDir::new("data/state/thumbnails");
 
+    let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), "data/library").await?;
+
     let state = state::AppState {
         db: Arc::new(db),
+        sync,
     };
 
     let api = Router::new()
@@ -50,7 +53,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
-        .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete));
+        .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete))
+
+        .route("/sync/run", post(routes::sync::start_sync))
+        .route("/sync/status", get(routes::sync::sync_status))
+        .route("/sync/runs", get(routes::sync::list_sync_runs))
+        .route("/sync/runs/{run_id}", get(routes::sync::get_sync_run))
+        .route("/sync/runs/{run_id}/events", get(routes::sync::list_sync_events));
     
     let app = Router::new()
         .nest("/api", api)
@@ -93,6 +102,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
+
+        routes::sync::start_sync,
+        routes::sync::sync_status,
+        routes::sync::list_sync_runs,
+        routes::sync::get_sync_run,
+        routes::sync::list_sync_events,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -117,6 +132,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::tags::create::CreateTagResponse,
         
         routes::bundle_create::CreateBundleResponse,
+
+        routes::sync::StartSyncRequest,
+        routes::sync::SyncStatusResponse,
+        routes::sync::ListSyncRunsParams,
+        routes::sync::ListSyncRunsResponse,
+        routes::sync::ListSyncEventsParams,
+        routes::sync::ListSyncEventsResponse,
+        lima_domain::models::sync::SyncRunRow,
+        lima_domain::models::sync::SyncStats,
+        lima_domain::models::sync::SyncEventRow,
     )),
 )]
 pub struct ApiDoc;

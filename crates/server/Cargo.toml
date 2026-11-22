@@ -21,3 +21,4 @@ tracing-subscriber = "0.3.22"
 utoipa = "5.4.0"
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 uuid = { version = "1.19.0", features = ["v4"] }
+sqlx = { version = "0.8.6", features = ["sqlite"] }

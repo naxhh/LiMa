@@ -1288,9 +1288,14 @@ dependencies = [
  "image",
  "lima-db",
  "lima-domain",
+ "mime_guess",
  "notify",
+ "serde_json",
+ "sqlx",
+ "time",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1305,6 +1310,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sqlx",
  "time",
  "tokio",
  "tower",
