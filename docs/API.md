@@ -168,6 +168,9 @@ stores the Bambu token on the server for background syncs.
 | GET | `/collections/{collection_id}/source` | Where it came from and its sync state |
 | PATCH | `/collections/{collection_id}/source` | `{keep_in_sync}` |
 | POST | `/collections/{collection_id}/source/sync` | Sync now |
+| GET | `/collection-syncs` | Imported collections, the next to sync first, with when they're due |
+| GET | `/collection-syncs/runs/{run_id}` | One collection import or sync (kept after the collection is deleted) |
+| GET | `/sync/history` | Library and collection runs together, newest first |
 
 ### Duplicates
 

@@ -36,6 +36,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collection-syncs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_collection_syncs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collection-syncs/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_collection_sync_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/collections": {
         parameters: {
             query?: never;
@@ -692,6 +724,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["sync_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sync/run": {
         parameters: {
             query?: never;
@@ -1060,7 +1108,7 @@ export interface components {
             login_required: boolean;
             models: components["schemas"]["CollectionPreviewModel"][];
             name: string;
-            /** @description `makerworld` or `thingiverse`. */
+            /** @description `printables`, `makerworld` or `thingiverse`. */
             source: string;
             /** @description The collection has more models than can be imported at once (1,000). */
             truncated: boolean;
@@ -1087,6 +1135,52 @@ export interface components {
             models: number;
             source: string;
             url: string;
+        };
+        CollectionSyncItem: {
+            collection_id: string;
+            /** @description The run in progress, if any. */
+            job_id?: string | null;
+            keep_in_sync: boolean;
+            last_error?: string | null;
+            last_synced_at?: string | null;
+            name: string;
+            /**
+             * @description When the next automatic sync is due (RFC 3339); none when not kept in sync or when
+             *     automatic syncs are off.
+             */
+            next_sync_at?: string | null;
+            source: string;
+            url: string;
+        };
+        CollectionSyncRun: {
+            collection_id: string;
+            collection_name: string;
+            error?: string | null;
+            failed: components["schemas"]["FailedModel"][];
+            finished_at?: string | null;
+            id: string;
+            /** Format: int64 */
+            imported: number;
+            /** Format: int64 */
+            linked: number;
+            progress?: null | components["schemas"]["CollectionJob"];
+            /** @description `import`, `manual` or `scheduled`. */
+            reason: string;
+            /** Format: int64 */
+            removed: number;
+            source: string;
+            started_at: string;
+            /** @description `running`, `complete` or `failed`. */
+            status: string;
+        };
+        CollectionSyncsResponse: {
+            /**
+             * Format: int64
+             * @description Hours between automatic syncs (0 = only by hand).
+             */
+            interval_hours: number;
+            /** @description Synced collections first, soonest due first; then the others by name. */
+            items: components["schemas"]["CollectionSyncItem"][];
         };
         CreateBundleResponse: {
             failed_files: string[];
@@ -1570,6 +1664,18 @@ export interface components {
             level: string;
             run_id: string;
         };
+        SyncHistoryItem: {
+            collection?: null | components["schemas"]["CollectionSyncRun"];
+            id: string;
+            /** @description `library` or `collection`. */
+            kind: string;
+            library?: null | components["schemas"]["SyncRunRow"];
+            started_at?: string | null;
+        };
+        SyncHistoryResponse: {
+            items: components["schemas"]["SyncHistoryItem"][];
+            next_cursor?: string | null;
+        };
         /** @description What a run was asked to do. */
         SyncOptions: {
             /**
@@ -1806,6 +1912,57 @@ export interface operations {
             };
             /** @description Failed to delete bundle */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_collection_syncs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Imported collections and when they sync next */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSyncsResponse"];
+                };
+            };
+        };
+    };
+    get_collection_sync_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One collection import or sync */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSyncRun"];
+                };
+            };
+            /** @description Unknown run */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2610,7 +2767,7 @@ export interface operations {
                     "application/json": components["schemas"]["CollectionPreviewResponse"];
                 };
             };
-            /** @description Not a MakerWorld or Thingiverse collection link */
+            /** @description Not a Printables, MakerWorld or Thingiverse collection link */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3924,6 +4081,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    sync_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                limit: number | null;
+                /** @description `next_cursor` from the previous page. */
+                cursor: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Library and collection runs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncHistoryResponse"];
                 };
             };
         };

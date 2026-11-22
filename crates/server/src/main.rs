@@ -96,6 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if trash_days > 0 {
         trash::spawn_auto_purge(state.clone(), trash_days);
     }
+    if let Err(e) = lima_db::queries::collection_sources::fail_interrupted_runs(state.db.pool(), &crate::backups::now()).await {
+        tracing::warn!("Could not close interrupted collection syncs: {e}");
+    }
     if collection_sync_hours > 0 {
         collection_sync::spawn_scheduler(state.clone(), collection_sync_hours);
     }
@@ -153,6 +156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/imports/collections/{job_id}", get(routes::collection_import::collection_job_status))
         .route("/collections/{collection_id}/source", get(routes::collection_import::get_collection_source).patch(routes::collection_import::update_collection_source))
         .route("/collections/{collection_id}/source/sync", post(routes::collection_import::sync_collection_now))
+        .route("/collection-syncs", get(routes::collection_syncs::list_collection_syncs))
+        .route("/collection-syncs/runs/{run_id}", get(routes::collection_syncs::get_collection_sync_run))
+        .route("/sync/history", get(routes::collection_syncs::sync_history))
         .route("/integrations/bambu/status", get(routes::bambu::bambu_status))
         .route("/integrations/bambu/login", post(routes::bambu::bambu_login))
         .route("/integrations/bambu/login/send-code", post(routes::bambu::bambu_send_code))
@@ -250,6 +256,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::collection_import::get_collection_source,
         routes::collection_import::update_collection_source,
         routes::collection_import::sync_collection_now,
+        routes::collection_syncs::list_collection_syncs,
+        routes::collection_syncs::get_collection_sync_run,
+        routes::collection_syncs::sync_history,
         routes::bambu::bambu_status,
         routes::bambu::bambu_login,
         routes::bambu::bambu_send_code,
@@ -362,6 +371,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::collection_import::StartSyncResponse,
         collection_sync::CollectionJob,
         collection_sync::FailedModel,
+        routes::collection_syncs::CollectionSyncItem,
+        routes::collection_syncs::CollectionSyncsResponse,
+        routes::collection_syncs::CollectionSyncRun,
+        routes::collection_syncs::SyncHistoryItem,
+        routes::collection_syncs::SyncHistoryResponse,
         routes::bambu::BambuStatusResponse,
         routes::bambu::BambuLoginRequest,
         routes::bambu::BambuSendCodeRequest,

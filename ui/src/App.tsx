@@ -24,6 +24,7 @@ function App() {
         <Route path="/collections/:collectionId" element={<CollectionDetailPage />} />
         <Route path="/admin/sync" element={<AdminSyncPage />} />
         <Route path="/admin/sync/:runId" element={<AdminSyncPage />} />
+        <Route path="/admin/sync/collections/:runId" element={<AdminSyncPage />} />
         <Route path="/admin/backup" element={<AdminBackupPage />} />
         <Route path="/admin/trash" element={<AdminTrashPage />} />
         <Route path="/admin/duplicates" element={<AdminDuplicatesPage />} />

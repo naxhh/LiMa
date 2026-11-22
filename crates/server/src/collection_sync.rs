@@ -7,7 +7,8 @@
 //!   them, or only taken out of the collection when the project was already in the library;
 //! - models the user left unticked, or whose project they deleted, are never imported again.
 //!
-//! Synced collections are checked every `LIMA_COLLECTION_SYNC_HOURS` (default 12, 0 = off).
+//! A synced collection is checked `LIMA_COLLECTION_SYNC_HOURS` after its last check
+//! (default 12, 0 = only by hand).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -58,7 +59,7 @@ pub struct CollectionJob {
     pub finished_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, ToSchema)]
 pub struct FailedModel {
     pub name: String,
     pub error: String,
@@ -97,15 +98,29 @@ fn update(state: &AppState, job_id: &str, f: impl FnOnce(&mut CollectionJob)) {
 }
 
 /// Starts a run in the background (or returns the one already running). `selected` limits a
-/// first import to those model ids; the others are remembered as excluded.
-pub fn start(state: &AppState, source: SourceRow, selected: Option<HashSet<String>>, bambu_token: Option<String>) -> String {
+/// first import to those model ids; the others are remembered as excluded. `reason` is
+/// `import`, `manual` or `scheduled`, as shown in the run history.
+pub async fn start(state: &AppState, source: SourceRow, selected: Option<HashSet<String>>, bambu_token: Option<String>, reason: &str) -> String {
+    if let Some(id) = running_job(state, &source.collection_id) {
+        return id;
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let name: String = sqlx::query_scalar("SELECT name FROM collections WHERE id = ?1")
+        .bind(&source.collection_id)
+        .fetch_optional(state.db.pool())
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    if let Err(e) = db::create_run(state.db.pool(), &id, &source.collection_id, &name, &source.source, reason, &now_rfc3339()).await {
+        tracing::warn!("Could not record the collection sync run: {e}");
+    }
     let mut jobs = state.collection_jobs.lock().unwrap();
     if let Some(j) = jobs.values().find(|j| j.collection_id == source.collection_id && j.status == "running") {
         return j.id.clone();
     }
     let cutoff = OffsetDateTime::now_utc().unix_timestamp() - KEEP_FINISHED_SECS;
     jobs.retain(|_, j| j.finished_at.is_none_or(|t| t > cutoff));
-    let id = uuid::Uuid::new_v4().to_string();
     jobs.insert(
         id.clone(),
         CollectionJob {
@@ -145,6 +160,24 @@ pub fn start(state: &AppState, source: SourceRow, selected: Option<HashSet<Strin
                 }
             }
         });
+        if let Some(j) = job(&state, &job_id) {
+            let failures = serde_json::to_string(&j.failed).unwrap_or_else(|_| "[]".into());
+            if let Err(e) = db::finish_run(
+                state.db.pool(),
+                &job_id,
+                &j.status,
+                j.imported as i64,
+                j.linked as i64,
+                j.removed as i64,
+                &failures,
+                j.error.as_deref(),
+                &now,
+            )
+            .await
+            {
+                tracing::warn!("Could not record the end of collection sync run {job_id}: {e}");
+            }
+        }
     });
     id
 }
@@ -299,11 +332,20 @@ async fn remove_project(state: &AppState, project_id: &str) {
     }
 }
 
-/// Runs every synced collection now and then every `hours`.
+/// When a synced collection is next due: `hours` after its last check, or now if never.
+pub fn next_sync_at(last_synced_at: Option<&str>, hours: u64) -> OffsetDateTime {
+    use time::format_description::well_known::Rfc3339;
+    last_synced_at
+        .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok())
+        .map(|t| t + time::Duration::hours(hours as i64))
+        .unwrap_or_else(OffsetDateTime::now_utc)
+}
+
+/// Every few minutes, syncs the collections that are due (`hours` after their last check).
 pub fn spawn_scheduler(state: AppState, hours: u64) {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(120)).await;
-        let mut tick = tokio::time::interval(Duration::from_secs(hours * 3600));
+        let mut tick = tokio::time::interval(Duration::from_secs(600));
         loop {
             tick.tick().await;
             let sources = match db::synced(state.db.pool()).await {
@@ -313,10 +355,13 @@ pub fn spawn_scheduler(state: AppState, hours: u64) {
                     continue;
                 }
             };
-            for s in sources {
+            let now = OffsetDateTime::now_utc();
+            let mut due: Vec<SourceRow> = sources.into_iter().filter(|s| next_sync_at(s.last_synced_at.as_deref(), hours) <= now).collect();
+            due.sort_by_key(|s| next_sync_at(s.last_synced_at.as_deref(), hours));
+            for s in due {
                 let token = if s.source == "makerworld" { db::token(state.db.pool(), BAMBU_TOKEN).await.ok().flatten() } else { None };
                 let collection = s.collection_id.clone();
-                let job_id = start(&state, s, None, token);
+                let job_id = start(&state, s, None, token, "scheduled").await;
                 // One at a time, so the sites aren't hammered.
                 while job(&state, &job_id).is_some_and(|j| j.status == "running") {
                     tokio::time::sleep(Duration::from_secs(5)).await;

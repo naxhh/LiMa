@@ -25,3 +25,4 @@ pub mod trash;
 pub mod project_bulk;
 pub mod duplicates;
 pub mod collection_import;
+pub mod collection_syncs;

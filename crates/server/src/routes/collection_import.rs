@@ -235,7 +235,7 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartCollectionI
         created_at: now,
     };
     db::create(pool, &row).await.map_err(|e| db_error(e).into_response())?;
-    let job_id = collection_sync::start(&state, row, Some(selected), token);
+    let job_id = collection_sync::start(&state, row, Some(selected), token, "import").await;
     Ok(StartCollectionImportResponse { job_id, collection_id: collection.id })
 }
 
@@ -349,6 +349,6 @@ pub async fn sync_collection_now(State(state): State<AppState>, Path(collection_
     } else {
         None
     };
-    let job_id = collection_sync::start(&state, s, None, token);
+    let job_id = collection_sync::start(&state, s, None, token, "manual").await;
     Ok((StatusCode::ACCEPTED, Json(StartSyncResponse { job_id })))
 }

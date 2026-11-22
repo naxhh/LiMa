@@ -138,3 +138,122 @@ pub async fn set_token(pool: &Pool<Sqlite>, name: &str, token: &str, now: &str) 
 pub async fn token(pool: &Pool<Sqlite>, name: &str) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar("SELECT token FROM integration_tokens WHERE name = ?1").bind(name).fetch_optional(pool).await
 }
+
+#[derive(Debug, Clone, FromRow)]
+pub struct OverviewRow {
+    pub collection_id: String,
+    pub name: String,
+    pub source: String,
+    pub url: String,
+    pub keep_in_sync: bool,
+    pub last_synced_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
+/// Every imported collection with its name.
+pub async fn overview(pool: &Pool<Sqlite>) -> Result<Vec<OverviewRow>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT s.collection_id, c.name, s.source, s.url, s.keep_in_sync, s.last_synced_at, s.last_error
+         FROM collection_sources s JOIN collections c ON c.id = s.collection_id",
+    )
+    .fetch_all(pool)
+    .await
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct RunRow {
+    pub id: String,
+    pub collection_id: String,
+    pub collection_name: String,
+    pub source: String,
+    pub reason: String,
+    pub status: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub imported: i64,
+    pub linked: i64,
+    pub removed: i64,
+    pub failures_json: String,
+    pub error: Option<String>,
+}
+
+const RUN_COLUMNS: &str =
+    "id, collection_id, collection_name, source, reason, status, started_at, finished_at, imported, linked, removed, failures_json, error";
+
+pub async fn create_run(pool: &Pool<Sqlite>, id: &str, collection_id: &str, collection_name: &str, source: &str, reason: &str, now: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO collection_sync_runs (id, collection_id, collection_name, source, reason, status, started_at) VALUES (?1, ?2, ?3, ?4, ?5, 'running', ?6)",
+    )
+    .bind(id)
+    .bind(collection_id)
+    .bind(collection_name)
+    .bind(source)
+    .bind(reason)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn finish_run(
+    pool: &Pool<Sqlite>,
+    id: &str,
+    status: &str,
+    imported: i64,
+    linked: i64,
+    removed: i64,
+    failures_json: &str,
+    error: Option<&str>,
+    now: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE collection_sync_runs SET status = ?2, imported = ?3, linked = ?4, removed = ?5, failures_json = ?6, error = ?7, finished_at = ?8 WHERE id = ?1",
+    )
+    .bind(id)
+    .bind(status)
+    .bind(imported)
+    .bind(linked)
+    .bind(removed)
+    .bind(failures_json)
+    .bind(error)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Runs left `running` by a restart can't finish any more.
+pub async fn fail_interrupted_runs(pool: &Pool<Sqlite>, now: &str) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query("UPDATE collection_sync_runs SET status = 'failed', error = 'Interrupted by a server restart', finished_at = ?1 WHERE status = 'running'")
+        .bind(now)
+        .execute(pool)
+        .await?
+        .rows_affected())
+}
+
+pub async fn get_run(pool: &Pool<Sqlite>, id: &str) -> Result<Option<RunRow>, sqlx::Error> {
+    sqlx::query_as(&format!("SELECT {RUN_COLUMNS} FROM collection_sync_runs WHERE id = ?1")).bind(id).fetch_optional(pool).await
+}
+
+/// Newest first, before `(started_at, id)` when given.
+pub async fn list_runs(pool: &Pool<Sqlite>, limit: i64, before: Option<(&str, &str)>) -> Result<Vec<RunRow>, sqlx::Error> {
+    match before {
+        None => {
+            sqlx::query_as(&format!("SELECT {RUN_COLUMNS} FROM collection_sync_runs ORDER BY started_at DESC, id DESC LIMIT ?1"))
+                .bind(limit)
+                .fetch_all(pool)
+                .await
+        }
+        Some((started, id)) => {
+            sqlx::query_as(&format!(
+                "SELECT {RUN_COLUMNS} FROM collection_sync_runs WHERE (started_at, id) < (?1, ?2) ORDER BY started_at DESC, id DESC LIMIT ?3"
+            ))
+            .bind(started)
+            .bind(id)
+            .bind(limit)
+            .fetch_all(pool)
+            .await
+        }
+    }
+}
