@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
 import { ProjectTagsEditor } from "@/components/project-tags-editor";
+import { ProjectCollectionsEditor } from "@/components/project-collections-editor";
 import { MediaImage } from "@/components/media-image";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
@@ -82,7 +83,11 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
     mutationFn: () => apiNoBody("DELETE", `/projects/${projectId}`),
     onSuccess: async () => {
       qc.removeQueries({ queryKey: ["project", projectId] });
-      await qc.invalidateQueries({ queryKey: ["projects"] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["projects"] }),
+        qc.invalidateQueries({ queryKey: ["collections"] }),
+        qc.invalidateQueries({ queryKey: ["collection"] }),
+      ]);
       navigate("/");
     },
   });
@@ -149,7 +154,10 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
             <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
           </div>
 
-          <ProjectTagsEditor projectId={project.id} tags={project.tags} />
+          <div className="flex flex-col gap-2.5">
+            <ProjectTagsEditor projectId={project.id} tags={project.tags} />
+            <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <ImportAssetsDialog projectId={project.id} onImported={refresh} />

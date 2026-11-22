@@ -73,6 +73,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/tags/{tag_id}", patch(routes::tags::update::update_tag))
         .route("/tags/{tag_id}", delete(routes::tags::delete::delete_tag))
         
+        .route("/collections", get(routes::collections::list::list_collections))
+        .route("/collections", post(routes::collections::create::create_collection))
+        .route("/collections/{collection_id}", get(routes::collections::detail::collection_detail))
+        .route("/collections/{collection_id}", patch(routes::collections::update::update_collection))
+        .route("/collections/{collection_id}", delete(routes::collections::delete::delete_collection))
+        .route("/collections/{collection_id}/projects", post(routes::collections::membership::add_project))
+        .route("/collections/{collection_id}/projects/{project_id}", delete(routes::collections::membership::remove_project))
+
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
@@ -126,6 +134,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::tags::update::update_tag,
         routes::tags::delete::delete_tag,
 
+        routes::collections::list::list_collections,
+        routes::collections::create::create_collection,
+        routes::collections::detail::collection_detail,
+        routes::collections::update::update_collection,
+        routes::collections::delete::delete_collection,
+        routes::collections::membership::add_project,
+        routes::collections::membership::remove_project,
+
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
 
@@ -151,6 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_detail::ProjectDetailResponse,
         routes::project_detail::ProjectAssetResponse,
         routes::project_detail::ProjectTagResponse,
+        routes::project_detail::ProjectCollectionResponse,
 
         routes::tags::list::ListTagsResponse,
         routes::tags::list::ListTagsParams,
@@ -159,6 +176,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::tags::create::CreateTagRequest,
         routes::tags::update::PatchTagRequest,
         
+        routes::collections::Collection,
+        routes::collections::CollectionCover,
+        routes::collections::list::ListCollectionsResponse,
+        routes::collections::detail::CollectionDetailResponse,
+        routes::collections::create::CreateCollectionRequest,
+        routes::collections::update::PatchCollectionRequest,
+        routes::collections::membership::AddCollectionProjectRequest,
+
         routes::bundle_create::CreateBundleResponse,
 
         routes::sync::StartSyncRequest,
