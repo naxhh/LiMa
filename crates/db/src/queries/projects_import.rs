@@ -41,10 +41,11 @@ impl ToString for ImportFromBundleError {
 
 pub async fn import_assets_from_bundle(
     pool: &Pool<sqlx::Sqlite>,
+    paths: &lima_domain::config::Paths,
     project_id: &str,
     bundle_id: &str,
 ) -> Result<Vec<ProjectAssetRow>, ImportFromBundleError> {
-    let bundle_folder: PathBuf = ["data", "state", "bundles", &bundle_id].iter().collect();
+    let bundle_folder = paths.bundle(bundle_id).ok_or(ImportFromBundleError::BundleNotFound)?;
 
     if !fs::metadata(&bundle_folder).await.is_ok() {
         return Err(ImportFromBundleError::BundleNotFound);
@@ -67,7 +68,7 @@ pub async fn import_assets_from_bundle(
     };
     
     // We assume if project exists folder structure is valid.
-    let project_dir: PathBuf = ["data", "library", &project.folder_path].iter().collect();
+    let project_dir = paths.project_dir(&project.folder_path);
     let mut moved_files: Vec<PathBuf> = Vec::with_capacity(meta.files.len());
     let mut built_assets: Vec<ProjectAssetRow> = Vec::with_capacity(meta.files.len());
 

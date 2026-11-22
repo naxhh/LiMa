@@ -45,6 +45,7 @@ pub async fn create_project(
 
     match lima_db::queries::projects_create::create_project(
         state.db.pool(),
+        &state.paths,
         name,
         &folder_path,
         &description,

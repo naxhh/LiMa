@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use lima_domain::config::Paths;
 use sqlx::{Pool, Sqlite};
 
 #[derive(Debug)]
@@ -16,6 +16,7 @@ impl From<sqlx::Error> for DeleteProjectError {
 
 pub async fn delete_project(
     pool: &Pool<Sqlite>,
+    paths: &Paths,
     project_id: &str,
 ) -> Result<(), DeleteProjectError> {
     let mut tx = pool.begin().await?;
@@ -32,7 +33,7 @@ pub async fn delete_project(
         None => return Err(DeleteProjectError::NotFound),
     };
 
-    let project_dir: PathBuf = ["data", "library", &folder_path].iter().collect();
+    let project_dir = paths.project_dir(&folder_path);
     tokio::fs::remove_dir_all(&project_dir).await.map_err(|e| {
         DeleteProjectError::DeleteFailed(format!("Failed to delete project directory: {}", e))
     })?;

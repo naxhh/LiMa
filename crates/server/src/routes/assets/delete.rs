@@ -23,11 +23,12 @@ pub async fn asset_delete(
 ) -> Result<StatusCode, ApiErrorResponse> {
     match lima_db::queries::assets::delete_asset(
         _state.db.pool(),
+        &_state.paths,
         &project_id,
         &asset_id,
     ).await {
         Ok(_) => {
-            let thumbs = _state.thumbs_dir.clone();
+            let thumbs = _state.paths.thumbnails();
             let (project, asset) = (project_id.clone(), asset_id.clone());
             let removed = tokio::task::spawn_blocking(move || lima_indexer::thumbnails::remove_asset(&thumbs, &project, &asset)).await;
             if let Ok(Err(e)) = removed {
