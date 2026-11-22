@@ -1,4 +1,4 @@
-//! Collections imported from MakerWorld or Thingiverse, and keeping them in sync.
+//! Collections imported from Printables, MakerWorld or Thingiverse, and keeping them in sync.
 //!
 //! A run reads the source collection and brings the LiMa collection in line with it:
 //! - new models are imported as projects (or linked, when the library already has a project

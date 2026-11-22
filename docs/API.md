@@ -151,7 +151,8 @@ Deleted projects move to `<library>/.lima-trash/<id>/` with their metadata kept,
 
 ### Collection imports
 
-MakerWorld (`makerworld.com/<lang>/collections/<id>-<slug>`) and Thingiverse
+Printables (`printables.com/@<user>/collections/<id>`), MakerWorld
+(`makerworld.com/<lang>/collections/<id>-<slug>`) and Thingiverse
 (`thingiverse.com/<user>/collections/<id>`) collections. Each chosen model becomes a project
 (models already in the library, by `source_url`, are linked instead) in a new LiMa collection.
 With `keep_in_sync`, models added upstream are imported and models removed upstream are

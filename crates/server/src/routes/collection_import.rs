@@ -1,4 +1,4 @@
-//! Importing a whole collection from MakerWorld or Thingiverse, and its sync settings.
+//! Importing a whole collection from Printables, MakerWorld or Thingiverse, and its sync settings.
 
 use std::collections::HashSet;
 
@@ -27,7 +27,7 @@ pub struct CollectionPreviewRequest {
 
 #[derive(Serialize, ToSchema)]
 pub struct CollectionPreviewResponse {
-    /// `makerworld` or `thingiverse`.
+    /// `printables`, `makerworld` or `thingiverse`.
     pub source: String,
     pub url: String,
     pub name: String,
@@ -110,7 +110,7 @@ fn db_error(e: sqlx::Error) -> ApiErrorResponse {
 
 fn parse(url: &str) -> Result<CollectionRef, ApiErrorResponse> {
     parse_collection_url(url).ok_or_else(|| {
-        ApiErrorResponse::new(StatusCode::BAD_REQUEST, "unsupported_url", "Only MakerWorld and Thingiverse collection links can be imported.")
+        ApiErrorResponse::new(StatusCode::BAD_REQUEST, "unsupported_url", "Only Printables, MakerWorld and Thingiverse collection links can be imported.")
     })
 }
 
@@ -142,7 +142,7 @@ async fn bambu_token(state: &AppState, headers: &HeaderMap) -> Result<String, Re
     request_body = CollectionPreviewRequest,
     responses(
         (status = 200, description = "The collection and its models", body = CollectionPreviewResponse),
-        (status = 400, description = "Not a MakerWorld or Thingiverse collection link", body = ApiErrorBody),
+        (status = 400, description = "Not a Printables, MakerWorld or Thingiverse collection link", body = ApiErrorBody),
         (status = 404, description = "Collection not found", body = ApiErrorBody),
         (status = 412, description = "Thingiverse token missing or rejected", body = ApiErrorBody),
     )

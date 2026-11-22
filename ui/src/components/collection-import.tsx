@@ -16,7 +16,7 @@ import { BambuLogin } from "@/components/bambu-login";
 type Preview = components["schemas"]["CollectionPreviewResponse"];
 type StartResponse = components["schemas"]["StartCollectionImportResponse"];
 
-const SOURCE_LABEL: Record<string, string> = { makerworld: "MakerWorld", thingiverse: "Thingiverse" };
+const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld", thingiverse: "Thingiverse" };
 
 /** Import every chosen model of a MakerWorld or Thingiverse collection into a new LiMa collection. */
 export function CollectionImport({ url, onClose, onDone }: { url: string; onClose: () => void; onDone: (collectionId: string) => void }) {

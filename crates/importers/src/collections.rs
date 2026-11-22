@@ -1,6 +1,5 @@
 //! Collections on external sites: lists of models that can be imported (and kept in sync)
-//! together. Supported: MakerWorld (public, no login) and Thingiverse (app token).
-//! Printables doesn't expose the models of a collection in its public API yet.
+//! together. Printables and MakerWorld are public; Thingiverse needs its app token.
 
 use reqwest::header::{AUTHORIZATION, USER_AGENT};
 use serde::{Deserialize, Serialize};
@@ -41,7 +40,7 @@ pub struct CollectionModel {
     pub author: Option<String>,
 }
 
-/// Recognises a MakerWorld or Thingiverse collection URL.
+/// Recognises a Printables, MakerWorld or Thingiverse collection URL.
 pub fn parse_collection_url(raw: &str) -> Option<CollectionRef> {
     let url = url::Url::parse(raw.trim()).ok()?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -50,22 +49,28 @@ pub fn parse_collection_url(raw: &str) -> Option<CollectionRef> {
     let host = url.host_str()?.trim_start_matches("www.").to_ascii_lowercase();
     let segments: Vec<&str> = url.path_segments()?.filter(|s| !s.is_empty()).collect();
     let source = match host.as_str() {
+        "printables.com" => Source::Printables,
         "makerworld.com" => Source::Makerworld,
         "thingiverse.com" => Source::Thingiverse,
         _ => return None,
     };
-    // MakerWorld: "/<lang>/collections/<id>-<slug>"; Thingiverse: "/<user>/collections/<id>".
+    // Printables: "/@<user>/collections/<id>"; MakerWorld: "/<lang>/collections/<id>-<slug>";
+    // Thingiverse: "/<user>/collections/<id>".
     let pos = segments.iter().position(|s| *s == "collections")?;
     let id: String = segments.get(pos + 1)?.chars().take_while(|c| c.is_ascii_digit()).collect();
     (!id.is_empty()).then_some(CollectionRef { source, id })
 }
 
 pub async fn fetch_collection(client: &reqwest::Client, c: &CollectionRef, tokens: Tokens<'_>) -> Result<RemoteCollection> {
-    match c.source {
+    let mut collection = match c.source {
         Source::Makerworld => makerworld(client, &c.id).await,
         Source::Thingiverse => thingiverse(client, &c.id, tokens.thingiverse.ok_or(ImportError::TokenMissing)?).await,
-        Source::Printables => Err(ImportError::UnsupportedUrl),
-    }
+        Source::Printables => printables(client, &c.id).await,
+    }?;
+    // Paging can overlap when a collection changes mid-read.
+    let mut seen = std::collections::HashSet::new();
+    collection.models.retain(|m| seen.insert(m.id.clone()));
+    Ok(collection)
 }
 
 /// The files a collection import downloads for each model: MakerWorld's default print
@@ -76,6 +81,150 @@ pub fn default_files(model: &RemoteModel) -> Vec<RemoteFile> {
     }
     let models: Vec<RemoteFile> = model.files.iter().filter(|f| f.kind == "model").cloned().collect();
     if models.is_empty() { model.files.clone() } else { models }
+}
+
+// --- Printables --------------------------------------------------------------------------
+
+const PR_API: &str = "https://api.printables.com/graphql/";
+const PR_MEDIA: &str = "https://media.printables.com/";
+const PR_PAGE: usize = 50;
+
+const PR_DETAIL: &str = "query($id: ID!) { collection(id: $id) { id name description user { publicUsername handle } } }";
+// Deleted or hidden models come back as another type without these fields; they're skipped.
+const PR_MODELS: &str = r#"query($id: ID!, $limit: Int, $cursor: String) {
+  moreCollectionModels(collectionId: $id, limit: $limit, cursor: $cursor, ordering: added_to_collection, includeDeleted: false) {
+    cursor
+    items { model: print { ... on PrintType { id name slug user { publicUsername } image { filePath } } } }
+  }
+}"#;
+
+#[derive(Deserialize)]
+struct PrGql<T> {
+    data: Option<T>,
+    #[serde(default)]
+    errors: Vec<PrGqlError>,
+}
+
+#[derive(Deserialize)]
+struct PrGqlError {
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct PrDetailData {
+    collection: Option<PrCollection>,
+}
+
+#[derive(Deserialize)]
+struct PrCollection {
+    id: String,
+    name: String,
+    description: Option<String>,
+    user: Option<PrUser>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrUser {
+    public_username: Option<String>,
+    handle: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrModelsData {
+    more_collection_models: PrPage,
+}
+
+#[derive(Deserialize)]
+struct PrPage {
+    cursor: Option<String>,
+    #[serde(default)]
+    items: Vec<PrItem>,
+}
+
+#[derive(Deserialize)]
+struct PrItem {
+    model: Option<PrModel>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct PrModel {
+    id: Option<String>,
+    name: Option<String>,
+    slug: Option<String>,
+    user: Option<PrUser>,
+    image: Option<PrImage>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrImage {
+    file_path: String,
+}
+
+async fn pr_query<T: for<'de> Deserialize<'de>>(client: &reqwest::Client, query: &str, variables: serde_json::Value) -> Result<T> {
+    let upstream = |message: String| ImportError::Upstream { site: "printables", message };
+    let res = client.post(PR_API).json(&serde_json::json!({ "query": query, "variables": variables })).send().await?;
+    let status = res.status();
+    let body: PrGql<T> = res.json().await.map_err(|e| upstream(format!("{status}: {e}")))?;
+    if let Some(e) = body.errors.first() {
+        return Err(upstream(e.message.clone()));
+    }
+    body.data.ok_or_else(|| upstream(format!("{status}: empty response")))
+}
+
+fn pr_model(m: PrModel) -> Option<CollectionModel> {
+    let id = m.id?;
+    let slug = m.slug.map(|s| format!("-{s}")).unwrap_or_default();
+    Some(CollectionModel {
+        url: format!("https://www.printables.com/model/{id}{slug}"),
+        name: m.name.unwrap_or_default().trim().to_string(),
+        cover: m.image.map(|i| format!("{PR_MEDIA}{}", i.file_path.trim_start_matches('/'))),
+        author: m.user.and_then(|u| u.public_username),
+        id,
+    })
+}
+
+async fn printables(client: &reqwest::Client, id: &str) -> Result<RemoteCollection> {
+    let detail: PrDetailData = pr_query(client, PR_DETAIL, serde_json::json!({ "id": id })).await?;
+    // Private collections answer null, like missing ones.
+    let c = detail.collection.ok_or(ImportError::NotFound)?;
+    let mut models = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut truncated = false;
+    loop {
+        let page: PrModelsData = pr_query(client, PR_MODELS, serde_json::json!({ "id": id, "limit": PR_PAGE, "cursor": cursor })).await?;
+        let page = page.more_collection_models;
+        let got = page.items.len();
+        models.extend(page.items.into_iter().filter_map(|i| i.model).filter_map(pr_model));
+        if models.len() >= MAX_MODELS {
+            truncated = page.cursor.is_some() && got == PR_PAGE;
+            models.truncate(MAX_MODELS);
+            break;
+        }
+        // The last page still carries a cursor (that starts over), so a short page ends it.
+        match page.cursor {
+            Some(next) if got == PR_PAGE && cursor.as_deref() != Some(next.as_str()) => cursor = Some(next),
+            _ => break,
+        }
+    }
+    let handle = c.user.as_ref().and_then(|u| u.handle.clone());
+    let url = match &handle {
+        Some(h) => format!("https://www.printables.com/@{h}/collections/{}", c.id),
+        None => format!("https://www.printables.com/collections/{}", c.id),
+    };
+    Ok(RemoteCollection {
+        source: Source::Printables,
+        source_id: c.id,
+        url,
+        name: c.name.trim().to_string(),
+        description: html_to_markdown(c.description.as_deref().unwrap_or("")),
+        author: c.user.and_then(|u| u.public_username),
+        models,
+        truncated,
+    })
 }
 
 // --- MakerWorld --------------------------------------------------------------------------
@@ -270,7 +419,10 @@ mod tests {
         assert_eq!(parse_collection_url("https://www.thingiverse.com/creativetools/collections/3366657"), tv);
         assert_eq!(parse_collection_url("https://makerworld.com/en/models/1400373"), None);
         assert_eq!(parse_collection_url("https://makerworld.com/en/@meraner/collections"), None);
-        assert_eq!(parse_collection_url("https://www.printables.com/@Prusa/collections/54487"), None);
+        let pr = Some(CollectionRef { source: Source::Printables, id: "1470155".into() });
+        assert_eq!(parse_collection_url("https://www.printables.com/@nertaple_260772/collections/1470155"), pr);
+        assert_eq!(parse_collection_url("https://www.printables.com/es/@nertaple_260772/collections/1470155"), pr);
+        assert_eq!(parse_collection_url("https://www.printables.com/@nertaple_260772/collections"), None);
     }
 
     #[test]
@@ -284,6 +436,19 @@ mod tests {
         assert_eq!(m.url, "https://makerworld.com/en/models/1765579-shark");
         assert_eq!(m.name, "Shark");
         assert_eq!(m.author.as_deref(), Some("Zylo 3D"));
+    }
+
+    #[test]
+    fn maps_printables_models() {
+        let m: PrModel = serde_json::from_value(serde_json::json!({
+            "id": "757583", "name": "Can Dispenser ", "slug": "can-dispenser",
+            "user": { "publicUsername": "Osama414" }, "image": { "filePath": "media/prints/757583/images/a/img.jpeg" }
+        }))
+        .unwrap();
+        let m = pr_model(m).unwrap();
+        assert_eq!(m.url, "https://www.printables.com/model/757583-can-dispenser");
+        assert_eq!(m.cover.as_deref(), Some("https://media.printables.com/media/prints/757583/images/a/img.jpeg"));
+        assert!(pr_model(PrModel::default()).is_none(), "deleted models are skipped");
     }
 
     #[test]

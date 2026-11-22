@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { BambuLogin } from "@/components/bambu-login";
 import { CollectionJobProgress } from "@/components/collection-import";
 
-const SOURCE_LABEL: Record<string, string> = { makerworld: "MakerWorld", thingiverse: "Thingiverse" };
+const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld", thingiverse: "Thingiverse" };
 
 /** Where an imported collection comes from, its sync state, and "Sync now". */
 export function CollectionSourceBar({ collectionId }: { collectionId: string }) {
