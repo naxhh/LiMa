@@ -2,14 +2,13 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { Layers, Plus, X } from "lucide-react";
 
-import { apiErrorMessage } from "@/lib/tags";
 import { CollectionPickerDialog } from "@/components/collection-picker-dialog";
 import { useCollectionMembership, type Membership } from "@/lib/project-mutations";
 
 /** The project's collections as chips, plus a picker to add it to more (or a new one). */
 export function ProjectCollectionsEditor({ projectId, collections }: { projectId: string; collections: Membership[] }) {
   const [open, setOpen] = React.useState(false);
-  const { remove, error } = useCollectionMembership(projectId);
+  const { remove } = useCollectionMembership(projectId);
 
   return (
     <div className="space-y-1">
@@ -26,7 +25,6 @@ export function ProjectCollectionsEditor({ projectId, collections }: { projectId
             <button
               type="button"
               onClick={() => remove.mutate(c.id)}
-              disabled={remove.isPending}
               aria-label={`Remove from collection ${c.name}`}
               className="grid size-5 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground"
             >
@@ -43,7 +41,6 @@ export function ProjectCollectionsEditor({ projectId, collections }: { projectId
           Add to collection
         </button>
       </div>
-      {error ? <div className="text-xs text-destructive">Could not update collections: {apiErrorMessage(error)}</div> : null}
       {open ? (
         <CollectionPickerDialog projectId={projectId} collections={collections} open={open} onOpenChange={setOpen} />
       ) : null}

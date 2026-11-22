@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
 
 import { apiNoBody } from "@/lib/api";
-import { invalidateCollections, useCollection } from "@/lib/collections";
+import { COLLECTIONS_QUERY_KEY, invalidateCollections, useCollection, type Collection, type CollectionDetail } from "@/lib/collections";
+import { PROJECT_CACHE_KEYS, optimisticHandlers, patchProjects } from "@/lib/optimistic";
 import { formatBytes } from "@/lib/format";
 import { apiErrorMessage } from "@/lib/tags";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,30 @@ function CollectionDetailInner({ id }: { id: string }) {
 
   const removeM = useMutation({
     mutationFn: (projectId: string) => apiNoBody("DELETE", `/collections/${id}/projects/${projectId}`),
-    onSuccess: (_, projectId) => invalidateCollections(qc, projectId),
+    ...optimisticHandlers<string>(qc, {
+      mutationKey: ["collection-edit", id],
+      keys: [...PROJECT_CACHE_KEYS, COLLECTIONS_QUERY_KEY],
+      apply: (projectId) => {
+        // The card leaves this page; the project no longer lists this collection.
+        qc.setQueryData<CollectionDetail>(["collection", id], (d) =>
+          d ? { ...d, projects: d.projects.filter((p) => p.id !== projectId), project_count: Math.max(0, d.project_count - 1) } : d,
+        );
+        patchProjects(
+          qc,
+          (p) => ({
+            ...p,
+            collections: p.collections.filter((m) => m.id !== id),
+            ...(c?.is_favourites ? { is_favourite: false } : {}),
+          }),
+          projectId,
+        );
+        qc.setQueryData<Collection[]>(COLLECTIONS_QUERY_KEY, (list) =>
+          list?.map((x) => (x.id === id ? { ...x, project_count: Math.max(0, x.project_count - 1) } : x)),
+        );
+      },
+      errorTitle: `Couldn't remove from ${c?.name ?? "the collection"}`,
+      invalidate: [...PROJECT_CACHE_KEYS, COLLECTIONS_QUERY_KEY],
+    }),
   });
   const deleteM = useMutation({
     mutationFn: () => apiNoBody("DELETE", `/collections/${id}`),
@@ -132,10 +156,6 @@ function CollectionDetailInner({ id }: { id: string }) {
       </section>
 
       <PageBody className="pt-7 pb-16">
-        {removeM.isError ? (
-          <div className="mb-4 text-sm text-destructive">Could not remove the project: {apiErrorMessage(removeM.error)}</div>
-        ) : null}
-
         {c && c.projects.length === 0 ? (
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">Nothing here yet</div>

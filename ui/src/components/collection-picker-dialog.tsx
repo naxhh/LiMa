@@ -3,7 +3,6 @@ import { Check, Layers, Plus } from "lucide-react";
 
 import { useCollections } from "@/lib/collections";
 import { useCollectionMembership, type Membership } from "@/lib/project-mutations";
-import { apiErrorMessage } from "@/lib/tags";
 import {
   CommandDialog,
   CommandEmpty,
@@ -30,13 +29,11 @@ export function CollectionPickerDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const allQ = useCollections();
-  const { add, remove, create, error } = useCollectionMembership(projectId);
+  const { add, remove, create } = useCollectionMembership(projectId);
   const [search, setSearch] = React.useState("");
 
-  // Reflect in-flight changes immediately.
+  // The cache is updated optimistically, so `collections` already reflects pending changes.
   const member = new Set(collections.map((c) => c.id));
-  if (add.isPending && add.variables) member.add(add.variables);
-  if (remove.isPending && remove.variables) member.delete(remove.variables);
 
   const all = (allQ.data ?? []).filter((c) => !c.is_favourites);
   const typed = search.trim().replace(/\s+/g, " ");
@@ -90,9 +87,6 @@ export function CollectionPickerDialog({
           </CommandGroup>
         ) : null}
       </CommandList>
-      {error ? (
-        <div className="border-t px-3 py-2 text-xs text-destructive">Could not update collections: {apiErrorMessage(error)}</div>
-      ) : null}
     </CommandDialog>
   );
 }

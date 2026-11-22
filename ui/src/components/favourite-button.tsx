@@ -15,7 +15,7 @@ export function FavouriteButton({
   variant?: "outline" | "overlay";
   className?: string;
 }) {
-  const { on, toggle, failed } = useFavourite(projectId, isFavourite);
+  const { on, toggle } = useFavourite(projectId, isFavourite);
   return (
     <button
       type="button"
@@ -26,7 +26,7 @@ export function FavouriteButton({
       }}
       aria-pressed={on}
       aria-label={on ? "Remove from favourites" : "Add to favourites"}
-      title={failed ? "Couldn't update favourites, try again" : on ? "Remove from favourites" : "Add to favourites"}
+      title={on ? "Remove from favourites" : "Add to favourites"}
       className={cn(
         "grid shrink-0 cursor-pointer place-items-center transition-colors",
         variant === "overlay"

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Check, Plus } from "lucide-react";
 
-import { apiErrorMessage, useAllTags } from "@/lib/tags";
+import { useAllTags } from "@/lib/tags";
 import { useSaveProjectTags, type ProjectTag } from "@/lib/project-mutations";
 import {
   CommandDialog,
@@ -31,9 +31,8 @@ export function TagPickerDialog({
   const saveM = useSaveProjectTags(projectId);
   const [search, setSearch] = React.useState("");
 
-  // Show the result of the pending save right away.
-  const pending = saveM.isPending ? saveM.variables : undefined;
-  const current = pending ?? tags.map((t) => t.name);
+  // The cache is updated optimistically, so `tags` already reflects pending changes.
+  const current = tags.map((t) => t.name);
   const has = (name: string) => current.some((n) => n.toLowerCase() === name.toLowerCase());
 
   const toggle = (name: string) => {
@@ -88,9 +87,6 @@ export function TagPickerDialog({
           </CommandGroup>
         ) : null}
       </CommandList>
-      {saveM.isError ? (
-        <div className="border-t px-3 py-2 text-xs text-destructive">Could not update tags: {apiErrorMessage(saveM.error)}</div>
-      ) : null}
     </CommandDialog>
   );
 }
