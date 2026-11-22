@@ -33,6 +33,8 @@ pub struct SyncStats {
     pub assets_removed: u64,
     /// Files whose content was hashed during the run.
     pub assets_hashed: u64,
+    /// Image thumbnails (re)generated during the run.
+    pub thumbnails_generated: u64,
     pub errors: u64,
 }
 

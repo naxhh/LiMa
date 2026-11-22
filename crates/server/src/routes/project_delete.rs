@@ -22,7 +22,15 @@ pub async fn project_delete(
 ) -> Result<StatusCode, ApiErrorResponse> {
 
     match lima_db::queries::projects_delete::delete_project(state.db.pool(), &project_id).await {
-        Ok(_) => Ok(StatusCode::OK),
+        Ok(_) => {
+            let thumbs = state.thumbs_dir.clone();
+            let project = project_id.clone();
+            let removed = tokio::task::spawn_blocking(move || lima_indexer::thumbnails::remove_project(&thumbs, &project)).await;
+            if let Ok(Err(e)) = removed {
+                tracing::warn!("Failed to remove thumbnails of project {project_id}: {e}");
+            }
+            Ok(StatusCode::OK)
+        }
         Err(DeleteProjectError::NotFound) => {
             return Err(ApiErrorResponse::new(
                 StatusCode::NOT_FOUND,

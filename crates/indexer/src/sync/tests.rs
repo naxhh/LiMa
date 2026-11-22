@@ -25,6 +25,16 @@ impl Fixture {
         self.dir.join("library")
     }
 
+    fn thumbs(&self) -> PathBuf {
+        self.dir.join("thumbs")
+    }
+
+    fn write_png(&self, rel: &str, width: u32, color: [u8; 3]) {
+        let path = self.library().join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        image::RgbImage::from_pixel(width, width / 2, image::Rgb(color)).save(path).unwrap();
+    }
+
     fn write(&self, rel: &str, contents: &str) {
         let path = self.library().join(rel);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -32,7 +42,7 @@ impl Fixture {
     }
 
     async fn manager(&self) -> SyncManager {
-        SyncManager::new(self.db.pool().clone(), self.library()).await.unwrap()
+        SyncManager::new(self.db.pool().clone(), self.library(), self.thumbs()).await.unwrap()
     }
 
     async fn count(&self, sql: &str) -> i64 {
@@ -78,7 +88,7 @@ async fn run_mode(fx: &Fixture, manager: &SyncManager, mode: SyncMode) -> SyncRu
 async fn indexes_existing_folders() {
     let fx = Fixture::new().await;
     fx.write("benchy/benchy.stl", "solid");
-    fx.write("benchy/photos/cover.jpg", "jpg");
+    fx.write_png("benchy/photos/cover.png", 64, [10, 20, 30]);
     fx.write("benchy/.DS_Store", "junk");
     fx.write("dragon/dragon.3mf", "3mf");
     fx.write("loose-file.txt", "not a project");
@@ -94,7 +104,7 @@ async fn indexes_existing_folders() {
     assert_eq!(fx.count("SELECT COUNT(*) FROM projects").await, 2);
     assert_eq!(fx.count("SELECT COUNT(*) FROM assets").await, 3);
     assert_eq!(
-        fx.count("SELECT COUNT(*) FROM assets WHERE file_path = 'photos/cover.jpg' AND kind = 'image'").await,
+        fx.count("SELECT COUNT(*) FROM assets WHERE file_path = 'photos/cover.png' AND kind = 'image'").await,
         1
     );
     // First image becomes the main image.
@@ -120,7 +130,7 @@ async fn indexes_existing_folders() {
 async fn reconciles_changes() {
     let fx = Fixture::new().await;
     fx.write("benchy/benchy.stl", "solid");
-    fx.write("benchy/cover.png", "png");
+    fx.write_png("benchy/cover.png", 64, [10, 20, 30]);
     fx.write("benchy/old.obj", "obj");
     fx.write("dragon/dragon.3mf", "3mf");
 
@@ -162,7 +172,7 @@ async fn refuses_to_wipe_when_library_looks_unmounted() {
 #[tokio::test(flavor = "multi_thread")]
 async fn fails_when_library_missing() {
     let fx = Fixture::new().await;
-    let manager = SyncManager::new(fx.db.pool().clone(), Path::new("/definitely/not/here")).await.unwrap();
+    let manager = SyncManager::new(fx.db.pool().clone(), Path::new("/definitely/not/here"), fx.thumbs()).await.unwrap();
     let run = run_full(&fx, &manager).await;
     assert_eq!(run.status, "failed");
 }
@@ -267,4 +277,57 @@ async fn full_run_detects_in_place_rewrites() {
     assert_eq!(stored_hash(&fx, "benchy.stl").await, Some(blake3_hex("bbbbb")));
     let events = lima_db::queries::sync::list_events(fx.db.pool(), &full.id, 0, 100).await.unwrap();
     assert!(events.iter().any(|e| e.kind == "asset_content_changed"));
+}
+
+async fn asset_id(fx: &Fixture, file_path: &str) -> (String, String) {
+    sqlx::query_as::<_, (String, String)>("SELECT project_id, id FROM assets WHERE file_path = ?1")
+        .bind(file_path)
+        .fetch_one(fx.db.pool())
+        .await
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn manages_thumbnails() {
+    let fx = Fixture::new().await;
+    fx.write_png("benchy/cover.png", 1200, [200, 0, 0]);
+    fx.write("benchy/broken.jpg", "not really a jpeg");
+    fx.write("benchy/benchy.stl", "solid");
+    fx.write_png("dragon/dragon.png", 100, [0, 200, 0]);
+
+    let manager = fx.manager().await;
+    let run = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(run.status, "complete", "error: {}", run.error);
+    assert_eq!(run.stats.thumbnails_generated, 2);
+    assert_eq!(run.stats.errors, 1, "broken image is reported");
+
+    let (project_id, cover_id) = asset_id(&fx, "cover.png").await;
+    let thumb = crate::thumbnails::thumb_path(&fx.thumbs(), &project_id, &cover_id);
+    let img = image::open(&thumb).unwrap();
+    assert_eq!((img.width(), img.height()), (512, 256));
+
+    let events = lima_db::queries::sync::list_events(fx.db.pool(), &run.id, 0, 100).await.unwrap();
+    assert!(events.iter().any(|e| e.kind == "thumbnail_failed" && e.data["path"] == "benchy/broken.jpg"));
+
+    // Unchanged images keep their thumbnail; a deleted thumbnail is recreated.
+    let (dragon_project, dragon_id) = asset_id(&fx, "dragon.png").await;
+    let dragon_thumb = crate::thumbnails::thumb_path(&fx.thumbs(), &dragon_project, &dragon_id);
+    fs::remove_file(&dragon_thumb).unwrap();
+    let again = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(again.stats.thumbnails_generated, 1);
+    assert!(dragon_thumb.exists());
+
+    // A changed image gets a fresh thumbnail.
+    fx.write_png("benchy/cover.png", 300, [0, 0, 200]);
+    let changed = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(changed.stats.thumbnails_generated, 1);
+    assert_eq!(image::open(&thumb).unwrap().width(), 300);
+
+    // Removed assets and projects drop their thumbnails.
+    fs::remove_file(fx.library().join("benchy/cover.png")).unwrap();
+    fs::remove_dir_all(fx.library().join("dragon")).unwrap();
+    let removed = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(removed.status, "complete");
+    assert!(!thumb.exists());
+    assert!(!fx.thumbs().join(&dragon_project).exists());
 }

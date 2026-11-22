@@ -127,6 +127,8 @@ pub async fn project_import(
 
     }})?;
 
+    generate_thumbnails(&app_state, &project.id, &project.folder_path, &assets).await;
+
     let now = OffsetDateTime::now_utc().format(&Rfc3339).map_err(|e| {
         ApiErrorResponse::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -182,4 +184,39 @@ pub async fn project_import(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Thumbnails for freshly imported images. Failures are only logged: the next
+/// sync retries any image without a thumbnail.
+async fn generate_thumbnails(
+    state: &AppState,
+    project_id: &str,
+    folder_path: &str,
+    assets: &[lima_db::queries::projects_detail::ProjectAssetRow],
+) {
+    let jobs: Vec<(std::path::PathBuf, std::path::PathBuf)> = assets
+        .iter()
+        .filter(|a| a.kind == "image")
+        .map(|a| {
+            (
+                state.library_dir.join(folder_path).join(&a.file_path),
+                lima_indexer::thumbnails::thumb_path(&state.thumbs_dir, project_id, &a.id),
+            )
+        })
+        .collect();
+    if jobs.is_empty() {
+        return;
+    }
+
+    let result = tokio::task::spawn_blocking(move || {
+        for (source, dest) in jobs {
+            if let Err(e) = lima_indexer::thumbnails::generate(&source, &dest) {
+                tracing::warn!("Thumbnail generation failed for {}: {e}", source.display());
+            }
+        }
+    })
+    .await;
+    if let Err(e) = result {
+        tracing::error!("Thumbnail task crashed: {e}");
+    }
 }
