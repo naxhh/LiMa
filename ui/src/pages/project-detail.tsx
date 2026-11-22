@@ -7,6 +7,8 @@ import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
 import { formatBytes, timeAgo } from "@/lib/format";
 import { libraryUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
+import { sliceable } from "@/lib/slicers";
+import { OpenFileInSlicer, OpenProjectInSlicer } from "@/components/open-in-slicer";
 import { apiErrorMessage } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
@@ -157,6 +159,11 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
 
           <div className="flex flex-wrap gap-2">
             <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
+            <OpenProjectInSlicer
+              files={models
+                .filter((m) => sliceable(m.file_path))
+                .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
+            />
             <ImportAssetsDialog projectId={project.id} onImported={refresh} />
             <Button variant="outline" onClick={() => setEditing(true)}>
               <Pencil />
@@ -472,6 +479,9 @@ function FilesTable({
                     </td>
                     <td className="border-b px-3 py-1.5">
                       <div className="flex justify-end gap-1">
+                        {a.kind === "model" && sliceable(a.file_path) ? (
+                          <OpenFileInSlicer file={{ url, name: fileName(a.file_path) }} />
+                        ) : null}
                         <Button variant="outline" size="icon-sm" asChild>
                           <a href={url} download={fileName(a.file_path)} aria-label={`Download ${a.file_path}`}>
                             <Download />
