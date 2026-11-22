@@ -15,7 +15,7 @@ pub mod makerworld;
 pub mod printables;
 mod text;
 
-pub use text::html_to_text;
+pub use text::html_to_markdown;
 /// HTTP client type used by every importer.
 pub use reqwest::Client as HttpClient;
 
