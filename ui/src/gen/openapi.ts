@@ -164,6 +164,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["project_download"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/favourite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["add_favourite"];
+        post?: never;
+        delete: operations["remove_favourite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/import": {
         parameters: {
             query?: never;
@@ -330,6 +362,8 @@ export interface components {
             created_at: string;
             description: string;
             id: string;
+            /** @description The built-in Favourites collection: always exists, can't be renamed or deleted. */
+            is_favourites: boolean;
             name: string;
             /** Format: int64 */
             project_count: number;
@@ -463,12 +497,13 @@ export interface components {
         };
         ProjectDetailResponse: {
             assets: components["schemas"]["ProjectAssetResponse"][];
-            /** @description Collections the project belongs to, by name. */
+            /** @description The user's collections containing the project, by name (Favourites is `is_favourite`). */
             collections: components["schemas"]["ProjectCollectionResponse"][];
             created_at: string;
             description: string;
             folder_path: string;
             id: string;
+            is_favourite: boolean;
             last_scanned_at?: string | null;
             main_image_id?: string | null;
             name: string;
@@ -479,8 +514,11 @@ export interface components {
         ProjectListItem: components["schemas"]["ProjectRow"] & {
             /** Format: int64 */
             asset_count: number;
+            /** @description The user's collections containing the project (Favourites is reported as `is_favourite`). */
+            collections: components["schemas"]["ProjectCollectionResponse"][];
             /** Format: int64 */
             image_count: number;
+            is_favourite: boolean;
             /** Format: int64 */
             model_count: number;
             /** @description Upper-case extensions of the model files, e.g. `["3MF", "STL"]`. */
@@ -875,6 +913,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
+            /** @description Favourites can't be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
             /** @description Database failure */
             503: {
                 headers: {
@@ -929,7 +976,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
-            /** @description A collection with that name already exists */
+            /** @description Name taken, or renaming Favourites */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1311,6 +1358,125 @@ export interface operations {
             };
             /** @description Failed to delete asset */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    project_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Zip archive of the project's files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    add_favourite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project is in Favourites */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    remove_favourite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project is not in Favourites */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

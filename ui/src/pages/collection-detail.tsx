@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
+import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
 
 import { apiNoBody } from "@/lib/api";
 import { invalidateCollections, useCollection } from "@/lib/collections";
@@ -83,7 +83,15 @@ function CollectionDetailInner({ id }: { id: string }) {
           </nav>
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="flex min-w-0 max-w-3xl flex-col gap-2.5">
-              <span className="font-mono text-xs tracking-[0.12em] text-signal">// COLLECTION</span>
+              <span className="flex items-center gap-1.5 font-mono text-xs tracking-[0.12em] text-signal">
+                {c?.is_favourites ? (
+                  <>
+                    <Star className="size-3.5 fill-[#FFB547] text-[#FFB547]" /> // FAVOURITES
+                  </>
+                ) : (
+                  "// COLLECTION"
+                )}
+              </span>
               <h1 className="font-display text-4xl leading-none font-semibold tracking-[-0.03em] break-words sm:text-[52px]">
                 {c?.name ?? " "}
               </h1>
@@ -102,6 +110,7 @@ function CollectionDetailInner({ id }: { id: string }) {
                   <Pencil />
                   Edit
                 </Button>
+                {c.is_favourites ? null : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon" aria-label="More actions">
@@ -115,6 +124,7 @@ function CollectionDetailInner({ id }: { id: string }) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                )}
               </div>
             ) : null}
           </div>
@@ -130,7 +140,16 @@ function CollectionDetailInner({ id }: { id: string }) {
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">Nothing here yet</div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Open a project and use <span className="text-foreground">Add to collection</span> to put it here.
+              {c.is_favourites ? (
+                <>
+                  Star a project (<Star className="inline size-3.5 align-[-2px]" /> on its card or page) to add it here.
+                </>
+              ) : (
+                <>
+                  Open a project and use <span className="text-foreground">Add to collection</span>, or the{" "}
+                  collections button on a card, to put it here.
+                </>
+              )}
             </p>
             <Button asChild variant="outline" className="mt-5">
               <Link to="/">Browse the library</Link>
@@ -142,19 +161,12 @@ function CollectionDetailInner({ id }: { id: string }) {
           {!c
             ? Array.from({ length: 4 }, (_, i) => <ProjectCardSkeleton key={i} />)
             : c.projects.map((p) => (
-                <div key={p.id} className="group/item relative">
-                  <ProjectCard project={p} />
-                  <button
-                    type="button"
-                    onClick={() => removeM.mutate(p.id)}
-                    disabled={removeM.isPending && removeM.variables === p.id}
-                    aria-label={`Remove ${p.name} from this collection`}
-                    title="Remove from collection"
-                    className="absolute top-3 left-3 z-10 grid size-8 cursor-pointer place-items-center rounded-full border border-white/15 bg-black/65 text-white opacity-100 backdrop-blur transition-opacity hover:bg-black/85 focus-visible:opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  onRemove={() => removeM.mutate(p.id)}
+                  removeLabel={c.is_favourites ? "Remove from favourites" : "Remove from this collection"}
+                />
               ))}
         </div>
       </PageBody>

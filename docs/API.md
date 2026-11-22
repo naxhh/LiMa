@@ -85,6 +85,9 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 | GET | `/stats` | Library totals (projects, files, bytes) | ✅ Done |
 | DELETE | `/projects/{project_id}` | Delete project (DB + filesystem) | ✅ Done |
 | GET | `/projects/{project_id}` | Get single project details | ✅ Done |
+| GET | `/projects/{project_id}/download` | All of the project's files as a streamed zip | ✅ Done |
+| PUT | `/projects/{project_id}/favourite` | Add the project to Favourites | ✅ Done |
+| DELETE | `/projects/{project_id}/favourite` | Remove the project from Favourites | ✅ Done |
 | PATCH | `/projects/{project_id}` | Update project metadata (name, description, main image) | ✅ Done |
 | POST | `/projects/{project_id}/imports` | Import bundle into project (move files, create assets, set main image) | ✅ Done |
 | GET | `/projects/{project_id}/assets` | List all assets for the project | ⛔ Out of scope (v0) |
@@ -107,7 +110,7 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
-| GET | `/collections` | List collections with project count and up to 4 cover images | ✅ Done |
+| GET | `/collections` | List collections (Favourites first) with project count and up to 4 cover images. Favourites is built in: it always exists and can't be renamed or deleted | ✅ Done |
 | POST | `/collections` | Create collection (`name`, optional `description`; names unique ignoring case) | ✅ Done |
 | GET | `/collections/{collection_id}` | Collection with its projects (newest added first) | ✅ Done |
 | PATCH | `/collections/{collection_id}` | Update name and/or description | ✅ Done |

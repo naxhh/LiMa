@@ -14,6 +14,15 @@ pub struct ProjectSummary {
     /// Upper-case extensions of the project's model files, sorted (e.g. `["3MF", "STL"]`).
     pub model_formats: Vec<String>,
     pub tags: Vec<SummaryTag>,
+    /// The user's collections containing the project (built-in ones excluded).
+    pub collections: Vec<SummaryCollection>,
+    pub is_favourite: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SummaryCollection {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -120,6 +129,35 @@ pub async fn project_summaries(
     for t in tags {
         if let Some(s) = out.get_mut(&t.project_id) {
             s.tags.push(SummaryTag { id: t.id, name: t.name, color: t.color });
+        }
+    }
+
+    #[derive(FromRow)]
+    struct MembershipRow {
+        project_id: String,
+        id: String,
+        name: String,
+        system_key: Option<String>,
+    }
+    let memberships = sqlx::query_as::<_, MembershipRow>(
+        r#"
+        SELECT cp.project_id, c.id, c.name, c.system_key
+        FROM collection_projects cp
+        JOIN collections c ON c.id = cp.collection_id
+        WHERE cp.project_id IN (SELECT value FROM json_each(?1))
+        ORDER BY c.name COLLATE NOCASE
+        "#,
+    )
+    .bind(&ids_json)
+    .fetch_all(pool)
+    .await?;
+    for m in memberships {
+        if let Some(s) = out.get_mut(&m.project_id) {
+            match m.system_key.as_deref() {
+                Some(crate::queries::collections::FAVOURITES_KEY) => s.is_favourite = true,
+                Some(_) => {}
+                None => s.collections.push(SummaryCollection { id: m.id, name: m.name }),
+            }
         }
     }
 

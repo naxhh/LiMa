@@ -11,13 +11,15 @@ pub struct CollectionRow {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// Set for built-in collections (`favourites`), `None` for the user's own.
+    pub system_key: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub project_count: i64,
 }
 
 const COLUMNS: &str = r#"
-    c.id, c.name, c.description, c.created_at, c.updated_at,
+    c.id, c.name, c.description, c.system_key, c.created_at, c.updated_at,
     (SELECT COUNT(*) FROM collection_projects cp WHERE cp.collection_id = c.id) AS project_count
 "#;
 
@@ -36,7 +38,7 @@ pub struct CollectionRef {
 
 pub async fn list_collections(pool: &Pool<Sqlite>) -> Result<Vec<CollectionRow>, sqlx::Error> {
     sqlx::query_as::<_, CollectionRow>(&format!(
-        "SELECT {COLUMNS} FROM collections c ORDER BY c.name COLLATE NOCASE, c.id"
+        "SELECT {COLUMNS} FROM collections c ORDER BY c.system_key IS NULL, c.name COLLATE NOCASE, c.id"
     ))
     .fetch_all(pool)
     .await
@@ -122,7 +124,7 @@ pub async fn collections_for_project(pool: &Pool<Sqlite>, project_id: &str) -> R
         SELECT c.id, c.name
         FROM collection_projects cp
         JOIN collections c ON c.id = cp.collection_id
-        WHERE cp.project_id = ?1
+        WHERE cp.project_id = ?1 AND c.system_key IS NULL
         ORDER BY c.name COLLATE NOCASE
         "#,
     )
@@ -149,6 +151,7 @@ pub async fn create_collection(
         id,
         name: name.to_string(),
         description: description.to_string(),
+        system_key: None,
         created_at: now.to_string(),
         updated_at: now.to_string(),
         project_count: 0,
@@ -186,6 +189,55 @@ pub async fn delete_collection(pool: &Pool<Sqlite>, id: &str) -> Result<bool, sq
     let res = sqlx::query("DELETE FROM collections WHERE id = ?1").bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(res.rows_affected() > 0)
+}
+
+/// Key of the built-in Favourites collection.
+pub const FAVOURITES_KEY: &str = "favourites";
+const FAVOURITES_NAME: &str = "Favourites";
+
+/// Id of the Favourites collection, creating it when missing. Safe to call on every startup.
+pub async fn ensure_favourites(pool: &Pool<Sqlite>, now: &str) -> Result<String, sqlx::Error> {
+    if let Some(id) = favourites_id(pool).await? {
+        return Ok(id);
+    }
+    // A user collection with that name becomes the built-in one instead of clashing.
+    if let Some(id) = find_collection_id_by_name(pool, FAVOURITES_NAME).await? {
+        sqlx::query("UPDATE collections SET system_key = ?2 WHERE id = ?1").bind(&id).bind(FAVOURITES_KEY).execute(pool).await?;
+        return Ok(id);
+    }
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO collections (id, name, description, system_key, created_at, updated_at) VALUES (?1, ?2, '', ?3, ?4, ?4)",
+    )
+    .bind(&id)
+    .bind(FAVOURITES_NAME)
+    .bind(FAVOURITES_KEY)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+pub async fn is_favourite(pool: &Pool<Sqlite>, project_id: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM collection_projects cp JOIN collections c ON c.id = cp.collection_id
+            WHERE cp.project_id = ?1 AND c.system_key = ?2
+        )
+        "#,
+    )
+    .bind(project_id)
+    .bind(FAVOURITES_KEY)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn favourites_id(pool: &Pool<Sqlite>) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>("SELECT id FROM collections WHERE system_key = ?1")
+        .bind(FAVOURITES_KEY)
+        .fetch_optional(pool)
+        .await
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -294,6 +346,31 @@ mod tests {
             sqlx::query("UPDATE projects SET main_image_id = ?1 WHERE id = ?2").bind(&asset).bind(&id).execute(pool).await.unwrap();
         }
         id
+    }
+
+    #[tokio::test]
+    async fn favourites_is_created_once_and_listed_first() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        create_collection(pool, "Aardvarks", "", "t").await.unwrap();
+        let fav = ensure_favourites(pool, "t").await.unwrap();
+        assert_eq!(ensure_favourites(pool, "t").await.unwrap(), fav, "idempotent");
+        let list = list_collections(pool).await.unwrap();
+        assert_eq!(list[0].id, fav);
+        assert_eq!(list[0].system_key.as_deref(), Some(FAVOURITES_KEY));
+        let p = project(pool, "p", false).await;
+        add_project(pool, &fav, &p, "t").await.unwrap();
+        assert!(collections_for_project(pool, &p).await.unwrap().is_empty(), "favourites isn't listed as a regular membership");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn existing_favourites_collection_is_adopted() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        let mine = create_collection(pool, "favourites", "", "t").await.unwrap();
+        assert_eq!(ensure_favourites(pool, "t").await.unwrap(), mine.id);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]
