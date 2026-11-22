@@ -118,6 +118,12 @@ pub async fn export_metadata(pool: &Pool<Sqlite>, now: &str) -> Result<MetadataB
         })
         .collect();
 
+    let ignored_folders = crate::queries::ignored_folders::list_ignored(pool)
+        .await?
+        .into_iter()
+        .map(|f| f.folder_path)
+        .collect();
+
     Ok(MetadataBackup {
         format: METADATA_FORMAT.to_string(),
         version: METADATA_VERSION,
@@ -125,6 +131,7 @@ pub async fn export_metadata(pool: &Pool<Sqlite>, now: &str) -> Result<MetadataB
         tags,
         collections,
         projects,
+        ignored_folders,
     })
 }
 
@@ -340,6 +347,18 @@ pub async fn restore_metadata(
             collection_ids.insert(key.clone(), id);
             report.collections_created += 1;
         }
+    }
+
+    // Folders the user removed from LiMa stay removed (their files are never touched).
+    for folder in &backup.ignored_folders {
+        let res = sqlx::query("INSERT OR IGNORE INTO ignored_folders (folder_path, created_at) VALUES (?1, ?2)")
+            .bind(folder)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        report.ignored_folders_added += res.rows_affected() as usize;
+        let res = sqlx::query("DELETE FROM projects WHERE folder_path = ?1").bind(folder).execute(&mut *tx).await?;
+        report.projects_hidden += res.rows_affected() as usize;
     }
 
     if dry_run {
@@ -581,6 +600,7 @@ mod tests {
             exported_at: T.into(),
             tags: vec![],
             collections: vec![],
+            ignored_folders: vec![],
             projects: vec![
                 BackupProject {
                     folder_path: "original".into(), name: "Original".into(), description: String::new(),
@@ -609,6 +629,35 @@ mod tests {
         b.version = 1;
         b.format = "something-else".into();
         assert!(matches!(restore_metadata(db.pool(), &b, true, T).await, Err(RestoreError::UnsupportedFormat(_))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn ignored_folders_round_trip_and_stay_hidden() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        indexed(pool, "kept", &[("a.stl", "model", "h1")]).await;
+        indexed(pool, "removed", &[("b.stl", "model", "h2")]).await;
+        let id: String = sqlx::query_scalar("SELECT id FROM projects WHERE folder_path = 'removed'").fetch_one(pool).await.unwrap();
+        crate::queries::projects_delete::remove_project_keep_files(pool, &id, T).await.unwrap();
+
+        let backup = export_metadata(pool, T).await.unwrap();
+        assert_eq!(backup.ignored_folders, vec!["removed".to_string()]);
+
+        // A rebuilt database: the full sync brought "removed" back before the restore.
+        crate::queries::ignored_folders::unignore(pool, "removed").await.unwrap();
+        indexed(pool, "removed", &[("b.stl", "model", "h2")]).await;
+
+        let dry = restore_metadata(pool, &backup, true, T).await.unwrap();
+        assert_eq!((dry.ignored_folders_added, dry.projects_hidden), (1, 1));
+        let count = |sql: &'static str| async move { sqlx::query_scalar::<_, i64>(sql).fetch_one(pool).await.unwrap() };
+        assert_eq!(count("SELECT COUNT(*) FROM projects WHERE folder_path = 'removed'").await, 1, "dry run writes nothing");
+
+        let r = restore_metadata(pool, &backup, false, T).await.unwrap();
+        assert_eq!((r.ignored_folders_added, r.projects_hidden), (1, 1));
+        assert_eq!(count("SELECT COUNT(*) FROM projects WHERE folder_path = 'removed'").await, 0);
+        assert_eq!(count("SELECT COUNT(*) FROM projects WHERE folder_path = 'kept'").await, 1);
+        assert_eq!(count("SELECT COUNT(*) FROM ignored_folders").await, 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

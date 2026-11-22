@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronLeft, ChevronRight, Download, Image as ImageIcon, MoreHorizontal, Pencil, Star, Trash2, File as FileIcon } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Star, Trash2, File as FileIcon } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -186,7 +186,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
                 {current ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
                   <Trash2 />
-                  Delete project
+                  Remove project…
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -234,24 +234,49 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete “{project.name}”?</DialogTitle>
+            <DialogTitle>Remove “{project.name}”?</DialogTitle>
             <DialogDescription>
-              This removes the project folder <span className="font-mono">{project.folder_path}</span> and its{" "}
-              {project.assets.length} file{project.assets.length === 1 ? "" : "s"} from the library. It can’t be undone.
+              Choose what happens to the folder <span className="font-mono">{project.folder_path}</span>.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
+          <div className="grid gap-2.5">
+            <button
+              type="button"
+              className="group rounded-xl border p-3.5 text-left transition-colors hover:border-line-strong hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               onClick={() => {
-                deleteProjectM.mutate();
+                deleteProjectM.mutate({ keepFiles: true });
                 navigate("/");
               }}
             >
-              Delete project
+              <div className="flex items-center gap-2 font-medium">
+                <EyeOff className="size-4 text-muted-foreground" />
+                Remove from LiMa
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The files stay on disk and sync stops picking the folder up. Its tags, collections and description are
+                dropped. Un-ignore it from Sync → Ignored folders to index it again.
+              </p>
+            </button>
+            <button
+              type="button"
+              className="group rounded-xl border border-destructive/40 p-3.5 text-left transition-colors hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              onClick={() => {
+                deleteProjectM.mutate({ keepFiles: false });
+                navigate("/");
+              }}
+            >
+              <div className="flex items-center gap-2 font-medium text-destructive">
+                <Trash2 className="size-4" />
+                Delete files
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Removes the folder and its {project.assets.length} file{project.assets.length === 1 ? "" : "s"} from disk. It can’t be undone.
+              </p>
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

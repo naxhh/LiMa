@@ -22,3 +22,4 @@ pub mod assets;pub mod sync;
 pub mod library_index;
 pub mod collections;
 pub mod metadata;
+pub mod ignored_folders;

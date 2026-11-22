@@ -148,6 +148,11 @@ impl<'a> Scanner<'a> {
             return Err(ScanError::LibraryEmpty { indexed: indexed.len() });
         }
 
+        // Folders removed from LiMa with their files kept stay out of the index.
+        // (Filtered after the empty-library check, which is about the disk.)
+        let ignored = lima_db::queries::ignored_folders::ignored_set(self.pool).await?;
+        let dirs: Vec<String> = dirs.into_iter().filter(|d| !ignored.contains(d)).collect();
+
         // A scoped run only looks at (and may only remove) the requested folders.
         let dirs: Vec<String> = match &self.scope {
             Some(scope) => {

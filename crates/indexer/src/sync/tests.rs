@@ -428,3 +428,38 @@ async fn watcher_reports_missing_library() {
     assert!(status.enabled && !status.active);
     assert!(status.error.is_some());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn skips_ignored_folders_until_unignored() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    fx.write("dragon/dragon.3mf", "3mf");
+    let manager = fx.manager().await;
+    run_full(&fx, &manager).await;
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects").await, 2);
+
+    // Remove "dragon" from LiMa but keep its files.
+    let dragon: String = sqlx::query_scalar("SELECT id FROM projects WHERE folder_path = 'dragon'")
+        .fetch_one(fx.db.pool())
+        .await
+        .unwrap();
+    lima_db::queries::projects_delete::remove_project_keep_files(fx.db.pool(), &dragon, "t").await.unwrap();
+
+    for mode in [SyncMode::Incremental, SyncMode::Full] {
+        let run = run_mode(&fx, &manager, mode).await;
+        assert_eq!(run.status, "complete", "error: {}", run.error);
+        assert_eq!(run.stats.projects_total, 1, "{mode:?}");
+        assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'").await, 0, "{mode:?}");
+    }
+    assert!(fx.library().join("dragon/dragon.3mf").exists());
+
+    // A scoped run (what the watcher does) skips it too.
+    let run = manager.start_scoped(SyncMode::Incremental, SyncReason::Watcher, Some(vec!["dragon".into()])).await.unwrap();
+    wait_done(fx.db.pool(), &run.id).await;
+    manager.wait_idle().await;
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'").await, 0);
+
+    lima_db::queries::ignored_folders::unignore(fx.db.pool(), "dragon").await.unwrap();
+    run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'").await, 1);
+}

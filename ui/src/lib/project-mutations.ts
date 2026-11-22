@@ -202,17 +202,21 @@ export function useDeleteAsset(projectId: string) {
   });
 }
 
-/** Deletes a project. It vanishes from every list immediately. */
+/**
+ * Deletes a project, or with `keepFiles` only removes it from LiMa (the folder stays on disk
+ * and sync ignores it). Either way it vanishes from every list immediately.
+ */
 export function useDeleteProject(projectId: string, projectName: string) {
   const qc = useQueryClient();
+  type Vars = { keepFiles: boolean };
   return useMutation({
-    mutationFn: () => apiNoBody("DELETE", `/projects/${projectId}`),
-    ...optimisticHandlers<void>(qc, {
+    mutationFn: ({ keepFiles }: Vars) => apiNoBody("DELETE", `/projects/${projectId}${keepFiles ? "?files=keep" : ""}`),
+    ...optimisticHandlers<Vars>(qc, {
       mutationKey: projectMutationKey(projectId),
       keys: [...PROJECT_CACHE_KEYS, COLLECTIONS_QUERY_KEY],
       apply: () => patchProjects(qc, () => null, projectId),
-      errorTitle: `Couldn't delete “${projectName}”`,
-      invalidate: [["projects"], ["collection"], COLLECTIONS_QUERY_KEY],
+      errorTitle: ({ keepFiles }) => (keepFiles ? `Couldn't remove “${projectName}”` : `Couldn't delete “${projectName}”`),
+      invalidate: [["projects"], ["collection"], COLLECTIONS_QUERY_KEY, ["ignored-folders"]],
     }),
     onSuccess: () => qc.removeQueries({ queryKey: ["project", projectId] }),
   });

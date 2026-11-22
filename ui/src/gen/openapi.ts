@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ignored-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_ignored_folders"];
+        put?: never;
+        post?: never;
+        delete: operations["unignore_folder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports": {
         parameters: {
             query?: never;
@@ -732,6 +748,12 @@ export interface components {
         HealthResponse: {
             db: boolean;
         };
+        IgnoredFolderItem: {
+            /** @description When it was removed from LiMa (RFC 3339). */
+            created_at: string;
+            /** @description Folder path relative to the library root. */
+            folder_path: string;
+        };
         ImportFile: {
             group?: string | null;
             id: string;
@@ -807,6 +829,9 @@ export interface components {
         ListCollectionsResponse: {
             items: components["schemas"]["Collection"][];
         };
+        ListIgnoredFoldersResponse: {
+            items: components["schemas"]["IgnoredFolderItem"][];
+        };
         ListProjectsParams: {
             cursor?: string | null;
             /** @description Comma-separated model file extensions (`STL,3MF`); projects must have one of them. */
@@ -867,6 +892,8 @@ export interface components {
             exported_at: string;
             /** @description Always `lima-metadata`. */
             format: string;
+            /** @description Folders removed from LiMa with their files kept (sync skips them). */
+            ignored_folders?: string[];
             projects?: components["schemas"]["BackupProject"][];
             tags?: components["schemas"]["BackupTag"][];
             /**
@@ -965,10 +992,14 @@ export interface components {
             collections_created: number;
             covers_set: number;
             dry_run: boolean;
+            /** @description Folders added to the ignore list. */
+            ignored_folders_added: number;
             /** @description Restored onto a project whose folder was renamed, found by its file hashes. */
             matched_by_files: components["schemas"]["RenamedMatch"][];
             /** @description Restored onto the project with the same folder. */
             matched_by_folder: number;
+            /** @description Projects removed from the index (files kept) because the backup lists their folder as ignored. */
+            projects_hidden: number;
             projects_in_backup: number;
             projects_updated: number;
             tag_links_added: number;
@@ -1555,6 +1586,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_ignored_folders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Folders that sync skips */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIgnoredFoldersResponse"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    unignore_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Folder path relative to the library root. */
+                folder_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Un-ignored; a sync of that folder starts right away (or it's picked up by the next sync if one is running) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The folder wasn't ignored */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
@@ -2319,6 +2418,11 @@ export interface operations {
             path: {
                 /** @description The ID of the project to delete */
                 project_id: string;
+                /**
+                 * @description `delete` (default) removes the folder from disk; `keep` only removes the project
+                 *     from LiMa, leaves the files and adds the folder to the ignore list.
+                 */
+                files: string | null;
             };
             cookie?: never;
         };
@@ -2330,6 +2434,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unknown `files` mode */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
             /** @description Project not found */
             404: {
