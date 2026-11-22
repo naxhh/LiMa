@@ -23,3 +23,4 @@ pub mod metadata;
 pub mod ignored_folders;
 pub mod trash;
 pub mod project_bulk;
+pub mod duplicates;
