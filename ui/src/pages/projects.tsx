@@ -11,55 +11,12 @@ import { useLibraryStats, useSyncStatus } from "@/lib/sync";
 import { cn } from "@/lib/utils";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
+import { ViewControls } from "@/components/view-controls";
+import { LIBRARY_SORTS, gridClass, useDensity, useViewPrefs, type SortOption } from "@/lib/view-prefs";
 
 type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
 
-const PAGE_SIZES = [24, 48, 96];
-const DEFAULT_PAGE_SIZE = 48;
-
-const SORT_OPTIONS = [
-  { id: "updated-desc", label: "Recently updated", sort: "updated", order: "desc" },
-  { id: "updated-asc", label: "Oldest updated", sort: "updated", order: "asc" },
-  { id: "created-desc", label: "Newest added", sort: "created", order: "desc" },
-  { id: "created-asc", label: "Oldest added", sort: "created", order: "asc" },
-  { id: "name-asc", label: "Name A–Z", sort: "name", order: "asc" },
-  { id: "name-desc", label: "Name Z–A", sort: "name", order: "desc" },
-  { id: "size-desc", label: "Largest", sort: "size", order: "desc" },
-  { id: "size-asc", label: "Smallest", sort: "size", order: "asc" },
-  { id: "files-desc", label: "Most files", sort: "files", order: "desc" },
-  { id: "files-asc", label: "Fewest files", sort: "files", order: "asc" },
-] as const;
-type SortOption = (typeof SORT_OPTIONS)[number];
-const DEFAULT_SORT = SORT_OPTIONS[0];
-
-/** Last chosen sort and page size, used when the URL doesn't say. */
-const VIEW_KEY = "lima.projects.view";
-
-function readStoredView(): { sort: SortOption; perPage: number } {
-  const fallback = { sort: DEFAULT_SORT, perPage: DEFAULT_PAGE_SIZE };
-  try {
-    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null") as { sortId?: string; perPage?: number } | null;
-    return {
-      sort: SORT_OPTIONS.find((o) => o.id === v?.sortId) ?? fallback.sort,
-      perPage: PAGE_SIZES.includes(v?.perPage ?? 0) ? v!.perPage! : fallback.perPage,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function storeView(change: { sortId?: string; perPage?: number }) {
-  try {
-    const current = readStoredView();
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ sortId: current.sort.id, perPage: current.perPage, ...change }));
-  } catch {
-    // Not available (private mode etc.): the URL still works.
-  }
-}
 const TAG_CHIPS = 10;
-
-const SELECT_CLASS =
-  "h-8 rounded-lg border border-input bg-background px-2 font-mono text-xs text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60";
 
 type Filters = { tags: string[]; formats: string[]; noImage: boolean };
 
@@ -110,13 +67,10 @@ export function ProjectsPage() {
   const filtered = filters.tags.length > 0 || filters.formats.length > 0 || filters.noImage;
 
   // Sort and page size: from the URL, else the last choice, else the defaults.
-  const [stored] = React.useState(readStoredView);
-  const sortParam = searchParams.get("sort");
-  const orderParam = searchParams.get("order");
-  const sortOption =
-    SORT_OPTIONS.find((o) => o.sort === sortParam && o.order === orderParam) ?? (sortParam ? DEFAULT_SORT : stored.sort);
-  const perPageParam = Number(searchParams.get("per_page"));
-  const perPage = PAGE_SIZES.includes(perPageParam) ? perPageParam : stored.perPage;
+  const view = useViewPrefs("lima.projects.view", LIBRARY_SORTS, searchParams);
+  const sortOption = view.sort;
+  const perPage = view.perPage;
+  const [density, setDensity] = useDensity();
   const searching = debouncedQ.trim().length > 0;
 
   const projectsQ = useInfiniteQuery({
@@ -201,44 +155,16 @@ export function ProjectsPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <select
-              aria-label="Sort projects"
-              value={query ? "relevance" : sortOption.id}
-              disabled={!!query}
-              onChange={(e) => {
-                const o = SORT_OPTIONS.find((x) => x.id === e.target.value) ?? DEFAULT_SORT;
-                const isDefault = o.id === DEFAULT_SORT.id;
-                setParams({ sort: isDefault ? null : o.sort, order: isDefault ? null : o.order });
-                storeView({ sortId: o.id });
-              }}
-              className={SELECT_CLASS}
-            >
-              {query ? (
-                <option value="relevance">Best match</option>
-              ) : (
-                SORT_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))
-              )}
-            </select>
-            <select
-              aria-label="Projects per page"
-              value={perPage}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                setParams({ per_page: n === DEFAULT_PAGE_SIZE ? null : String(n) });
-                storeView({ perPage: n });
-              }}
-              className={SELECT_CLASS}
-            >
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n} / page
-                </option>
-              ))}
-            </select>
+            <ViewControls
+              options={LIBRARY_SORTS}
+              sort={sortOption}
+              onSort={(id) => setParams(view.chooseSort(id))}
+              searching={!!query}
+              perPage={perPage}
+              onPerPage={(n) => setParams(view.choosePerPage(n))}
+              density={density}
+              onDensity={setDensity}
+            />
             <span className="font-mono text-xs text-muted-foreground">
               {projectsQ.isLoading
                 ? "loading…"
@@ -289,10 +215,10 @@ export function ProjectsPage() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
+        <div className={gridClass(density)}>
           {projectsQ.isLoading
             ? Array.from({ length: 8 }, (_, i) => <ProjectCardSkeleton key={i} />)
-            : items.map((p) => <ProjectCard key={p.id} project={p} />)}
+            : items.map((p) => <ProjectCard key={p.id} project={p} compact={density === "compact"} />)}
         </div>
 
         <div ref={sentinelRef} className="h-8" />

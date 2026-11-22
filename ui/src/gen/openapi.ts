@@ -716,7 +716,7 @@ export interface components {
             project_id: string;
         };
         CollectionDetailResponse: components["schemas"]["Collection"] & {
-            /** @description Projects in the collection, most recently added first. */
+            /** @description Projects in the collection, in the requested order (default: most recently added first). */
             projects: components["schemas"]["ProjectListItem"][];
         };
         CreateBundleResponse: {
@@ -1333,6 +1333,13 @@ export interface operations {
             path: {
                 /** @description Collection id */
                 collection_id: string;
+                /**
+                 * @description added (default; when it was added to the collection), or any project sort:
+                 *     updated, created, modified, name, size, files.
+                 */
+                sort: string | null;
+                /** @description asc or desc (default: asc for name, desc otherwise). */
+                order: string | null;
             };
             cookie?: never;
         };
@@ -1345,6 +1352,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionDetailResponse"];
+                };
+            };
+            /** @description Unknown sort or order */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
             /** @description Collection not found */
@@ -2288,7 +2304,7 @@ export interface operations {
                 formats?: string;
                 /** @description Only projects without images */
                 no_image?: boolean;
-                /** @description Sort key: updated (default), created, name, size, files. Ignored when searching (results are by relevance) */
+                /** @description Sort key: updated (default; last change seen by LiMa), created (added to LiMa), modified (newest file date on disk), name, size, files. Ignored when searching (results are by relevance) */
                 sort?: string;
                 /** @description Sort order: asc or desc (default: asc for name, desc otherwise). Ignored when searching */
                 order?: string;

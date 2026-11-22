@@ -167,6 +167,12 @@ pub async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Re
             message: format!("{} returned {}", host_of(url), res.status()),
         });
     }
+    // Keep the file's original date when the server tells it.
+    let last_modified = res
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| httpdate::parse_http_date(v).ok());
     let mut out = tokio::fs::File::create(dest).await?;
     let mut stream = res.bytes_stream();
     let written: std::result::Result<(), ImportError> = async {
@@ -181,6 +187,11 @@ pub async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Re
         drop(out);
         let _ = tokio::fs::remove_file(dest).await;
         return Err(e);
+    }
+    if let Some(time) = last_modified {
+        if let Err(e) = out.into_std().await.set_modified(time) {
+            tracing::debug!("Could not set the date of {}: {e}", dest.display());
+        }
     }
     Ok(dest.to_path_buf())
 }
@@ -273,5 +284,41 @@ mod tests {
         assert_eq!(names.claim("a.png"), "a-3.png");
         assert_eq!(names.claim("../etc/passwd"), "_etc_passwd");
         assert_eq!(names.claim("   "), "file");
+    }
+}
+
+#[cfg(test)]
+mod download_tests {
+    use std::io::{Read, Write};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    /// Serves one canned HTTP response on a random local port.
+    fn serve_once(response: &'static str) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = conn.read(&mut buf);
+            conn.write_all(response.as_bytes()).unwrap();
+        });
+        format!("http://{addr}/file.stl")
+    }
+
+    #[tokio::test]
+    async fn keeps_the_servers_last_modified_date() {
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\nLast-Modified: Wed, 21 Oct 2015 07:28:00 GMT\r\nContent-Length: 5\r\nConnection: close\r\n\r\nsolid",
+        );
+        let dir = std::env::temp_dir().join(format!("lima-dl-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("file.stl");
+
+        super::download_to(&reqwest::Client::new(), &url, &dest).await.unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "solid");
+        let modified = std::fs::metadata(&dest).unwrap().modified().unwrap();
+        assert_eq!(modified, UNIX_EPOCH + Duration::from_secs(1_445_412_480));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

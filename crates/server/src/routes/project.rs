@@ -50,21 +50,33 @@ impl ListProjectsParams {
         lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false) }
     }
     
-    /// Sort key and direction (true = descending). Name defaults to A–Z, the rest to newest/largest first.
     fn sort(&self) -> Result<(ProjectSort, bool), ApiErrorResponse> {
-        let invalid = |msg: &'static str| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_sort", msg);
-        let sort = match self.sort.as_deref() {
-            None => ProjectSort::default(),
-            Some(s) => ProjectSort::parse(s).ok_or_else(|| invalid("sort must be one of: updated, created, name, size, files"))?,
-        };
-        let descending = match self.order.as_deref() {
-            None => sort != ProjectSort::Name,
-            Some("asc") => false,
-            Some("desc") => true,
-            Some(_) => return Err(invalid("order must be asc or desc")),
-        };
-        Ok((sort, descending))
+        parse_sort(self.sort.as_deref(), self.order.as_deref())
     }
+}
+
+fn invalid_sort(msg: &'static str) -> ApiErrorResponse {
+    ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_sort", msg)
+}
+
+/// Parses `order` for a sort key: asc/desc, or the key's default when missing
+/// (A–Z for name, newest/largest first otherwise). Returns true for descending.
+pub(crate) fn parse_order(order: Option<&str>, ascending_by_default: bool) -> Result<bool, ApiErrorResponse> {
+    match order {
+        None => Ok(!ascending_by_default),
+        Some("asc") => Ok(false),
+        Some("desc") => Ok(true),
+        Some(_) => Err(invalid_sort("order must be asc or desc")),
+    }
+}
+
+/// Sort key and direction (true = descending) for project lists.
+pub(crate) fn parse_sort(sort: Option<&str>, order: Option<&str>) -> Result<(ProjectSort, bool), ApiErrorResponse> {
+    let sort = match sort {
+        None => ProjectSort::default(),
+        Some(s) => ProjectSort::parse(s).ok_or_else(|| invalid_sort("sort must be one of: updated, created, modified, name, size, files"))?,
+    };
+    Ok((sort, parse_order(order, sort == ProjectSort::Name)?))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -125,7 +137,7 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
         ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
         ("formats" = Option<String>, Query, description = "Comma-separated model extensions (STL,3MF,...); projects must have at least one"),
         ("no_image" = Option<bool>, Query, description = "Only projects without images"),
-        ("sort" = Option<String>, Query, description = "Sort key: updated (default), created, name, size, files. Ignored when searching (results are by relevance)"),
+        ("sort" = Option<String>, Query, description = "Sort key: updated (default; last change seen by LiMa), created (added to LiMa), modified (newest file date on disk), name, size, files. Ignored when searching (results are by relevance)"),
         ("order" = Option<String>, Query, description = "Sort order: asc or desc (default: asc for name, desc otherwise). Ignored when searching"),
     ),
     responses(

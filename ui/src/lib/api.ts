@@ -61,6 +61,16 @@ export async function apiNoBody(method: "DELETE" | "POST" | "PUT", path: string,
   if (!res.ok) throw new ApiError(res.status, await parseBody(res));
 }
 
+/** Upload form for `POST /bundles`. Each file is preceded by its original date (`mtime`, ms) so it's kept. */
+export function bundleForm(files: File[]): FormData {
+  const form = new FormData();
+  for (const f of files) {
+    if (f.lastModified) form.append("mtime", String(f.lastModified));
+    form.append("files[]", f, f.name);
+  }
+  return form;
+}
+
 export async function apiMultipart<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "POST",

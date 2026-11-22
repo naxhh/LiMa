@@ -163,7 +163,14 @@ async fn move_file(src: &PathBuf, dst: &PathBuf) -> Result<(), std::io::Error> {
     match fs::rename(src, dst).await {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            // A copy gets the current date; keep the original one.
+            let modified = fs::metadata(src).await.and_then(|m| m.modified()).ok();
             fs::copy(src, dst).await?;
+            if let Some(time) = modified {
+                if let Ok(file) = std::fs::File::options().write(true).open(dst) {
+                    let _ = file.set_modified(time);
+                }
+            }
             fs::remove_file(src).await?;
             Ok(())
         }

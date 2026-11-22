@@ -16,10 +16,15 @@ export function useCollections() {
   });
 }
 
-export function useCollection(id: string) {
+/** A collection and its projects, optionally sorted (`sort`/`order` as the API takes them). */
+export function useCollection(id: string, sort?: { sort: string; order: string }) {
+  const qs = sort ? `?sort=${encodeURIComponent(sort.sort)}&order=${sort.order}` : "";
   return useQuery({
-    queryKey: ["collection", id],
-    queryFn: () => apiGet<CollectionDetail>(`/collections/${id}`),
+    // Every sort shares the ["collection", id] prefix, so cache updates reach all of them.
+    queryKey: ["collection", id, sort ? `${sort.sort}-${sort.order}` : "default"],
+    queryFn: () => apiGet<CollectionDetail>(`/collections/${id}${qs}`),
+    // Keep showing the list while a new sort loads (but not another collection's).
+    placeholderData: (prev) => (prev?.id === id ? prev : undefined),
   });
 }
 
