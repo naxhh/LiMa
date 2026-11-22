@@ -1,0 +1,239 @@
+/**
+ * three.js viewer for STL, OBJ and 3MF. Loaded lazily (see model-viewer.tsx): it pulls in three.js.
+ */
+import * as React from "react";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
+import { Box as BoxIcon, Loader2, RotateCcw } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import type { ViewerFormat } from "@/lib/viewer";
+
+type Stats = { size: [number, number, number]; triangles: number };
+
+const MODEL_COLOR = 0x9fb4c7;
+
+async function loadObject(url: string, format: ViewerFormat, onProgress: (p: number) => void): Promise<THREE.Object3D> {
+  const progress = (e: ProgressEvent) => e.total && onProgress(e.loaded / e.total);
+  const material = () => new THREE.MeshStandardMaterial({ color: MODEL_COLOR, roughness: 0.6, metalness: 0.08, flatShading: false });
+  if (format === "stl") {
+    const geometry = await new STLLoader().loadAsync(url, progress);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, material());
+  }
+  if (format === "obj") {
+    const group = await new OBJLoader().loadAsync(url, progress);
+    group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.material = material();
+    });
+    return group;
+  }
+  // 3MF keeps its own colours (multi-colour prints); untextured parts get ours.
+  const group = await new ThreeMFLoader().loadAsync(url, progress);
+  group.traverse((o) => {
+    if (o instanceof THREE.Mesh && !o.material) o.material = material();
+  });
+  return group;
+}
+
+function countTriangles(obj: THREE.Object3D): number {
+  let n = 0;
+  obj.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      const g = o.geometry as THREE.BufferGeometry;
+      n += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    }
+  });
+  return Math.round(n);
+}
+
+function disposeObject(obj: THREE.Object3D) {
+  obj.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.geometry.dispose();
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+    }
+  });
+}
+
+export default function ModelViewerCanvas({ url, format }: { url: string; format: ViewerFormat }) {
+  const mountRef = React.useRef<HTMLDivElement | null>(null);
+  const api = React.useRef<{ reset: () => void; wireframe: (on: boolean) => void } | null>(null);
+  const [progress, setProgress] = React.useState(0);
+  const [loaded, setLoaded] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [stats, setStats] = React.useState<Stats | null>(null);
+  const [wire, setWire] = React.useState(false);
+
+  React.useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let disposed = false;
+    let frame = 0;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    mount.appendChild(renderer.domElement);
+    renderer.domElement.className = "block h-full w-full touch-none";
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, mount.clientWidth / Math.max(mount.clientHeight, 1), 0.1, 100000);
+    scene.add(camera);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4250, 1.6));
+    // A light that follows the camera keeps the side you look at lit.
+    const key = new THREE.DirectionalLight(0xffffff, 1.8);
+    key.position.set(1, 1.5, 2);
+    camera.add(key);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    const resize = new ResizeObserver(() => {
+      const w = mount.clientWidth;
+      const h = Math.max(mount.clientHeight, 1);
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    });
+    resize.observe(mount);
+
+    const loop = () => {
+      frame = requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    loop();
+
+    let object: THREE.Object3D | null = null;
+    let grid: THREE.GridHelper | null = null;
+
+    loadObject(url, format, setProgress)
+      .then((obj) => {
+        if (disposed) return disposeObject(obj);
+        object = obj;
+
+        // Model size before reorienting (printing files are in mm, Z up).
+        const raw = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+        setStats({ size: [raw.x, raw.y, raw.z], triangles: countTriangles(obj) });
+
+        // STL and 3MF are Z-up; three.js is Y-up.
+        if (format !== "obj") obj.rotation.x = -Math.PI / 2;
+        obj.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(obj);
+        const center = box.getCenter(new THREE.Vector3());
+        // Sit it on the grid, centred.
+        obj.position.set(-center.x, -box.min.y, -center.z);
+        scene.add(obj);
+
+        const size = box.getSize(new THREE.Vector3());
+        const span = Math.max(size.x, size.y, size.z) || 1;
+        const gridSize = Math.ceil((Math.max(size.x, size.z) * 1.6) / 10) * 10 || 10;
+        grid = new THREE.GridHelper(gridSize, Math.min(gridSize / 10, 60), 0x4b5563, 0x2a313b);
+        scene.add(grid);
+
+        const target = new THREE.Vector3(0, size.y / 2, 0);
+        const distance = (span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.5;
+        const home = new THREE.Vector3(1, 0.75, 1.2).normalize().multiplyScalar(distance).add(target);
+        camera.near = distance / 1000;
+        camera.far = distance * 100;
+        camera.updateProjectionMatrix();
+        const reset = () => {
+          camera.position.copy(home);
+          controls.target.copy(target);
+          controls.update();
+        };
+        reset();
+        api.current = {
+          reset,
+          wireframe: (on) =>
+            obj.traverse((o) => {
+              if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.wireframe = on;
+            }),
+        };
+        setLoaded(true);
+      })
+      .catch((e: unknown) => {
+        if (!disposed) setError(e instanceof Error ? e.message : String(e));
+      });
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      resize.disconnect();
+      controls.dispose();
+      if (object) disposeObject(object);
+      grid?.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+      api.current = null;
+    };
+  }, [url, format]);
+
+  return (
+    <div className="absolute inset-0">
+      <div ref={mountRef} className="absolute inset-0" />
+
+      {!loaded && !error ? (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 font-mono text-xs text-white/85">
+            <Loader2 className="size-3.5 animate-spin" />
+            {progress > 0 ? `loading model · ${Math.round(progress * 100)}%` : "loading model"}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="absolute inset-0 grid place-items-center p-6 text-center">
+          <div className="max-w-sm space-y-1.5">
+            <BoxIcon className="mx-auto size-6 text-dim" />
+            <div className="text-sm font-medium">Can’t preview this file</div>
+            <p className="text-xs text-muted-foreground">
+              The 3D loader couldn’t read it (some slicer 3MF features aren’t supported). Download it or open it in a slicer instead.
+            </p>
+            <p className="font-mono text-[11px] break-words text-dim">{error}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {loaded ? (
+        <>
+          <div className="absolute right-4 bottom-4 z-[3] flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setWire(!wire);
+                api.current?.wireframe(!wire);
+              }}
+              aria-pressed={wire}
+              className={cn(
+                "rounded-full border border-white/15 bg-black/55 px-3 py-1.5 font-mono text-[11px] text-white backdrop-blur hover:bg-black/75",
+                wire && "border-signal text-signal",
+              )}
+            >
+              wireframe
+            </button>
+            <button
+              type="button"
+              onClick={() => api.current?.reset()}
+              aria-label="Reset view"
+              title="Reset view"
+              className="grid size-8 place-items-center rounded-full border border-white/15 bg-black/55 text-white backdrop-blur hover:bg-black/75"
+            >
+              <RotateCcw className="size-3.5" />
+            </button>
+          </div>
+          {stats ? (
+            <div className="absolute bottom-4 left-4 z-[3] rounded bg-black/60 px-2 py-0.5 font-mono text-[11px] text-white/80">
+              {stats.size.map((v) => v.toFixed(1)).join(" × ")} mm · {stats.triangles.toLocaleString()} tris
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
