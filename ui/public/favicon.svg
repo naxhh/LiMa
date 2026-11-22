@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LiMa">
+  <rect width="512" height="512" rx="112" fill="#4fe3c1"/>
+  <g transform="translate(-12 14)">
+  <path d="M267.7 88.4 A168 168 0 1 0 334.9 107.7 L380.9 61.7 L414.9 61.7" fill="none" stroke="#04110d" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="432.9" cy="61.7" r="20" fill="none" stroke="#04110d" stroke-width="16"/>
+  <path d="M271.0 218.9 L271.0 132.9 A124 124 0 0 1 355.1 181.5 L280.6 224.5 A40 40 0 0 0 271.0 218.9 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M295.6 250.4 L370.1 207.4 A124 124 0 0 1 370.1 304.6 L295.6 261.6 A40 40 0 0 0 295.6 250.4 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M280.6 287.5 L355.1 330.5 A124 124 0 0 1 271.0 379.1 L271.0 293.1 A40 40 0 0 0 280.6 287.5 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M241.0 293.1 L241.0 379.1 A124 124 0 0 1 156.9 330.5 L231.4 287.5 A40 40 0 0 0 241.0 293.1 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M216.4 261.6 L141.9 304.6 A124 124 0 0 1 141.9 207.4 L216.4 250.4 A40 40 0 0 0 216.4 261.6 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M231.4 224.5 L156.9 181.5 A124 124 0 0 1 241.0 132.9 L241.0 218.9 A40 40 0 0 0 231.4 224.5 Z" fill="#04110d" stroke="#04110d" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+</svg>
