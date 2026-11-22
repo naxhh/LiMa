@@ -4,7 +4,6 @@ import { Plus, Tag as TagIcon } from "lucide-react";
 
 import { apiJson } from "@/lib/api";
 import { TAGS_QUERY_KEY, apiErrorMessage, useAllTags } from "@/lib/tags";
-import { Button } from "@/components/ui/button";
 import {
   CommandDialog,
   CommandEmpty,
@@ -57,10 +56,15 @@ export function ProjectTagsEditor({ projectId, tags }: { projectId: string; tags
         {tags.map((t) => (
           <TagBadge key={t.id} name={t.name} color={t.color} onRemove={() => remove(t.name)} />
         ))}
-        <Button variant="outline" size="xs" onClick={() => setOpen(true)} disabled={saveM.isPending}>
-          <Plus />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={saveM.isPending}
+          className="flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-line-strong px-2.5 text-xs text-muted-foreground transition-colors hover:border-signal hover:text-foreground disabled:opacity-50"
+        >
+          <Plus className="size-3" strokeWidth={2.5} />
           Add tag
-        </Button>
+        </button>
       </div>
       {saveM.isError ? (
         <div className="text-xs text-destructive">Could not update tags: {apiErrorMessage(saveM.error)}</div>

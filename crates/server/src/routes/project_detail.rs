@@ -28,6 +28,8 @@ pub struct ProjectAssetResponse {
     pub file_path: String,
     pub kind: String,
     pub size_bytes: i64,
+    /// blake3 hex digest; null until the indexer has hashed the file.
+    pub file_hash: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -129,6 +131,7 @@ fn map_assets(db_assets: Vec<ProjectAssetRow>) -> Vec<ProjectAssetResponse> {
             file_path: asset.file_path,
             kind: asset.kind,
             size_bytes: asset.size_bytes,
+            file_hash: asset.file_hash,
         }
     }).collect()
 }

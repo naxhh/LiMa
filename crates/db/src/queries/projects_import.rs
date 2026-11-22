@@ -135,6 +135,7 @@ pub async fn import_assets_from_bundle(
             file_path: file_info.name.clone(),
             kind: file_info.kind.clone(),
             size_bytes: file_info.size,
+            file_hash: file_info.checksum.clone(),
         });
     };
 

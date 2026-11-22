@@ -8,6 +8,7 @@ use lima_domain::pagination::{Cursor, decode_cursor, encode_cursor};
 
 use crate::{models::http_error::ApiErrorBody, state::AppState};
 use crate::models::http_error::ApiErrorResponse;
+use crate::routes::project_detail::ProjectTagResponse;
 
 #[derive(Deserialize, ToSchema)]
 pub struct ListProjectsParams {
@@ -18,8 +19,44 @@ pub struct ListProjectsParams {
 
 #[derive(Serialize, ToSchema)]
 pub struct ListProjectsResponse {
-    pub items: Vec<ProjectRow>,
+    pub items: Vec<ProjectListItem>,
     pub next_cursor: Option<String>,
+}
+
+/// A project plus the aggregates list views need (counts, size, formats, tags).
+#[derive(Serialize, ToSchema)]
+pub struct ProjectListItem {
+    #[serde(flatten)]
+    pub project: ProjectRow,
+    pub asset_count: i64,
+    pub image_count: i64,
+    pub model_count: i64,
+    pub total_bytes: i64,
+    /// Upper-case extensions of the model files, e.g. `["3MF", "STL"]`.
+    pub model_formats: Vec<String>,
+    pub tags: Vec<ProjectTagResponse>,
+}
+
+async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) -> Result<Vec<ProjectListItem>, ApiErrorResponse> {
+    let ids: Vec<String> = projects.iter().map(|p| p.id.clone()).collect();
+    let mut summaries = lima_db::queries::projects_summary::project_summaries(state.db.pool(), &ids)
+        .await
+        .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed loading project summaries").with_cause(&e.to_string()))?;
+    Ok(projects
+        .into_iter()
+        .map(|project| {
+            let s = summaries.remove(&project.id).unwrap_or_default();
+            ProjectListItem {
+                project,
+                asset_count: s.asset_count,
+                image_count: s.image_count,
+                model_count: s.model_count,
+                total_bytes: s.total_bytes,
+                model_formats: s.model_formats,
+                tags: s.tags.into_iter().map(|t| ProjectTagResponse { id: t.id, name: t.name, color: t.color }).collect(),
+            }
+        })
+        .collect())
 }
 
 
@@ -74,7 +111,7 @@ pub async fn list_projects(
             })
         });
 
-        let projects = search_projects.into_iter().map(|row| row.project).collect();
+        let projects = with_summaries(&state, search_projects.into_iter().map(|row| row.project).collect()).await?;
 
         return Ok(Json(ListProjectsResponse {
             items: projects,
@@ -100,7 +137,7 @@ pub async fn list_projects(
     });
 
     Ok(Json(ListProjectsResponse {
-        items: projects,
+        items: with_summaries(&state, projects).await?,
         next_cursor,
     }))
 }

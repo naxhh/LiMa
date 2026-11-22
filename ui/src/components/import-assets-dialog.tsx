@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Upload } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiMultipart, apiJsonNoResponse, ApiError } from "@/lib/api";
 
@@ -84,7 +85,10 @@ export function ImportAssetsDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary">Import files</Button>
+        <Button variant="outline">
+          <Upload />
+          Add files
+        </Button>
       </DialogTrigger>
 
       <DialogContent>

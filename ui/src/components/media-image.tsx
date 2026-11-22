@@ -1,38 +1,22 @@
 import * as React from "react";
 
-export function MediaImage(props: {
-  src: string;
-  alt: string;
-  className?: string;
-  fallbackLabel?: string; // big obvious text when it fails
-}) {
+import { cn } from "@/lib/utils";
+import { ModelPlaceholder } from "@/components/model-placeholder";
+
+/** Cover image filling its (relative) parent; falls back to the wireframe placeholder. */
+export function MediaImage(props: { src: string; alt: string; className?: string; fallbackLabel?: string }) {
   const { src, alt, className, fallbackLabel } = props;
   const [failed, setFailed] = React.useState(false);
 
-  React.useEffect(() => {
-    // reset when src changes
-    setFailed(false);
-  }, [src]);
+  React.useEffect(() => setFailed(false), [src]);
 
-  if (failed) {
-    return (
-      <div
-        className={[
-          "absolute inset-0 flex items-center justify-center",
-          "bg-muted text-destructive font-semibold text-xs uppercase tracking-wider",
-          className ?? "",
-        ].join(" ")}
-      >
-        {fallbackLabel ?? "IMAGE FAILED"}
-      </div>
-    );
-  }
+  if (failed) return <ModelPlaceholder label={fallbackLabel ?? "no preview"} />;
 
   return (
     <img
       src={src}
       alt={alt}
-      className={["absolute inset-0 h-full w-full object-cover", className ?? ""].join(" ")}
+      className={cn("absolute inset-0 h-full w-full object-cover", className)}
       loading="lazy"
       onError={() => setFailed(true)}
     />

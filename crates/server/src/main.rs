@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api = Router::new()
         .route("/health", get(routes::health::health_check))
+        .route("/stats", get(routes::stats::library_stats))
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
@@ -110,6 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[openapi(
     paths(
         routes::health::health_check,
+        routes::stats::library_stats,
         routes::project::list_projects,
         routes::project_create::create_project,
         routes::project_delete::project_delete,
@@ -138,6 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::health::HealthResponse,
 
         routes::project::ListProjectsResponse,
+        routes::project::ProjectListItem,
+        routes::stats::LibraryStatsResponse,
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,

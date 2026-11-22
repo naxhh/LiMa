@@ -18,6 +18,7 @@ pub struct ProjectAssetRow {
     pub file_path: String,
     pub kind: String,
     pub size_bytes: i64,
+    pub file_hash: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -104,9 +105,11 @@ pub async fn get_project_assets(
             id,
             file_path,
             kind,
-            size_bytes
+            size_bytes,
+            file_hash
         FROM assets
         WHERE project_id = ?1
+        ORDER BY CASE kind WHEN 'model' THEN 0 WHEN 'image' THEN 1 ELSE 2 END, file_path COLLATE NOCASE
         "#,
     )
     .bind(project_id)
