@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play, RefreshCw } from "lucide-react";
+import { Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { ApiError, apiGet, apiJson } from "@/lib/api";
@@ -100,7 +100,7 @@ export function AdminSyncPage() {
   }, [running, qc]);
 
   const startM = useMutation({
-    mutationFn: () => apiJson<SyncRun>("POST", "/sync/run", { mode: "full" }),
+    mutationFn: (mode: "incremental" | "full") => apiJson<SyncRun>("POST", "/sync/run", { mode }),
     onSuccess: (run) => {
       qc.invalidateQueries({ queryKey: ["sync"] });
       navigate(`/admin/sync/${run.id}`);
@@ -119,10 +119,25 @@ export function AdminSyncPage() {
             modified.
           </p>
         </div>
-        <Button onClick={() => startM.mutate()} disabled={running || startM.isPending}>
-          {running || startM.isPending ? <Loader2 className="animate-spin" /> : <Play />}
-          {running ? "Sync running…" : "Run full sync"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => startM.mutate("incremental")}
+            disabled={running || startM.isPending}
+            title="Index new and changed files. Only hashes files whose size or modified time changed."
+          >
+            {running || startM.isPending ? <Loader2 className="animate-spin" /> : <Play />}
+            {running ? "Sync running…" : "Run sync"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => startM.mutate("full")}
+            disabled={running || startM.isPending}
+            title="Re-hash every file to detect content changed in place. Slower on large libraries."
+          >
+            <ShieldCheck />
+            Full sync &amp; verify
+          </Button>
+        </div>
       </div>
 
       {startM.isError ? (
@@ -212,10 +227,11 @@ function StatsGrid({ stats }: { stats: SyncStats }) {
     ["Assets added", stats.assets_added, "text-emerald-600 dark:text-emerald-400"],
     ["Assets updated", stats.assets_updated, "text-blue-600 dark:text-blue-400"],
     ["Assets removed", stats.assets_removed, "text-amber-600 dark:text-amber-400"],
+    ["Files hashed", stats.assets_hashed],
     ["Errors", stats.errors, "text-red-600 dark:text-red-400"],
   ];
   return (
-    <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+    <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
       {items.map(([label, value, color]) => (
         <div key={label} className="rounded-md bg-muted/50 px-3 py-2">
           <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -453,6 +469,8 @@ function describeEvent(e: SyncEvent): string {
       return `${d.folder_path}: +${d.assets_added} ~${d.assets_updated} -${d.assets_removed}`;
     case "project_removed":
       return `${d.folder_path} folder no longer exists`;
+    case "asset_content_changed":
+      return `${d.path}: content changed in place`;
     case "entry_skipped":
       return `${d.path}: ${d.reason}`;
     case "project_failed":
@@ -460,7 +478,7 @@ function describeEvent(e: SyncEvent): string {
     case "run_failed":
       return String(d.error);
     case "run_started":
-      return `${d.projects_on_disk} folders on disk, ${d.projects_indexed} indexed`;
+      return `${d.mode ?? ""} · ${d.projects_on_disk} folders on disk, ${d.projects_indexed} indexed`;
     default:
       return JSON.stringify(d);
   }

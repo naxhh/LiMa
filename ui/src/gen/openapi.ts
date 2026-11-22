@@ -358,7 +358,10 @@ export interface components {
             name: string;
         };
         StartSyncRequest: {
-            /** @description `full` (default) or `incremental`. Only `full` is supported for now. */
+            /**
+             * @description `incremental` (default) only hashes new, changed or unhashed files.
+             *     `full` also re-hashes every file to detect in-place content changes.
+             */
             mode?: string | null;
         };
         SyncEventRow: {
@@ -392,6 +395,12 @@ export interface components {
              * @default 0
              */
             assets_added: number;
+            /**
+             * Format: int64
+             * @description Files whose content was hashed during the run.
+             * @default 0
+             */
+            assets_hashed: number;
             /**
              * Format: int64
              * @default 0
@@ -869,7 +878,7 @@ export interface operations {
                     "application/json": components["schemas"]["SyncRunRow"];
                 };
             };
-            /** @description Invalid or unsupported mode */
+            /** @description Invalid mode */
             400: {
                 headers: {
                     [name: string]: unknown;

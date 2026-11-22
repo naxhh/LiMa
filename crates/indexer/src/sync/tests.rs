@@ -58,7 +58,11 @@ async fn wait_done(pool: &Pool<Sqlite>, run_id: &str) -> SyncRunRow {
 }
 
 async fn run_full(fx: &Fixture, manager: &SyncManager) -> SyncRunRow {
-    let run = manager.start(SyncMode::Full, SyncReason::Manual).await.unwrap();
+    run_mode(fx, manager, SyncMode::Full).await
+}
+
+async fn run_mode(fx: &Fixture, manager: &SyncManager, mode: SyncMode) -> SyncRunRow {
+    let run = manager.start(mode, SyncReason::Manual).await.unwrap();
     let done = wait_done(fx.db.pool(), &run.id).await;
     // The manager clears its slot right after recording the end of the run.
     for _ in 0..40 {
@@ -185,4 +189,82 @@ async fn startup_fails_leftover_runs() {
     let _manager = fx.manager().await;
     let run = lima_db::queries::sync::get_run(fx.db.pool(), "stale").await.unwrap().unwrap();
     assert_eq!(run.status, "failed");
+}
+
+async fn stored_hash(fx: &Fixture, file_path: &str) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT file_hash FROM assets WHERE file_path = ?1")
+        .bind(file_path)
+        .fetch_one(fx.db.pool())
+        .await
+        .unwrap()
+}
+
+fn blake3_hex(contents: &str) -> String {
+    blake3::hash(contents.as_bytes()).to_hex().to_string()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hashes_new_and_changed_files() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    fx.write("benchy/notes.txt", "notes");
+
+    let manager = fx.manager().await;
+    let run = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(run.status, "complete", "error: {}", run.error);
+    assert_eq!(run.stats.assets_hashed, 2);
+    assert_eq!(stored_hash(&fx, "benchy.stl").await, Some(blake3_hex("solid")));
+
+    // Unchanged files are not re-hashed by an incremental run.
+    let again = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(again.stats.assets_hashed, 0);
+
+    // A changed file is re-hashed.
+    fx.write("benchy/benchy.stl", "solid v2");
+    let changed = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(changed.stats.assets_hashed, 1);
+    assert_eq!(changed.stats.assets_updated, 1);
+    assert_eq!(stored_hash(&fx, "benchy.stl").await, Some(blake3_hex("solid v2")));
+
+    // A full run verifies every file.
+    let full = run_mode(&fx, &manager, SyncMode::Full).await;
+    assert_eq!(full.stats.assets_hashed, 2);
+    assert_eq!(full.stats.assets_updated, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn backfills_missing_hashes() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    let manager = fx.manager().await;
+    run_mode(&fx, &manager, SyncMode::Incremental).await;
+
+    sqlx::query("UPDATE assets SET file_hash = NULL").execute(fx.db.pool()).await.unwrap();
+    let run = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(run.stats.assets_hashed, 1);
+    assert_eq!(run.stats.assets_updated, 0);
+    assert_eq!(stored_hash(&fx, "benchy.stl").await, Some(blake3_hex("solid")));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn full_run_detects_in_place_rewrites() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "aaaaa");
+    let manager = fx.manager().await;
+    run_mode(&fx, &manager, SyncMode::Incremental).await;
+
+    // Same size, same mtime, different bytes.
+    let path = fx.library().join("benchy/benchy.stl");
+    let mtime = fs::metadata(&path).unwrap().modified().unwrap();
+    fs::write(&path, "bbbbb").unwrap();
+    fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+
+    let incremental = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(incremental.stats.assets_updated, 0, "incremental trusts stat data");
+
+    let full = run_mode(&fx, &manager, SyncMode::Full).await;
+    assert_eq!(full.stats.assets_updated, 1);
+    assert_eq!(stored_hash(&fx, "benchy.stl").await, Some(blake3_hex("bbbbb")));
+    let events = lima_db::queries::sync::list_events(fx.db.pool(), &full.id, 0, 100).await.unwrap();
+    assert!(events.iter().any(|e| e.kind == "asset_content_changed"));
 }

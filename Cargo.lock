@@ -1309,7 +1309,6 @@ dependencies = [
  "mime_guess",
  "serde",
  "serde_json",
- "sha2",
  "sqlx",
  "time",
  "tokio",

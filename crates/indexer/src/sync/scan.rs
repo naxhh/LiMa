@@ -11,7 +11,7 @@ use serde_json::json;
 use sqlx::{Pool, Sqlite};
 
 use super::fs_walk::{self, FsFile};
-use super::now;
+use super::{SyncMode, now};
 
 #[derive(Debug)]
 pub enum ScanError {
@@ -50,16 +50,32 @@ struct ProjectChanges {
     removed: u64,
 }
 
+/// What to do with a file found on disk.
+enum Action {
+    Insert,
+    /// Size or mtime differ from the index.
+    Update { asset_id: String },
+    /// Stat data unchanged.
+    Keep { asset_id: String, stored_hash: Option<String> },
+}
+
+struct Planned<'f> {
+    file: &'f FsFile,
+    action: Action,
+    needs_hash: bool,
+}
+
 pub(crate) struct Scanner<'a> {
     pool: &'a Pool<Sqlite>,
     root: &'a Path,
     run_id: &'a str,
+    mode: SyncMode,
     stats: SyncStats,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(pool: &'a Pool<Sqlite>, root: &'a Path, run_id: &'a str) -> Self {
-        Self { pool, root, run_id, stats: SyncStats::default() }
+    pub fn new(pool: &'a Pool<Sqlite>, root: &'a Path, run_id: &'a str, mode: SyncMode) -> Self {
+        Self { pool, root, run_id, mode, stats: SyncStats::default() }
     }
 
     /// Executes the scan. Stats are returned even when the run fails part way.
@@ -92,7 +108,7 @@ impl<'a> Scanner<'a> {
         self.event(
             "info",
             "run_started",
-            json!({ "library": self.root.display().to_string(), "projects_on_disk": dirs.len(), "projects_indexed": indexed.len() }),
+            json!({ "mode": self.mode.as_str(), "library": self.root.display().to_string(), "projects_on_disk": dirs.len(), "projects_indexed": indexed.len() }),
         )
         .await;
         self.save_stats().await;
@@ -129,8 +145,9 @@ impl<'a> Scanner<'a> {
     }
 
     async fn scan_project(&mut self, folder: &str, existing: Option<&idx::IndexedProject>) -> Result<(), ScanError> {
-        let dir = self.root.join(folder);
-        let walk = tokio::task::spawn_blocking(move || fs_walk::walk_project(&dir))
+        let project_dir = self.root.join(folder);
+        let walk_dir = project_dir.clone();
+        let walk = tokio::task::spawn_blocking(move || fs_walk::walk_project(&walk_dir))
             .await
             .map_err(|e| ScanError::Io(e.to_string()))?
             .map_err(|e| ScanError::Io(e.to_string()))?;
@@ -139,6 +156,63 @@ impl<'a> Scanner<'a> {
             self.skip_event(&format!("{folder}/{path}"), reason).await;
         }
 
+        // 1. Diff disk against the index (read only, no transaction yet).
+        let indexed_assets = match existing {
+            Some(p) => idx::list_indexed_assets(self.pool, &p.id).await?,
+            None => Vec::new(),
+        };
+        let mut by_path: HashMap<String, idx::IndexedAsset> =
+            indexed_assets.into_iter().map(|a| (a.file_path.clone(), a)).collect();
+
+        let verify_all = self.mode == SyncMode::Full;
+        let plan: Vec<Planned> = walk
+            .files
+            .iter()
+            .map(|file| {
+                let action = match by_path.remove(&file.rel_path) {
+                    None => Action::Insert,
+                    Some(a) if a.size_bytes != file.size || a.mtime != file.mtime => Action::Update { asset_id: a.id },
+                    Some(a) => Action::Keep { asset_id: a.id, stored_hash: a.file_hash },
+                };
+                let needs_hash = match &action {
+                    Action::Insert | Action::Update { .. } => true,
+                    Action::Keep { stored_hash, .. } => verify_all || stored_hash.is_none(),
+                };
+                Planned { file, action, needs_hash }
+            })
+            .collect();
+        let missing: Vec<idx::IndexedAsset> = by_path.into_values().collect();
+
+        // 2. Hash outside the transaction so slow disks do not hold the SQLite write lock.
+        let to_hash: Vec<(usize, std::path::PathBuf)> = plan
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.needs_hash)
+            .map(|(i, p)| (i, project_dir.join(&p.file.rel_path)))
+            .collect();
+        let mut hashes: HashMap<usize, String> = HashMap::with_capacity(to_hash.len());
+        if !to_hash.is_empty() {
+            let results = tokio::task::spawn_blocking(move || {
+                to_hash
+                    .into_iter()
+                    .map(|(i, path)| (i, crate::hash::hash_file(&path).map_err(|e| e.to_string())))
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .map_err(|e| ScanError::Io(e.to_string()))?;
+
+            for (i, result) in results {
+                match result {
+                    Ok(hash) => {
+                        self.stats.assets_hashed += 1;
+                        hashes.insert(i, hash);
+                    }
+                    Err(e) => self.skip_event(&format!("{folder}/{}", plan[i].file.rel_path), &format!("Hashing failed: {e}")).await,
+                }
+            }
+        }
+
+        // 3. Apply.
         let now = now();
         let mut tx = self.pool.begin().await?;
 
@@ -147,25 +221,36 @@ impl<'a> Scanner<'a> {
             None => (idx::insert_discovered_project(&mut tx, folder, &now).await?, None, true),
         };
 
-        let indexed_assets = if is_new { Vec::new() } else { idx::list_indexed_assets(&mut tx, &project_id).await? };
-        let mut by_path: HashMap<String, idx::IndexedAsset> =
-            indexed_assets.into_iter().map(|a| (a.file_path.clone(), a)).collect();
-
         let mut changes = ProjectChanges::default();
+        let mut content_changed: Vec<&str> = Vec::new();
         let mut first_image: Option<String> = None;
 
-        for file in &walk.files {
-            let asset_id = match by_path.remove(&file.rel_path) {
-                None => {
+        for (i, planned) in plan.iter().enumerate() {
+            let file = planned.file;
+            let hash = hashes.get(&i).map(String::as_str);
+
+            let asset_id = match &planned.action {
+                Action::Insert => {
                     changes.added += 1;
-                    insert_asset(&mut tx, &project_id, file, &now).await?
+                    insert_asset(&mut tx, &project_id, file, hash, &now).await?
                 }
-                Some(asset) => {
-                    if asset.size_bytes != file.size || asset.mtime != file.mtime {
-                        idx::update_changed_asset(&mut tx, &asset.id, file.size, &file.mtime, &now).await?;
-                        changes.updated += 1;
+                Action::Update { asset_id } => {
+                    idx::update_changed_asset(&mut tx, asset_id, file.size, &file.mtime, hash, &now).await?;
+                    changes.updated += 1;
+                    asset_id.clone()
+                }
+                Action::Keep { asset_id, stored_hash } => {
+                    match (stored_hash.as_deref(), hash) {
+                        // Same size and mtime but different bytes: content was rewritten in place.
+                        (Some(stored), Some(new)) if stored != new => {
+                            idx::update_changed_asset(&mut tx, asset_id, file.size, &file.mtime, Some(new), &now).await?;
+                            changes.updated += 1;
+                            content_changed.push(&file.rel_path);
+                        }
+                        (None, Some(new)) => idx::set_asset_hash(&mut tx, asset_id, new).await?,
+                        _ => {}
                     }
-                    asset.id
+                    asset_id.clone()
                 }
             };
 
@@ -174,8 +259,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        // Whatever is left in the map no longer exists on disk.
-        for asset in by_path.values() {
+        for asset in &missing {
             idx::remove_missing_asset(&mut tx, &asset.id).await?;
             if main_image_id.as_deref() == Some(asset.id.as_str()) {
                 main_image_id = None;
@@ -196,6 +280,15 @@ impl<'a> Scanner<'a> {
         self.stats.assets_added += changes.added;
         self.stats.assets_updated += changes.updated;
         self.stats.assets_removed += changes.removed;
+
+        for path in content_changed {
+            self.event(
+                "warn",
+                "asset_content_changed",
+                json!({ "project_id": project_id, "path": format!("{folder}/{path}"), "detail": "Content hash changed while size and mtime stayed the same" }),
+            )
+            .await;
+        }
 
         if is_new {
             self.stats.projects_added += 1;
@@ -246,6 +339,7 @@ async fn insert_asset(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     project_id: &str,
     file: &FsFile,
+    file_hash: Option<&str>,
     now: &str,
 ) -> Result<String, sqlx::Error> {
     let mime = mime_guess::from_path(&file.rel_path).first_or_octet_stream().to_string();
@@ -257,6 +351,7 @@ async fn insert_asset(
         file.size,
         &file.mtime,
         &mime,
+        file_hash,
         now,
     )
     .await

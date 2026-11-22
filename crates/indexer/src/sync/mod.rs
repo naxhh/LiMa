@@ -49,7 +49,6 @@ impl SyncReason {
 #[derive(Debug)]
 pub enum StartSyncError {
     AlreadyRunning { run_id: String },
-    UnsupportedMode(SyncMode),
     Db(sqlx::Error),
 }
 
@@ -57,7 +56,6 @@ impl std::fmt::Display for StartSyncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StartSyncError::AlreadyRunning { run_id } => write!(f, "Sync run {run_id} is already in progress"),
-            StartSyncError::UnsupportedMode(mode) => write!(f, "Sync mode '{}' is not supported yet", mode.as_str()),
             StartSyncError::Db(e) => write!(f, "Database error: {e}"),
         }
     }
@@ -100,10 +98,6 @@ impl SyncManager {
 
     /// Records a new run and executes it in the background. Returns the freshly created run.
     pub async fn start(&self, mode: SyncMode, reason: SyncReason) -> Result<SyncRunRow, StartSyncError> {
-        if mode != SyncMode::Full {
-            return Err(StartSyncError::UnsupportedMode(mode));
-        }
-
         let mut current = self.inner.current.lock().await;
         if let Some(run_id) = current.as_ref() {
             return Err(StartSyncError::AlreadyRunning { run_id: run_id.clone() });
@@ -131,7 +125,7 @@ impl SyncManager {
             let scan_inner = inner.clone();
             let scan_run_id = run_id.clone();
             let outcome = tokio::spawn(async move {
-                scan::Scanner::new(&scan_inner.pool, &scan_inner.library_root, &scan_run_id).run().await
+                scan::Scanner::new(&scan_inner.pool, &scan_inner.library_root, &scan_run_id, mode).run().await
             })
             .await;
 
