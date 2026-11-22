@@ -116,6 +116,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["import_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["import_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/login/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_login_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/login/send-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_send_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/login/tfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_login_tfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["bambu_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/bambu/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bambu_set_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -356,6 +516,47 @@ export interface components {
         ApiErrorBody: {
             error: components["schemas"]["ApiError"];
         };
+        BambuCodeRequest: {
+            account: string;
+            /** @description Code Bambu emailed. */
+            code: string;
+        };
+        BambuLoginRequest: {
+            /** @description Bambu account email. */
+            account: string;
+            password: string;
+        };
+        BambuLoginResponse: {
+            /** Format: int64 */
+            expires_at?: number | null;
+            /** @description `logged_in`, `code_sent` (finish with /login/code) or `tfa_required` (finish with /login/tfa). */
+            status: string;
+            tfa_key?: string | null;
+        };
+        BambuSendCodeRequest: {
+            /**
+             * @description Bambu account email. Works for accounts created with Google/Apple sign-in too,
+             *     which have no Bambu password.
+             */
+            account: string;
+        };
+        BambuStatusResponse: {
+            /**
+             * Format: int64
+             * @description Token expiry (unix seconds), when the token carries one.
+             */
+            expires_at?: number | null;
+            logged_in: boolean;
+        };
+        BambuTfaRequest: {
+            /** @description Code from the authenticator app. */
+            code: string;
+            tfa_key: string;
+        };
+        BambuTokenRequest: {
+            /** @description Access token copied from the `token` cookie of a logged-in makerworld.com session. */
+            token: string;
+        };
         Collection: {
             /** @description Main images of up to 4 of the most recently added projects, for previews. */
             covers: components["schemas"]["CollectionCover"][];
@@ -405,6 +606,54 @@ export interface components {
         };
         HealthResponse: {
             db: boolean;
+        };
+        ImportFile: {
+            group?: string | null;
+            id: string;
+            /** @description `model`, `gcode` or `other`. */
+            kind: string;
+            name: string;
+            /** Format: int64 */
+            size?: number | null;
+        };
+        ImportImage: {
+            name: string;
+            url: string;
+        };
+        ImportJobResponse: {
+            /** @description File being downloaded. */
+            current?: string | null;
+            done: number;
+            error?: string | null;
+            /** @description e.g. `bambu_login_required` when the Bambu token stopped working mid-import. */
+            error_code?: string | null;
+            id: string;
+            project_id: string;
+            /** @description `downloading`, `importing`, `complete` or `failed`. A failed import removes its project. */
+            status: string;
+            total: number;
+            /** @description Files that could not be downloaded (the rest were imported). */
+            warnings: string[];
+        };
+        ImportPreviewRequest: {
+            url: string;
+        };
+        ImportPreviewResponse: {
+            author?: string | null;
+            description: string;
+            files: components["schemas"]["ImportFile"][];
+            images: components["schemas"]["ImportImage"][];
+            license?: string | null;
+            /** @description This browser has a Bambu token cookie (not checked with Bambu yet). */
+            logged_in: boolean;
+            /** @description Downloading files from this source needs a Bambu login. */
+            login_required: boolean;
+            name: string;
+            /** @description `printables` or `makerworld`. */
+            source: string;
+            source_id: string;
+            tags: string[];
+            url: string;
         };
         ImportProjectRequest: {
             bundle_id: string;
@@ -507,6 +756,10 @@ export interface components {
             last_scanned_at?: string | null;
             main_image_id?: string | null;
             name: string;
+            source_author?: string | null;
+            source_license?: string | null;
+            /** @description Page the project was imported from, when it came from a URL import. */
+            source_url?: string | null;
             tags: components["schemas"]["ProjectTagResponse"][];
             updated_at: string;
         };
@@ -541,6 +794,23 @@ export interface components {
             color: string;
             id: string;
             name: string;
+        };
+        StartImportRequest: {
+            /** @description Defaults to the model description. */
+            description?: string | null;
+            /** @description Ids from the preview's `files` to download. */
+            file_ids?: string[];
+            /** @description Download the model images too (default true). */
+            include_images?: boolean | null;
+            /** @description Project name; defaults to the model name. */
+            name?: string | null;
+            /** @description Defaults to the model tags. */
+            tags?: string[] | null;
+            url: string;
+        };
+        StartImportResponse: {
+            job_id: string;
+            project_id: string;
         };
         StartSyncRequest: {
             /**
@@ -1104,6 +1374,406 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    start_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Project created; files are downloading */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartImportResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu login required (code bambu_login_required) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Model not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description A project with that name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The site answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    import_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description What the model page holds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreviewResponse"];
+                };
+            };
+            /** @description Unsupported URL */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Model not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The site answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    import_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Import job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Import progress */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobResponse"];
+                };
+            };
+            /** @description Unknown job (or finished more than an hour ago) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bambu_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BambuLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in, or a code is needed to finish */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuLoginResponse"];
+                };
+            };
+            /** @description Wrong email or password */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bambu_login_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BambuCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuLoginResponse"];
+                };
+            };
+            /** @description Code incorrect or expired */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bambu_send_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BambuSendCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Code emailed; finish with /login/code */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuLoginResponse"];
+                };
+            };
+            /** @description Missing email */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bambu_login_tfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BambuTfaRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuLoginResponse"];
+                };
+            };
+            /** @description Code incorrect */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu answered unexpectedly */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    bambu_logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cookie removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    bambu_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether this browser holds a working Bambu token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuStatusResponse"];
+                };
+            };
+        };
+    };
+    bambu_set_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BambuTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Token accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BambuLoginResponse"];
+                };
+            };
+            /** @description Malformed token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Bambu rejected the token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };

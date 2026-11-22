@@ -153,6 +153,16 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
               {project.name}
             </h1>
             <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
+            {project.source_url ? (
+              <span className="text-xs text-muted-foreground">
+                Imported from{" "}
+                <a href={project.source_url} target="_blank" rel="noopener noreferrer" className="text-foreground underline-offset-4 hover:underline">
+                  {sourceLabel(project.source_url)}
+                </a>
+                {project.source_author ? ` · by ${project.source_author}` : ""}
+                {project.source_license ? ` · ${project.source_license}` : ""}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-2.5">
@@ -602,4 +612,16 @@ function EditProjectDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** "Printables", "MakerWorld" or the host name of an import source URL. */
+function sourceLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host === "printables.com") return "Printables";
+    if (host === "makerworld.com") return "MakerWorld";
+    return host;
+  } catch {
+    return url;
+  }
 }

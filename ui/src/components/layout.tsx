@@ -5,6 +5,7 @@ import { Box, Layers, LayoutGrid, RefreshCw, Search, Tag as TagIcon } from "luci
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
+import { ImportUrlDialog } from "@/components/import-url-dialog";
 
 type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean };
 
@@ -118,6 +119,7 @@ export function AppHeader() {
           <HeaderSearch />
         </div>
         <div className="ml-auto flex items-center gap-2 md:ml-0">
+          <ImportUrlDialog />
           <CreateProjectDialog />
           <ThemeToggle />
         </div>
