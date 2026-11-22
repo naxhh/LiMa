@@ -44,7 +44,7 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 ## API Endpoints
 
-The authoritative OpenAPI specification is served at `GET /openapi.json`. This file is a summary of the API.
+The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at `/docs` (Swagger UI), both outside `/api`. This file is a summary.
 
 ### Health
 
@@ -145,3 +145,12 @@ sources, and add tags, collections and favourites (nothing is removed).
 | POST | `/metadata/backups` | Write a backup now |
 | GET | `/metadata/backups/{name}` | Download a stored backup |
 | POST | `/metadata/backups/{name}/restore` | Restore a stored backup (`?dry_run=true` previews) |
+
+### Files
+
+Served outside `/api`, straight from disk.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/media/library/{folder}/{file}` | A project file from the library |
+| GET | `/media/thumbs/{file}` | A generated image thumbnail |
