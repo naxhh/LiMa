@@ -6,7 +6,7 @@
 
 use serde::Deserialize;
 
-use crate::{ImportError, NameSet, RemoteFile, RemoteImage, RemoteModel, Result, Source, html_to_text};
+use crate::{ImportError, NameSet, RemoteFile, RemoteImage, RemoteModel, Result, Source, html_to_markdown};
 
 const API: &str = "https://api.bambulab.com/v1/design-service";
 
@@ -147,7 +147,7 @@ pub(crate) fn to_model(d: Design) -> RemoteModel {
         source_id: d.id.to_string(),
         url: format!("https://makerworld.com/en/models/{}{slug}", d.id),
         name: d.title.trim().to_string(),
-        description: html_to_text(&d.summary),
+        description: html_to_markdown(&d.summary),
         author: d.design_creator.map(|c| c.name).filter(|n| !n.is_empty()),
         license: Some(d.license).filter(|l| !l.is_empty()),
         tags: d.tags.unwrap_or_default(),

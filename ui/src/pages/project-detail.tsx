@@ -35,6 +35,7 @@ import { ProjectCollectionsEditor } from "@/components/project-collections-edito
 import { MediaImage } from "@/components/media-image";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
+import { Markdown } from "@/components/markdown";
 
 type ProjectDetail = components["schemas"]["ProjectDetailResponse"];
 type ProjectAsset = components["schemas"]["ProjectAssetResponse"];
@@ -208,7 +209,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
           </div>
 
           {project.description.trim() ? (
-            <p className="text-[15px] leading-relaxed whitespace-pre-line text-muted-foreground">{project.description}</p>
+            <Markdown>{project.description}</Markdown>
           ) : (
             <button
               type="button"
@@ -327,14 +328,18 @@ function Gallery({
           </span>
         ) : null}
         {images.length > 1 ? (
-          <div className="absolute top-1/2 right-5 z-[3] flex -translate-y-1/2 flex-col gap-2">
-            <GalleryButton label="Previous image" onClick={() => step(-1)}>
-              <ChevronLeft />
-            </GalleryButton>
-            <GalleryButton label="Next image" onClick={() => step(1)}>
-              <ChevronRight />
-            </GalleryButton>
-          </div>
+          <>
+            <div className="absolute top-1/2 left-5 z-[3] -translate-y-1/2">
+              <GalleryButton label="Previous image" onClick={() => step(-1)}>
+                <ChevronLeft />
+              </GalleryButton>
+            </div>
+            <div className="absolute top-1/2 right-5 z-[3] -translate-y-1/2">
+              <GalleryButton label="Next image" onClick={() => step(1)}>
+                <ChevronRight />
+              </GalleryButton>
+            </div>
+          </>
         ) : null}
       </div>
 
@@ -536,12 +541,14 @@ function EditProjectDialog({
 }) {
   const [name, setName] = React.useState(project.name);
   const [description, setDescription] = React.useState(project.description);
+  const [descMode, setDescMode] = React.useState<"write" | "preview">("write");
   const [cover, setCover] = React.useState(project.main_image_id ?? "");
 
   React.useEffect(() => {
     if (!open) return;
     setName(project.name);
     setDescription(project.description);
+    setDescMode("write");
     setCover(project.main_image_id ?? "");
   }, [open, project]);
 
@@ -559,6 +566,7 @@ function EditProjectDialog({
         >
           <DialogHeader>
             <DialogTitle>Edit project</DialogTitle>
+            <DialogDescription className="sr-only">Change the project's name, description and cover image.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <label htmlFor="project-name" className="text-sm font-medium">
@@ -567,16 +575,41 @@ function EditProjectDialog({
             <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="project-description" className="text-sm font-medium">
-              Description
-            </label>
-            <Textarea
-              id="project-description"
-              rows={5}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Print settings, notes, where it came from…"
-            />
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="project-description" className="text-sm font-medium">
+                Description <span className="font-normal text-muted-foreground">(Markdown)</span>
+              </label>
+              <div role="group" aria-label="Description view" className="flex rounded-md border border-input p-0.5 text-xs">
+                {(["write", "preview"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={descMode === m}
+                    onClick={() => setDescMode(m)}
+                    className={cn(
+                      "cursor-pointer rounded px-2 py-0.5 capitalize",
+                      descMode === m ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {descMode === "write" ? (
+              <Textarea
+                id="project-description"
+                rows={8}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Print settings, notes, where it came from… **bold**, - lists and [links](https://…) work."
+                className="font-mono text-[13px]"
+              />
+            ) : (
+              <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
+                {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+              </div>
+            )}
           </div>
           {images.length > 0 ? (
             <fieldset className="space-y-2">

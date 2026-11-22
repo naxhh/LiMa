@@ -4,7 +4,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{ImportError, NameSet, RemoteFile, RemoteImage, RemoteModel, Result, Source, file_kind, html_to_text};
+use crate::{ImportError, NameSet, RemoteFile, RemoteImage, RemoteModel, Result, Source, file_kind, html_to_markdown};
 
 const API: &str = "https://api.printables.com/graphql/";
 const MEDIA: &str = "https://media.printables.com/";
@@ -177,7 +177,7 @@ pub(crate) fn to_model(p: Print) -> RemoteModel {
         })
         .collect();
 
-    let mut description = html_to_text(p.description.as_deref().unwrap_or(""));
+    let mut description = html_to_markdown(p.description.as_deref().unwrap_or(""));
     if description.is_empty() {
         description = p.summary.clone().unwrap_or_default().trim().to_string();
     }
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(m.name, "3D BENCHY");
         assert_eq!(m.url, "https://www.printables.com/model/3161-3d-benchy");
         assert_eq!(m.author.as_deref(), Some("Prusa Research"));
-        assert_eq!(m.description, "Hello world");
+        assert_eq!(m.description, "Hello **world**");
         assert_eq!(m.images[0].url, "https://media.printables.com/media/prints/3161/images/1_a/benchy.jpg");
         assert_eq!(m.images[1].name, "benchy-2.jpg");
         let files: Vec<(&str, &str, &str)> = m.files.iter().map(|f| (f.id.as_str(), f.name.as_str(), f.kind.as_str())).collect();
