@@ -1,7 +1,7 @@
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    routing::{get, post, delete, patch, get_service},
+    routing::{get, post, put, delete, patch, get_service},
     http::StatusCode,
 };
 use tower::ServiceBuilder;
@@ -33,6 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db = lima_db::Db::connect(&paths.database_url).await?;
     db.migrate().await?;
+    let started = time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339)?;
+    lima_db::queries::collections::ensure_favourites(db.pool(), &started).await?;
 
     let ui_dir = ServeDir::new(&paths.ui).fallback(ServeFile::new(paths.ui.join("index.html")));
     let library_dir = ServeDir::new(&paths.library);
@@ -65,6 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
         .route("/projects/{project_id}", get(routes::project_detail::project_detail))
         .route("/projects/{project_id}", patch(routes::project_update::project_update))
+        .route("/projects/{project_id}/favourite", put(routes::project_favourite::add_favourite))
+        .route("/projects/{project_id}/favourite", delete(routes::project_favourite::remove_favourite))
+        .route("/projects/{project_id}/download", get(routes::project_download::project_download))
         .route("/projects/{project_id}/import", post(routes::project_import::project_import))
         .route("/projects/{project_id}/assets/{asset_id}", delete(routes::assets::delete::asset_delete))
         
@@ -126,6 +131,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_detail::project_detail,
         routes::project_update::project_update,
         routes::project_import::project_import,
+        routes::project_download::project_download,
+        routes::project_favourite::add_favourite,
+        routes::project_favourite::remove_favourite,
 
         routes::assets::delete::asset_delete,
 

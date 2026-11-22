@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Star } from "lucide-react";
 
 import { useCollections } from "@/lib/collections";
 import { timeAgo } from "@/lib/format";
@@ -66,9 +66,14 @@ export function CollectionsPage() {
                     </span>
                   </div>
                   <div className="flex flex-1 flex-col gap-1.5 px-4 pt-3.5 pb-4">
-                    <h2 className="font-display line-clamp-2 text-[17px] leading-tight font-semibold tracking-tight">{c.name}</h2>
-                    {c.description ? (
-                      <p className="line-clamp-2 text-sm text-muted-foreground">{c.description}</p>
+                    <h2 className="font-display line-clamp-2 flex items-center gap-1.5 text-[17px] leading-tight font-semibold tracking-tight">
+                      {c.is_favourites ? <Star className="size-4 shrink-0 fill-[#FFB547] text-[#FFB547]" aria-hidden /> : null}
+                      {c.name}
+                    </h2>
+                    {c.description || c.is_favourites ? (
+                      <p className="line-clamp-2 text-sm text-muted-foreground">
+                        {c.description || "Projects you starred"}
+                      </p>
                     ) : null}
                     <span className="mt-auto pt-2 font-mono text-[11px] text-dim">updated {timeAgo(c.updated_at)}</span>
                   </div>

@@ -22,6 +22,8 @@ pub struct Collection {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// The built-in Favourites collection: always exists, can't be renamed or deleted.
+    pub is_favourites: bool,
     pub project_count: i64,
     /// Main images of up to 4 of the most recently added projects, for previews.
     pub covers: Vec<CollectionCover>,
@@ -41,6 +43,7 @@ impl Collection {
             id: row.id,
             name: row.name,
             description: row.description,
+            is_favourites: row.system_key.as_deref() == Some(lima_db::queries::collections::FAVOURITES_KEY),
             project_count: row.project_count,
             covers: covers
                 .into_iter()
@@ -75,6 +78,14 @@ pub(crate) fn invalid_description() -> ApiErrorResponse {
         StatusCode::BAD_REQUEST,
         "invalid_collection_description",
         "Collection description must be at most 2000 characters",
+    )
+}
+
+pub(crate) fn protected() -> ApiErrorResponse {
+    ApiErrorResponse::new(
+        StatusCode::CONFLICT,
+        "collection_protected",
+        "Favourites is a built-in collection and can't be renamed or deleted",
     )
 }
 

@@ -6,7 +6,7 @@ import { Box, ChevronLeft, ChevronRight, Download, Image as ImageIcon, MoreHoriz
 import type { components } from "@/gen/openapi";
 import { apiGet, apiJson, apiNoBody } from "@/lib/api";
 import { formatBytes, timeAgo } from "@/lib/format";
-import { libraryUrl, thumbUrl } from "@/lib/media";
+import { libraryUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
 import { apiErrorMessage } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
+import { FavouriteButton } from "@/components/favourite-button";
 import { ProjectTagsEditor } from "@/components/project-tags-editor";
 import { ProjectCollectionsEditor } from "@/components/project-collections-editor";
 import { MediaImage } from "@/components/media-image";
@@ -160,6 +161,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
             <ImportAssetsDialog projectId={project.id} onImported={refresh} />
             <Button variant="outline" onClick={() => setEditing(true)}>
               <Pencil />
@@ -382,9 +384,22 @@ function FilesTable({
 
   return (
     <section aria-labelledby="files-h" className="flex flex-col gap-3 pt-3">
-      <h2 id="files-h" className="font-display text-[22px] font-semibold">
-        Files <span className="font-mono text-[13px] font-normal text-muted-foreground">{project.assets.length}</span>
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="files-h" className="font-display text-[22px] font-semibold">
+          Files <span className="font-mono text-[13px] font-normal text-muted-foreground">{project.assets.length}</span>
+        </h2>
+        {project.assets.length > 0 ? (
+          <Button asChild variant="outline">
+            <a href={projectDownloadUrl(project.id)} download>
+              <Download />
+              Download all
+              <span className="font-mono text-xs text-muted-foreground">
+                zip · {formatBytes(project.assets.reduce((n, a) => n + a.size_bytes, 0))}
+              </span>
+            </a>
+          </Button>
+        ) : null}
+      </div>
       {project.assets.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
           No files yet. Use “Add files” to upload some.

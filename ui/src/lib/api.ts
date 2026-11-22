@@ -51,7 +51,7 @@ export async function apiJson<T>(method: "POST" | "PATCH" | "PUT", path: string,
 
 
 /** Request whose response has no body (204). Pass `body` to send JSON. */
-export async function apiNoBody(method: "DELETE" | "POST", path: string, body?: unknown): Promise<void> {
+export async function apiNoBody(method: "DELETE" | "POST" | "PUT", path: string, body?: unknown): Promise<void> {
   const res = await fetch(
     `/api${path}`,
     body === undefined

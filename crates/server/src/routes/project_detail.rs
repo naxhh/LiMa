@@ -19,8 +19,9 @@ pub struct ProjectDetailResponse {
 
     pub assets : Vec<ProjectAssetResponse>,
     pub tags : Vec<ProjectTagResponse>,
-    /// Collections the project belongs to, by name.
+    /// The user's collections containing the project, by name (Favourites is `is_favourite`).
     pub collections: Vec<ProjectCollectionResponse>,
+    pub is_favourite: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -122,6 +123,10 @@ pub async fn project_detail(
         .into_iter()
         .map(|c| ProjectCollectionResponse { id: c.id, name: c.name })
         .collect();
+    let is_favourite = lima_db::queries::collections::is_favourite(state.db.pool(), &project_id).await.map_err(|e| {
+        ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "An internal server error occurred")
+            .with_cause(&e.to_string())
+    })?;
 
     Ok((
         StatusCode::OK,
@@ -137,6 +142,7 @@ pub async fn project_detail(
             assets: map_assets(project_assets),
             tags: map_tags(project_tags),
             collections,
+            is_favourite,
         }),
     ))
 

@@ -8,7 +8,7 @@ use lima_domain::pagination::{Cursor, decode_cursor, encode_cursor};
 
 use crate::{models::http_error::ApiErrorBody, state::AppState};
 use crate::models::http_error::ApiErrorResponse;
-use crate::routes::project_detail::ProjectTagResponse;
+use crate::routes::project_detail::{ProjectCollectionResponse, ProjectTagResponse};
 
 #[derive(Deserialize, ToSchema)]
 pub struct ListProjectsParams {
@@ -35,6 +35,9 @@ pub struct ProjectListItem {
     /// Upper-case extensions of the model files, e.g. `["3MF", "STL"]`.
     pub model_formats: Vec<String>,
     pub tags: Vec<ProjectTagResponse>,
+    /// The user's collections containing the project (Favourites is reported as `is_favourite`).
+    pub collections: Vec<ProjectCollectionResponse>,
+    pub is_favourite: bool,
 }
 
 pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) -> Result<Vec<ProjectListItem>, ApiErrorResponse> {
@@ -54,6 +57,8 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
                 total_bytes: s.total_bytes,
                 model_formats: s.model_formats,
                 tags: s.tags.into_iter().map(|t| ProjectTagResponse { id: t.id, name: t.name, color: t.color }).collect(),
+                collections: s.collections.into_iter().map(|c| ProjectCollectionResponse { id: c.id, name: c.name }).collect(),
+                is_favourite: s.is_favourite,
             }
         })
         .collect())

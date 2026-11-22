@@ -3,7 +3,7 @@ use lima_domain::models::collection::{normalize_collection_description, normaliz
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use super::{Collection, db_error, invalid_description, invalid_name, load, name_taken, not_found, now};
+use super::{Collection, db_error, invalid_description, invalid_name, load, name_taken, not_found, now, protected};
 use crate::models::http_error::{ApiErrorBody, ApiErrorResponse};
 use crate::state::AppState;
 
@@ -23,7 +23,7 @@ pub struct PatchCollectionRequest {
         (status = 200, description = "Collection updated", body = Collection),
         (status = 400, description = "Invalid name or description", body = ApiErrorBody),
         (status = 404, description = "Collection not found", body = ApiErrorBody),
-        (status = 409, description = "A collection with that name already exists", body = ApiErrorBody),
+        (status = 409, description = "Name taken, or renaming Favourites", body = ApiErrorBody),
         (status = 503, description = "Database failure", body = ApiErrorBody),
     )
 )]
@@ -41,6 +41,10 @@ pub async fn update_collection(
     let pool = state.db.pool();
 
     if let Some(ref name) = name {
+        let current = lima_db::queries::collections::get_collection(pool, &collection_id).await.map_err(db_error)?.ok_or_else(not_found)?;
+        if current.system_key.is_some() && *name != current.name {
+            return Err(protected());
+        }
         if let Some(existing) = lima_db::queries::collections::find_collection_id_by_name(pool, name).await.map_err(db_error)? {
             if existing != collection_id {
                 return Err(name_taken(&existing));

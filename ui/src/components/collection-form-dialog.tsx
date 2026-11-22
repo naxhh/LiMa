@@ -16,7 +16,7 @@ export function CollectionFormDialog({
   onOpenChange,
   onSaved,
 }: {
-  collection?: Pick<Collection, "id" | "name" | "description">;
+  collection?: Pick<Collection, "id" | "name" | "description" | "is_favourites">;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved?: (c: Collection) => void;
@@ -76,8 +76,12 @@ export function CollectionFormDialog({
               onChange={(e) => setName(e.target.value)}
               maxLength={100}
               placeholder="Desk toys, Gifts 2026, Printer upgrades…"
-              autoFocus
+              disabled={collection?.is_favourites}
+              autoFocus={!collection?.is_favourites}
             />
+            {collection?.is_favourites ? (
+              <p className="text-xs text-muted-foreground">Favourites is built in, so it can’t be renamed.</p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <label htmlFor="collection-description" className="text-sm font-medium">
