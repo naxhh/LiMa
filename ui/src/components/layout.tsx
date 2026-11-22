@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Box, Layers, LayoutGrid, RefreshCw, Search, Tag as TagIcon } from "lucide-react";
+import { Layers, LayoutGrid, RefreshCw, Search, Tag as TagIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -16,12 +16,29 @@ const NAV: NavItem[] = [
   { to: "/admin/sync", label: "Sync", icon: RefreshCw },
 ];
 
+/** The LiMa mark: a lime slice drawn as a circuit trace. Uses the theme's accent colors. */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 512 512" aria-hidden="true" className={cn("text-primary-foreground", className)}>
+      <rect width="512" height="512" rx="112" fill="var(--primary)" />
+      <g transform="translate(-12 14)">
+        <path d="M267.7 88.4 A168 168 0 1 0 334.9 107.7 L380.9 61.7 L414.9 61.7" fill="none" stroke="currentColor" strokeWidth="26" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="432.9" cy="61.7" r="20" fill="none" stroke="currentColor" strokeWidth="16"/>
+        <path d="M271.0 218.9 L271.0 132.9 A124 124 0 0 1 355.1 181.5 L280.6 224.5 A40 40 0 0 0 271.0 218.9 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+        <path d="M295.6 250.4 L370.1 207.4 A124 124 0 0 1 370.1 304.6 L295.6 261.6 A40 40 0 0 0 295.6 250.4 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+        <path d="M280.6 287.5 L355.1 330.5 A124 124 0 0 1 271.0 379.1 L271.0 293.1 A40 40 0 0 0 280.6 287.5 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+        <path d="M241.0 293.1 L241.0 379.1 A124 124 0 0 1 156.9 330.5 L231.4 287.5 A40 40 0 0 0 241.0 293.1 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+        <path d="M216.4 261.6 L141.9 304.6 A124 124 0 0 1 141.9 207.4 L216.4 250.4 A40 40 0 0 0 216.4 261.6 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+        <path d="M231.4 224.5 L156.9 181.5 A124 124 0 0 1 241.0 132.9 L241.0 218.9 A40 40 0 0 0 231.4 224.5 Z" fill="currentColor" stroke="currentColor" strokeWidth="6" strokeLinejoin="round"/>
+      </g>
+    </svg>
+  );
+}
+
 export function Logo() {
   return (
     <Link to="/" className="flex items-center gap-2.5 text-foreground">
-      <span className="grid size-[30px] place-items-center rounded-lg bg-primary text-primary-foreground">
-        <Box className="size-[18px]" strokeWidth={2.2} />
-      </span>
+      <LogoMark className="size-[30px]" />
       <span className="font-display text-xl font-bold tracking-tight">LiMa</span>
     </Link>
   );

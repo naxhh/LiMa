@@ -1,3 +1,5 @@
+<img src="docs/brand/logo-accent.svg" alt="" width="96" align="right" />
+
 # LiMa: Library Index for Model Assets
 
 LiMa is a library index for 3d models and related assets.
