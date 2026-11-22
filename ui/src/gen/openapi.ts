@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["library_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sync/run": {
         parameters: {
             query?: never;
@@ -268,6 +284,14 @@ export interface components {
             bundle_id: string;
             new_main_image?: string | null;
         };
+        LibraryStatsResponse: {
+            /** Format: int64 */
+            assets: number;
+            /** Format: int64 */
+            projects: number;
+            /** Format: int64 */
+            total_bytes: number;
+        };
         ListProjectsParams: {
             cursor?: string | null;
             /** Format: int64 */
@@ -275,7 +299,7 @@ export interface components {
             query?: string | null;
         };
         ListProjectsResponse: {
-            items: components["schemas"]["ProjectRow"][];
+            items: components["schemas"]["ProjectListItem"][];
             next_cursor?: string | null;
         };
         ListSyncEventsParams: {
@@ -326,6 +350,8 @@ export interface components {
             name?: string | null;
         };
         ProjectAssetResponse: {
+            /** @description blake3 hex digest; null until the indexer has hashed the file. */
+            file_hash?: string | null;
             file_path: string;
             id: string;
             kind: string;
@@ -343,6 +369,20 @@ export interface components {
             name: string;
             tags: components["schemas"]["ProjectTagResponse"][];
             updated_at: string;
+        };
+        /** @description A project plus the aggregates list views need (counts, size, formats, tags). */
+        ProjectListItem: components["schemas"]["ProjectRow"] & {
+            /** Format: int64 */
+            asset_count: number;
+            /** Format: int64 */
+            image_count: number;
+            /** Format: int64 */
+            model_count: number;
+            /** @description Upper-case extensions of the model files, e.g. `["3MF", "STL"]`. */
+            model_formats: string[];
+            tags: components["schemas"]["ProjectTagResponse"][];
+            /** Format: int64 */
+            total_bytes: number;
         };
         ProjectRow: {
             created_at: string;
@@ -937,6 +977,35 @@ export interface operations {
                 };
             };
             /** @description Service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    library_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Library totals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryStatsResponse"];
+                };
+            };
+            /** @description Failure to connect to the database */
             503: {
                 headers: {
                     [name: string]: unknown;

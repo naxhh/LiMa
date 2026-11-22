@@ -40,12 +40,27 @@ impl From<SearchRow> for SearchProjectRow {
     }
 }
 
+/// Turns free text into an FTS5 query: every word becomes a quoted prefix term
+/// (`"drag"*`) and all terms must match. Punctuation only separates words, so
+/// input like `print-in-place` or `a "b` can't produce an FTS syntax error.
+/// Returns `None` when the text has no searchable characters.
+pub fn to_fts_query(input: &str) -> Option<String> {
+    let terms: Vec<String> = input
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{w}\"*"))
+        .collect();
+    if terms.is_empty() { None } else { Some(terms.join(" ")) }
+}
+
 pub async fn search_projects(
     pool: &Pool<Sqlite>,
     query: &str,
     limit: i64,
     cursor: Option<Cursor>,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
+    let Some(fts) = to_fts_query(query) else { return Ok(Vec::new()) };
+    let query = fts.as_str();
     match cursor {
         None => { search_projects_from_start(pool, query, limit).await }
         Some(cursor) => { search_projects_from_cursor(pool, query, limit, &cursor).await }
@@ -125,4 +140,18 @@ async fn search_projects_from_cursor(
     .await?;
 
     Ok(rows.into_iter().map(Into::into).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::to_fts_query;
+
+    #[test]
+    fn fts_query_quotes_words_as_prefixes() {
+        assert_eq!(to_fts_query("print-in-place").as_deref(), Some(r#""print"* "in"* "place"*"#));
+        assert_eq!(to_fts_query("  Drag  ").as_deref(), Some(r#""Drag"*"#));
+        assert_eq!(to_fts_query(r#"a "b OR c*"#).as_deref(), Some(r#""a"* "b"* "OR"* "c"*"#));
+        assert_eq!(to_fts_query("ñandú 3mf").as_deref(), Some(r#""ñandú"* "3mf"*"#));
+        assert_eq!(to_fts_query(" -\"* ").as_deref(), None);
+    }
 }

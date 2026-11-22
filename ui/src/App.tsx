@@ -1,6 +1,6 @@
-import { Routes, Route, Navigate, Link } from "react-router-dom";
-import './App.css'
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Routes, Route, Navigate } from "react-router-dom";
+
+import { AppHeader, MobileNav } from "@/components/layout";
 import { ProjectsPage } from "@/pages/projects";
 import { ProjectDetailPage } from "@/pages/project-detail";
 import { AdminSyncPage } from "@/pages/admin-sync";
@@ -8,18 +8,8 @@ import { TagsPage } from "@/pages/tags";
 
 function App() {
   return (
-    <div className="min-h-screen">
-      <header className="border-b">
-        <div className="flex items-center justify-between p-4">
-          <Link to="/" className="font-semibold">LIMA</Link>
-          <div className="flex items-center gap-4">
-            <Link to="/tags" className="text-sm text-muted-foreground hover:text-foreground">Tags</Link>
-            <Link to="/admin/sync" className="text-sm text-muted-foreground hover:text-foreground">Sync</Link>
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen pb-20 md:pb-0">
+      <AppHeader />
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
@@ -28,8 +18,9 @@ function App() {
         <Route path="/admin/sync/:runId" element={<AdminSyncPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <MobileNav />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

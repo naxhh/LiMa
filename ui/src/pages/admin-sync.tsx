@@ -1,16 +1,18 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { ApiError, apiGet, apiJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { timeAgo } from "@/lib/format";
+import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
+import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
-type SyncStatus = components["schemas"]["SyncStatusResponse"];
 type SyncRunsPage = components["schemas"]["ListSyncRunsResponse"];
 type SyncEvent = components["schemas"]["SyncEventRow"];
 type SyncEventsPage = components["schemas"]["ListSyncEventsResponse"];
@@ -24,8 +26,6 @@ function scopeLabel(run: SyncRun): string {
   return `${folders.length} folders`;
 }
 
-const RUNNING_POLL_MS = 1000;
-const IDLE_POLL_MS = 15000;
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -51,18 +51,26 @@ function formatDuration(start?: string | null, end?: string | null, now = Date.n
 }
 
 const statusStyles: Record<string, string> = {
-  running: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
-  queued: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
-  complete: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-  failed: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
-  cancelled: "bg-muted text-muted-foreground border-border",
+  running: "border-signal/40 bg-signal-soft text-signal",
+  queued: "border-signal/40 bg-signal-soft text-signal",
+  complete: "border-input text-muted-foreground",
+  failed: "border-destructive/40 bg-destructive/10 text-destructive",
+  cancelled: "border-input text-dim",
+};
+
+const statusDot: Record<string, string> = {
+  running: "bg-signal pulse-signal",
+  queued: "bg-signal",
+  complete: "bg-signal",
+  failed: "bg-destructive",
+  cancelled: "bg-dim",
 };
 
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium capitalize",
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide",
         statusStyles[status] ?? statusStyles.cancelled,
       )}
     >
@@ -70,19 +78,6 @@ function StatusBadge({ status }: { status: string }) {
       {status}
     </span>
   );
-}
-
-function useSyncStatus() {
-  return useQuery({
-    queryKey: ["sync", "status"],
-    queryFn: () => apiGet<SyncStatus>("/sync/status"),
-    refetchInterval: (q) => {
-      const d = q.state.data;
-      if (d?.running) return RUNNING_POLL_MS;
-      if (d?.watcher.pending_folders.length || d?.watcher.full_rescan_pending) return RUNNING_POLL_MS * 2;
-      return IDLE_POLL_MS;
-    },
-  });
 }
 
 /** Re-render periodically so live durations tick while a run is in progress. */
@@ -127,173 +122,147 @@ export function AdminSyncPage() {
   });
 
   const selectedId = runId ?? statusQ.data?.run?.id;
+  const busy = running || startM.isPending;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Library sync</h1>
-          <p className="text-sm text-muted-foreground">
-            Scan the library folder and reconcile projects and assets with the database. Files on disk are never
-            modified.
-          </p>
-        </div>
+    <div>
+      <PageHero index="04" label="Sync" title="Library sync" subtitle="Reconciles the library folder with the database · files on disk are never modified">
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => startM.mutate("incremental")}
-            disabled={running || startM.isPending}
+            disabled={busy}
             title="Index new and changed files. Only hashes files whose size or modified time changed."
           >
-            {running || startM.isPending ? <Loader2 className="animate-spin" /> : <Play />}
-            {running ? "Sync running…" : "Run sync"}
+            {busy ? <Loader2 className="animate-spin" /> : <Play />}
+            {running ? "Sync running…" : "Run incremental"}
           </Button>
           <Button
             variant="outline"
             onClick={() => startM.mutate("full")}
-            disabled={running || startM.isPending}
+            disabled={busy}
             title="Re-hash every file to detect content changed in place. Slower on large libraries."
           >
             <ShieldCheck />
             Full sync &amp; verify
           </Button>
         </div>
-      </div>
+      </PageHero>
 
-      {startM.isError ? (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          Could not start sync: {errorMessage(startM.error)}
+      <PageBody className="flex flex-col gap-6 pt-7 pb-16">
+        {startM.isError ? (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            Could not start sync: {errorMessage(startM.error)}
+          </div>
+        ) : null}
+        {statusQ.isError ? (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            Failed to load sync status: {errorMessage(statusQ.error)}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
+            {selectedId ? (
+              <RunDetail runId={selectedId} isLatest={selectedId === statusQ.data?.run?.id} />
+            ) : statusQ.isLoading ? (
+              <div className="bg-dots h-64 animate-pulse rounded-2xl border bg-card" />
+            ) : (
+              <EmptyPanel>No sync has run yet. Start one to index the library folder.</EmptyPanel>
+            )}
+          </div>
+          <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-5">
+            {statusQ.data ? <WatcherCard watcher={statusQ.data.watcher} /> : null}
+            <RunsList selectedId={selectedId} live={running} />
+          </aside>
         </div>
-      ) : null}
-
-      {statusQ.data ? <WatcherBar watcher={statusQ.data.watcher} /> : null}
-
-      <CurrentStatus status={statusQ.data} isLoading={statusQ.isLoading} error={statusQ.error} />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <RunsList selectedId={selectedId} live={running} />
-        {selectedId ? <RunDetail runId={selectedId} /> : <EmptyPanel>Select a run to see its details.</EmptyPanel>}
-      </div>
+      </PageBody>
     </div>
   );
 }
 
-function WatcherBar({ watcher }: { watcher: WatcherStatus }) {
+function WatcherCard({ watcher }: { watcher: WatcherStatus }) {
   const pending = watcher.pending_folders;
-  let label: string;
+  let state: string;
   let tone: string;
+  let note: string | null = null;
   if (!watcher.enabled) {
-    label = "Watcher disabled (LIMA_WATCHER=false). Changes are only picked up by manual syncs.";
-    tone = "text-muted-foreground";
+    state = "OFF";
+    tone = "border-input text-dim";
+    note = "Disabled with LIMA_WATCHER=false. Changes are only picked up by manual syncs.";
   } else if (!watcher.active) {
-    label = `Watcher not running: ${watcher.error ?? "unknown error"}. Use manual syncs.`;
-    tone = "text-amber-700 dark:text-amber-400";
-  } else if (watcher.full_rescan_pending) {
-    label = "Watching the library · full rescan queued";
-    tone = "text-blue-600 dark:text-blue-400";
-  } else if (pending.length > 0) {
-    const names = pending.slice(0, 3).join(", ") + (pending.length > 3 ? ` +${pending.length - 3}` : "");
-    label = `Watching the library · changes waiting to sync: ${names}`;
-    tone = "text-blue-600 dark:text-blue-400";
+    state = "STOPPED";
+    tone = "border-warn/40 bg-warn/10 text-warn";
+    note = `Not running: ${watcher.error ?? "unknown error"}. Use manual syncs.`;
+  } else if (watcher.full_rescan_pending || pending.length > 0) {
+    state = "PENDING";
+    tone = "border-info/40 bg-info/10 text-info";
   } else {
-    label = "Watching the library · new and changed files sync automatically";
-    tone = "text-emerald-700 dark:text-emerald-400";
+    state = "ACTIVE";
+    tone = "border-signal/40 bg-signal-soft text-signal";
   }
 
+  const pendingLabel = watcher.full_rescan_pending
+    ? "full rescan"
+    : pending.length === 0
+      ? "—"
+      : pending.slice(0, 3).join(", ") + (pending.length > 3 ? ` +${pending.length - 3}` : "");
+
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-2 text-sm", tone)}>
-      {watcher.enabled && watcher.active ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-      <span>{label}</span>
-      {watcher.last_triggered_at ? (
-        <span className="text-xs text-muted-foreground">Last automatic sync {formatDate(watcher.last_triggered_at)}</span>
+    <section aria-labelledby="watcher-h" className="flex flex-col gap-3.5 rounded-2xl border bg-card p-4.5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="watcher-h" className="font-display text-[17px] font-semibold">
+          Folder watcher
+        </h2>
+        <span className={cn("rounded-full border px-2 py-0.5 font-mono text-[11px]", tone)}>{state}</span>
+      </div>
+      {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
+      {watcher.enabled ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-mono text-xs">
+          <dt className="text-dim">pending</dt>
+          <dd className="truncate">{pendingLabel}</dd>
+          <dt className="text-dim">last event</dt>
+          <dd>{watcher.last_event_at ? formatDate(watcher.last_event_at) : "—"}</dd>
+          <dt className="text-dim">last trigger</dt>
+          <dd>{watcher.last_triggered_at ? formatDate(watcher.last_triggered_at) : "—"}</dd>
+          {watcher.active && watcher.error ? (
+            <>
+              <dt className="text-dim">last error</dt>
+              <dd className="text-warn">{watcher.error}</dd>
+            </>
+          ) : null}
+        </dl>
       ) : null}
-      {watcher.active && watcher.error ? (
-        <span className="text-xs text-amber-700 dark:text-amber-400">Last error: {watcher.error}</span>
-      ) : null}
-    </div>
+    </section>
   );
 }
 
 function EmptyPanel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground flex items-center justify-center">
+    <div className="bg-dots flex items-center justify-center rounded-2xl border border-dashed p-10 text-sm text-muted-foreground">
       {children}
-    </div>
-  );
-}
-
-function CurrentStatus({
-  status,
-  isLoading,
-  error,
-}: {
-  status?: SyncStatus;
-  isLoading: boolean;
-  error: unknown;
-}) {
-  const run = status?.run ?? null;
-  const now = useNow(!!status?.running);
-
-  if (isLoading) return <div className="rounded-lg border p-4 text-sm">Loading status…</div>;
-  if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
-        Failed to load sync status: {errorMessage(error)}
-      </div>
-    );
-  }
-  if (!run) return <EmptyPanel>No sync has run yet. Start one to index the library folder.</EmptyPanel>;
-
-  const { stats } = run;
-  const pct = stats.projects_total > 0 ? Math.round((stats.projects_scanned / stats.projects_total) * 100) : 0;
-
-  return (
-    <div className="rounded-lg border p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span className="font-medium">{status?.running ? "Current run" : "Last run"}</span>
-        <StatusBadge status={run.status} />
-        <span className="text-muted-foreground">Started {formatDate(run.started_at)}</span>
-        <span className="text-muted-foreground">Duration {formatDuration(run.started_at, run.finished_at, now)}</span>
-        <Link to={`/admin/sync/${run.id}`} className="text-muted-foreground underline-offset-4 hover:underline">
-          Details
-        </Link>
-      </div>
-
-      {run.status === "running" ? (
-        <div className="space-y-1">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {stats.projects_scanned} / {stats.projects_total || "?"} projects scanned
-          </div>
-        </div>
-      ) : null}
-
-      {run.error ? <div className="text-sm text-destructive">{run.error}</div> : null}
-
-      <StatsGrid stats={stats} />
     </div>
   );
 }
 
 function StatsGrid({ stats }: { stats: SyncStats }) {
   const items: [string, number, string?][] = [
-    ["Projects", stats.projects_total],
-    ["Projects added", stats.projects_added, "text-emerald-600 dark:text-emerald-400"],
-    ["Projects removed", stats.projects_removed, "text-amber-600 dark:text-amber-400"],
-    ["Assets added", stats.assets_added, "text-emerald-600 dark:text-emerald-400"],
-    ["Assets updated", stats.assets_updated, "text-blue-600 dark:text-blue-400"],
-    ["Assets removed", stats.assets_removed, "text-amber-600 dark:text-amber-400"],
-    ["Files hashed", stats.assets_hashed],
-    ["Thumbnails", stats.thumbnails_generated],
-    ["Errors", stats.errors, "text-red-600 dark:text-red-400"],
+    ["Projects +", stats.projects_added, "text-signal"],
+    ["Projects −", stats.projects_removed, "text-warn"],
+    ["Assets +", stats.assets_added, "text-signal"],
+    ["Assets ~", stats.assets_updated, "text-info"],
+    ["Assets −", stats.assets_removed, "text-warn"],
+    ["Hashed", stats.assets_hashed],
+    ["Thumbs", stats.thumbnails_generated],
+    ["Errors", stats.errors, "text-destructive"],
   ];
   return (
-    <dl className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3">
+    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
       {items.map(([label, value, color]) => (
-        <div key={label} className="rounded-md bg-muted/50 px-3 py-2">
-          <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className={cn("text-lg font-semibold tabular-nums", value > 0 && color)}>{value}</dd>
+        <div key={label} className="bg-card px-4 py-3.5">
+          <dt>
+            <MicroLabel>{label}</MicroLabel>
+          </dt>
+          <dd className={cn("mt-1.5 font-mono text-[22px] tabular-nums", value > 0 && color)}>{value.toLocaleString()}</dd>
         </div>
       ))}
     </dl>
@@ -312,48 +281,70 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
   const runs = runsQ.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <section className="rounded-lg border">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="font-medium">History</h2>
-        <Button variant="ghost" size="icon" onClick={() => runsQ.refetch()} aria-label="Refresh runs">
+    <section aria-labelledby="history-h" className="overflow-hidden rounded-2xl border bg-card">
+      <div className="flex items-center justify-between px-4.5 pt-3 pb-2">
+        <h2 id="history-h" className="font-display text-[17px] font-semibold">
+          Run history
+        </h2>
+        <Button variant="ghost" size="icon-sm" onClick={() => runsQ.refetch()} aria-label="Refresh runs" className="text-muted-foreground">
           <RefreshCw className={cn(runsQ.isFetching && "animate-spin")} />
         </Button>
       </div>
 
-      {runsQ.isLoading ? <div className="p-4 text-sm">Loading…</div> : null}
+      {runsQ.isLoading ? <div className="border-t px-4.5 py-3 text-sm text-muted-foreground">Loading…</div> : null}
       {runsQ.isError ? (
-        <div className="p-4 text-sm text-destructive">Failed to load runs: {errorMessage(runsQ.error)}</div>
+        <div className="border-t px-4.5 py-3 text-sm text-destructive">Failed to load runs: {errorMessage(runsQ.error)}</div>
       ) : null}
       {!runsQ.isLoading && runs.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground">No runs yet.</div>
+        <div className="border-t px-4.5 py-3 text-sm text-muted-foreground">No runs yet.</div>
       ) : null}
 
-      <ul className="divide-y">
+      <ul>
         {runs.map((run) => {
           const s = run.stats;
           const changes = s.projects_added + s.projects_removed + s.assets_added + s.assets_updated + s.assets_removed;
+          const summary =
+            run.status === "failed"
+              ? `failed: ${run.error || "see events"}`
+              : run.status === "running"
+                ? "running…"
+                : [
+                    run.options?.folders ? `scope: ${scopeLabel(run)}` : null,
+                    changes === 0 ? "no changes" : `${changes} change${changes === 1 ? "" : "s"}`,
+                    s.errors > 0 ? `${s.errors} errors` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
           return (
             <li key={run.id}>
               <Link
                 to={`/admin/sync/${run.id}`}
+                aria-current={run.id === selectedId ? "true" : undefined}
                 className={cn(
-                  "flex flex-col gap-1 px-4 py-3 text-sm hover:bg-muted/50",
-                  run.id === selectedId && "bg-muted",
+                  "flex items-center gap-3 border-t px-4.5 py-2.5 hover:bg-secondary/60",
+                  run.id === selectedId && "bg-secondary",
                 )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span>{formatDate(run.started_at)}</span>
-                  <StatusBadge status={run.status} />
-                </div>
-                <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                  <span>
+                <span className={cn("size-2 shrink-0 rounded-full", statusDot[run.status] ?? "bg-dim")} />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-[13px] font-medium capitalize">
                     {run.mode} · {run.reason}
-                    {run.options?.folders ? ` · ${scopeLabel(run)}` : ""}
                   </span>
-                  <span>{formatDuration(run.started_at, run.finished_at)}</span>
-                  <span>{changes === 0 ? "no changes" : `${changes} change${changes === 1 ? "" : "s"}`}</span>
-                  {s.errors > 0 ? <span className="text-red-600 dark:text-red-400">{s.errors} errors</span> : null}
-                </div>
+                  <span
+                    className={cn(
+                      "truncate font-mono text-[11px]",
+                      run.status === "failed" ? "text-destructive" : "text-muted-foreground",
+                    )}
+                    title={summary}
+                  >
+                    {summary}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right font-mono text-[11px] text-dim">
+                  {run.started_at ? timeAgo(run.started_at) : "—"}
+                  <br />
+                  {formatDuration(run.started_at, run.finished_at)}
+                </span>
               </Link>
             </li>
           );
@@ -371,7 +362,7 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
   );
 }
 
-function RunDetail({ runId }: { runId: string }) {
+function RunDetail({ runId, isLatest }: { runId: string; isLatest: boolean }) {
   const runQ = useQuery({
     queryKey: ["sync", "run", runId],
     queryFn: () => apiGet<SyncRun>(`/sync/runs/${runId}`),
@@ -381,62 +372,80 @@ function RunDetail({ runId }: { runId: string }) {
   const live = run?.status === "running";
   const now = useNow(live);
 
-  if (runQ.isLoading) return <div className="rounded-lg border p-4 text-sm">Loading run…</div>;
+  if (runQ.isLoading) return <div className="bg-dots h-64 animate-pulse rounded-2xl border bg-card" />;
   if (runQ.isError || !run) {
     return (
-      <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
+      <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
         Failed to load run: {errorMessage(runQ.error)}
       </div>
     );
   }
 
-  return (
-    <section className="rounded-lg border">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-4 py-2 text-sm">
-        <h2 className="font-medium">Run details</h2>
-        <StatusBadge status={run.status} />
-        <span className="font-mono text-xs text-muted-foreground">{run.id}</span>
-      </div>
-      <div className="space-y-4 p-4">
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <Field label="Mode" value={run.mode} />
-          <Field label="Reason" value={run.reason} />
-          <Field label="Started" value={formatDate(run.started_at)} />
-          <Field label="Duration" value={formatDuration(run.started_at, run.finished_at, now)} />
-        </dl>
-        <div className="text-sm">
-          <div className="text-xs text-muted-foreground">Scope</div>
-          <div className="break-words">
-            {run.options?.folders ? run.options.folders.join(", ") : "Whole library"}
-          </div>
-        </div>
-        {run.error ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            {run.error}
-          </div>
-        ) : null}
-        <StatsGrid stats={run.stats} />
-        <EventLog runId={run.id} live={live} />
-      </div>
-    </section>
-  );
-}
+  const { stats } = run;
+  const pct = stats.projects_total > 0 ? Math.round((stats.projects_scanned / stats.projects_total) * 100) : 0;
+  const shownPct = run.status === "complete" ? 100 : pct;
 
-function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="capitalize">{value}</dd>
-    </div>
+    <>
+      <section
+        aria-label="Run"
+        className="bg-grid flex flex-col gap-5 rounded-2xl border border-line-strong bg-card p-5 [background-size:32px_32px] sm:p-6"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={cn("size-2.5 rounded-full", statusDot[run.status] ?? "bg-dim")} />
+            <span className="font-display text-xl font-semibold">
+              {live ? "Running" : isLatest ? "Last run" : "Run"} · {run.mode}
+            </span>
+            <span className="rounded-md border border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {run.reason}
+            </span>
+            <StatusBadge status={run.status} />
+          </div>
+          <span className="font-mono text-xs text-muted-foreground">
+            run {run.id.slice(0, 8)} · {formatDate(run.started_at)} · {formatDuration(run.started_at, run.finished_at, now)}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-display text-5xl leading-none font-semibold tracking-[-0.04em] tabular-nums sm:text-[56px]">
+              {shownPct}
+              <span className="text-2xl text-muted-foreground">%</span>
+            </span>
+            <span className="font-mono text-[13px] text-muted-foreground">
+              {stats.projects_scanned} / {stats.projects_total || "?"} projects
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-[3px] bg-secondary">
+            <div
+              className={cn("h-full transition-[width] duration-500", run.status === "failed" ? "bg-destructive" : "bg-scan")}
+              style={{ width: `${shownPct}%` }}
+            />
+          </div>
+          <span className="font-mono text-xs break-words text-dim">
+            › scope: {run.options?.folders ? run.options.folders.join(", ") : "whole library"}
+          </span>
+        </div>
+
+        {run.error ? (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{run.error}</div>
+        ) : null}
+
+        <StatsGrid stats={stats} />
+      </section>
+
+      <EventLog runId={run.id} live={live} />
+    </>
   );
 }
 
 const levelStyles: Record<string, string> = {
-  error: "text-red-600 dark:text-red-400",
-  warn: "text-amber-600 dark:text-amber-400",
-  info: "text-foreground",
-  debug: "text-muted-foreground",
-  trace: "text-muted-foreground",
+  error: "text-[#FF7A7A]",
+  warn: "text-[#F5B544]",
+  info: "text-[#7DD3FC]",
+  debug: "text-[#7A8597]",
+  trace: "text-[#7A8597]",
 };
 
 /** Loads the whole event log, tailing new events while the run is live. */
@@ -493,35 +502,55 @@ function EventLog({ runId, live }: { runId: string; live: boolean }) {
   const [onlyProblems, setOnlyProblems] = React.useState(false);
   const shown = onlyProblems ? events.filter((e) => e.level === "warn" || e.level === "error") : events;
 
+  // Keep the newest line in view while tailing, unless the reader scrolled up.
+  const boxRef = React.useRef<HTMLDivElement>(null);
+  const stick = React.useRef(true);
+  React.useEffect(() => {
+    const el = boxRef.current;
+    if (el && live && stick.current) el.scrollTop = el.scrollHeight;
+  }, [shown.length, live]);
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Events ({events.length})</h3>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
-          Warnings and errors only
+    <section aria-labelledby="log-h" className="dark overflow-hidden rounded-2xl border border-[#1C232D] bg-terminal text-[#C9D1DC]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1C232D] px-4 py-3">
+        <h2 id="log-h" className="font-mono text-xs font-medium tracking-[0.1em] text-[#9AA4B5]">
+          EVENT LOG · {events.length}
+          {live ? " · LIVE" : ""}
+        </h2>
+        <label className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-[#9AA4B5]">
+          <input
+            type="checkbox"
+            checked={onlyProblems}
+            onChange={(e) => setOnlyProblems(e.target.checked)}
+            className="accent-[#4FE3C1]"
+          />
+          warnings &amp; errors only
         </label>
       </div>
-      {error ? <div className="text-sm text-destructive">Failed to load events: {errorMessage(error)}</div> : null}
-      <div className="max-h-[28rem] overflow-auto rounded-md border bg-muted/30 font-mono text-xs">
-        {loading ? <div className="p-3">Loading…</div> : null}
-        {!loading && shown.length === 0 ? <div className="p-3 text-muted-foreground">No events.</div> : null}
-        <table className="w-full">
-          <tbody>
-            {shown.map((e) => (
-              <tr key={e.id} className="border-b last:border-0 align-top">
-                <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">
-                  {new Date(e.created_at).toLocaleTimeString()}
-                </td>
-                <td className={cn("whitespace-nowrap px-2 py-1.5 uppercase", levelStyles[e.level])}>{e.level}</td>
-                <td className="whitespace-nowrap px-2 py-1.5">{e.kind}</td>
-                <td className="px-2 py-1.5 break-all text-muted-foreground">{describeEvent(e)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {error ? <div className="px-4 pt-3 text-sm text-[#FF7A7A]">Failed to load events: {errorMessage(error)}</div> : null}
+      <div
+        ref={boxRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+        className="max-h-[28rem] overflow-auto px-4 py-3 font-mono text-xs leading-relaxed"
+      >
+        {loading ? <div className="text-[#7A8597]">loading…</div> : null}
+        {!loading && shown.length === 0 ? <div className="text-[#7A8597]">no events</div> : null}
+        <ol className="flex flex-col gap-1">
+          {shown.map((e) => (
+            <li key={e.id} className="flex gap-3.5">
+              <span className="shrink-0 text-[#7A8597]">{new Date(e.created_at).toLocaleTimeString()}</span>
+              <span className={cn("w-11 shrink-0 uppercase", levelStyles[e.level])}>{e.level}</span>
+              <span className="min-w-0 break-words">
+                <span className="text-[#E7ECF3]">{e.kind}</span> <span className="text-[#9AA4B5]">{describeEvent(e)}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -542,6 +571,10 @@ function describeEvent(e: SyncEvent): string {
       return `${d.path}: ${d.reason}`;
     case "project_failed":
       return `${d.folder_path}: ${d.error}`;
+    case "run_finished": {
+      const st = (d.stats ?? {}) as Partial<SyncStats>;
+      return `${st.projects_scanned ?? 0} projects scanned · +${st.assets_added ?? 0} ~${st.assets_updated ?? 0} -${st.assets_removed ?? 0} assets · ${st.assets_hashed ?? 0} hashed · ${st.thumbnails_generated ?? 0} thumbnails`;
+    }
     case "run_failed":
       return String(d.error);
     case "run_started":

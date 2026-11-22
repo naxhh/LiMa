@@ -22,7 +22,7 @@ export function TagBadge({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex h-7 max-w-full items-center gap-1 rounded-full px-2.5 text-xs font-medium",
         className,
       )}
       style={{ backgroundColor: color, color: fg }}

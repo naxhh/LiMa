@@ -81,7 +81,8 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
 | POST | `/projects` | Create project (metadata only) | ✅ Done |
-| GET | `/projects` | List projects (cursor pagination + search) | ✅ Done |
+| GET | `/projects` | List projects (cursor pagination + search). Each item includes file counts, total size, model formats and tags. Search matches word prefixes. | ✅ Done |
+| GET | `/stats` | Library totals (projects, files, bytes) | ✅ Done |
 | DELETE | `/projects/{project_id}` | Delete project (DB + filesystem) | ✅ Done |
 | GET | `/projects/{project_id}` | Get single project details | ✅ Done |
 | PATCH | `/projects/{project_id}` | Update project metadata (name, description, main image) | ✅ Done |

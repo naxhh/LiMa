@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -156,7 +157,10 @@ export function CreateProjectDialog() {
       }}
     >
       <DialogTrigger asChild>
-        <Button>Create project</Button>
+        <Button aria-label="New project">
+          <Plus strokeWidth={2.4} />
+          <span className="hidden sm:inline">New project</span>
+        </Button>
       </DialogTrigger>
 
       <DialogContent>

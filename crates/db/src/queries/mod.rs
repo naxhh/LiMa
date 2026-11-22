@@ -15,6 +15,7 @@ pub mod projects_delete;
 pub mod projects_detail;
 pub mod projects_update;
 pub mod projects_import;
+pub mod projects_summary;
 pub mod tags;
 pub mod assets;pub mod sync;
 pub mod library_index;

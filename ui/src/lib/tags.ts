@@ -42,16 +42,16 @@ export function tagTextColor(hex: string): string {
 
 /** Suggested colors for the tag color picker. */
 export const TAG_COLOR_PRESETS = [
-  "#EF4444",
-  "#F97316",
-  "#EAB308",
-  "#22C55E",
-  "#14B8A6",
-  "#3B82F6",
+  "#4FE3C1",
+  "#7DD3FC",
   "#6366F1",
-  "#A855F7",
-  "#EC4899",
-  "#64748B",
+  "#A78BFA",
+  "#F472B6",
+  "#FB7185",
+  "#FFB547",
+  "#C4F25A",
+  "#EF4444",
+  "#94A3B8",
 ];
 
 export function apiErrorMessage(err: unknown): string {
