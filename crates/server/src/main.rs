@@ -69,6 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         .route("/tags", get(routes::tags::list::list_tags))
         .route("/tags", post(routes::tags::create::create_tag))
+        .route("/tags/{tag_id}", patch(routes::tags::update::update_tag))
+        .route("/tags/{tag_id}", delete(routes::tags::delete::delete_tag))
         
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
@@ -119,6 +121,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         routes::tags::list::list_tags,
         routes::tags::create::create_tag,
+        routes::tags::update::update_tag,
+        routes::tags::delete::delete_tag,
 
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
@@ -149,7 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::tags::list::Tag,
 
         routes::tags::create::CreateTagRequest,
-        routes::tags::create::CreateTagResponse,
+        routes::tags::update::PatchTagRequest,
         
         routes::bundle_create::CreateBundleResponse,
 

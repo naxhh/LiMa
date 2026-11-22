@@ -97,8 +97,8 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 |------|------|---------|--------|
 | GET | `/tags` | List tags | ✅ Done |
 | POST | `/tags` | Create tag | ✅ Done |
-| PATCH | `/tags/{tag_id}` | Rename / update tag | 🟡 Planned (v0) |
-| DELETE | `/tags/{tag_id}` | Delete tag | 🟡 Planned (v0) |
+| PATCH | `/tags/{tag_id}` | Rename / recolor tag | ✅ Done |
+| DELETE | `/tags/{tag_id}` | Delete tag (unlinks it from projects) | ✅ Done |
 
 ---
 

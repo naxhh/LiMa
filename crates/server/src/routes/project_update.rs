@@ -14,7 +14,7 @@ pub struct PatchProjectRequest {
 
 #[utoipa::path(
     patch,
-    path = "/projects/{project_id}",
+    path = "/api/projects/{project_id}",
     tag = "Projects",
     request_body = PatchProjectRequest,
     responses(
@@ -56,7 +56,6 @@ pub async fn project_update(
         ).with_cause(&e.to_string())
     })?;
 
-    // TODO: make this use transaction
     if payload.name.is_some() || payload.description.is_some() || payload.main_image_id.is_some() {
         let updated_rows = lima_db::queries::projects_update::update_project(
             &mut tx,
@@ -85,7 +84,27 @@ pub async fn project_update(
         };
     }
 
-    if let Some(tags) = payload.tags {
+    if let Some(raw_tags) = payload.tags {
+        let tags = raw_tags
+            .iter()
+            .map(|t| lima_domain::models::tag::normalize_tag_name(t))
+            .collect::<Option<Vec<String>>>()
+            .ok_or_else(|| {
+                ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_tag_name", "Tag names must be 1 to 64 characters")
+            })?;
+
+        let exists: Option<String> = sqlx::query_scalar("SELECT id FROM projects WHERE id = ?1")
+            .bind(&project_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| {
+                ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "database_error", "Failed to load project")
+                    .with_cause(&e.to_string())
+            })?;
+        if exists.is_none() {
+            return Err(ApiErrorResponse::new(StatusCode::NOT_FOUND, "project_not_found", "Project not found"));
+        }
+
         let tag_ids = lima_db::queries::tags::ensure_tags(&mut tx, &tags, &now).await.map_err(|e| {
             ApiErrorResponse::new(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -102,6 +121,11 @@ pub async fn project_update(
             ).with_cause(&e.to_string())
         })?;
     }
+
+    tx.commit().await.map_err(|e| {
+        ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "database_error", "Failed to save project")
+            .with_cause(&e.to_string())
+    })?;
 
     Ok(StatusCode::OK)
 }

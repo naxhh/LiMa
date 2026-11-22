@@ -39,7 +39,13 @@ pub async fn create_project(
     }
 
     let description = body.description.unwrap_or_default();
-    let tags = body.tags.unwrap_or_default();
+    let tags = body
+        .tags
+        .unwrap_or_default()
+        .iter()
+        .map(|t| lima_domain::models::tag::normalize_tag_name(t))
+        .collect::<Option<Vec<String>>>()
+        .ok_or_else(|| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_tag_name", "Tag names must be 1 to 64 characters"))?;
     let now = now();
     let folder_path = slugify_string(name);
 
