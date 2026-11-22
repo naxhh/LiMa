@@ -100,6 +100,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_duplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["dismiss_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicates/dismissed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["clear_dismissed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicates/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolve_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -872,9 +936,54 @@ export interface components {
             /** @description The trash item to restore it from; null when nothing went to the trash. */
             trash_id?: string | null;
         };
+        DismissDuplicatesRequest: {
+            /** @description The group's `key`. */
+            key: string;
+        };
         DownloadManyForm: {
             /** @description Comma-separated project ids. */
             ids: string;
+        };
+        DuplicateProject: components["schemas"]["ProjectListItem"] & {
+            source_url?: string | null;
+        };
+        DuplicateProjectGroup: {
+            /** @description All projects have exactly the same model files (otherwise at least 80% the same). */
+            identical: boolean;
+            /** @description Identifies the group, for dismissing it. */
+            key: string;
+            /** @description The projects, the suggested one to keep first (most tags/collections, then oldest). */
+            projects: components["schemas"]["DuplicateProject"][];
+            /**
+             * Format: int64
+             * @description Space freed by keeping only the largest copy.
+             */
+            reclaimable_bytes: number;
+            /**
+             * Format: int64
+             * @description Model files every project in the group has.
+             */
+            shared_models: number;
+        };
+        DuplicatesResponse: {
+            /**
+             * Format: int64
+             * @description Groups hidden as "not duplicates".
+             */
+            dismissed: number;
+            project_groups: components["schemas"]["DuplicateProjectGroup"][];
+            /**
+             * Format: int64
+             * @description Space freed by resolving every project group.
+             */
+            reclaimable_bytes: number;
+            /** @description The same file in projects that aren't duplicates of each other. Shown for information. */
+            shared_files: components["schemas"]["SharedFileGroup"][];
+            /**
+             * Format: int64
+             * @description Files still waiting for a hash (sync is working on them); they can't be compared yet.
+             */
+            unhashed_files: number;
         };
         HealthResponse: {
             db: boolean;
@@ -1026,6 +1135,21 @@ export interface components {
              */
             retention_days: number;
         };
+        MergedMetadata: {
+            /**
+             * Format: int64
+             * @description Collections (Favourites included) the kept project was added to.
+             */
+            collections: number;
+            cover: boolean;
+            description: boolean;
+            source: boolean;
+            /**
+             * Format: int64
+             * @description Tags added to the kept project.
+             */
+            tags: number;
+        };
         MetadataBackup: {
             collections?: components["schemas"]["BackupCollection"][];
             exported_at: string;
@@ -1123,9 +1247,28 @@ export interface components {
             id: string;
             name: string;
         };
+        /** @enum {string} */
+        RemoveMode: "trash" | "keep_files";
         RenamedMatch: {
             backup_folder: string;
             library_folder: string;
+        };
+        ResolveDuplicatesRequest: {
+            keep_id: string;
+            remove: components["schemas"]["RemoveMode"];
+            remove_ids: string[];
+        };
+        ResolveDuplicatesResponse: {
+            /** @description Projects that couldn't be removed. */
+            failed: string[];
+            merged: components["schemas"]["MergedMetadata"];
+            /**
+             * Format: int64
+             * @description Projects removed.
+             */
+            removed: number;
+            /** @description Trash items created, to restore from. */
+            trash_ids: string[];
         };
         /** @description What a restore did (or would do, for a dry run). */
         RestoreReport: {
@@ -1151,6 +1294,20 @@ export interface components {
         RestoreTrashResponse: {
             /** @description The restored project. */
             project_id: string;
+        };
+        SharedFileCopy: {
+            asset_id: string;
+            /** @description Relative to the project folder. */
+            file_path: string;
+            project_id: string;
+            project_name: string;
+        };
+        SharedFileGroup: {
+            copies: components["schemas"]["SharedFileCopy"][];
+            key: string;
+            kind: string;
+            /** Format: int64 */
+            size_bytes: number;
         };
         StartImportRequest: {
             /** @description Defaults to the model description. */
@@ -1717,6 +1874,135 @@ export interface operations {
                 content?: never;
             };
             /** @description Collection or project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_duplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicate projects and shared files, biggest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicatesResponse"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    dismiss_duplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Hidden as "not duplicates". It shows again if the group changes. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    clear_dismissed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every dismissed group shows again */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resolve_duplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description The others' tags, collections, favourite, and (where missing) description, source and cover were merged into the kept project, then the others were removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveDuplicatesResponse"];
+                };
+            };
+            /** @description Nothing to remove, too many, or the kept project is also in the list */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The project to keep doesn't exist */
             404: {
                 headers: {
                     [name: string]: unknown;

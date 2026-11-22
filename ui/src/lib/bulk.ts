@@ -45,7 +45,7 @@ function describe(v: BulkVars): string {
 }
 
 /** Restores several trashed projects one after another. */
-async function restoreMany(qc: ReturnType<typeof useQueryClient>, trashIds: string[]) {
+export async function restoreMany(qc: ReturnType<typeof useQueryClient>, trashIds: string[]) {
   const t = toast.loading(`Restoring ${plural(trashIds.length)}…`);
   let failed = 0;
   for (const id of trashIds) {

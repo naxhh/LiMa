@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, EyeOff, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Archive, Copy, EyeOff, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { components } from "@/gen/openapi";
@@ -157,6 +157,12 @@ export function AdminSyncPage() {
             <Link to="/admin/trash">
               <Trash2 />
               Trash
+            </Link>
+          </Button>
+          <Button asChild variant="ghost">
+            <Link to="/admin/duplicates">
+              <Copy />
+              Duplicates
             </Link>
           </Button>
         </div>

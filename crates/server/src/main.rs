@@ -155,7 +155,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/trash", get(routes::trash::list_trash))
         .route("/trash", delete(routes::trash::empty_trash))
         .route("/trash/{trash_id}", delete(routes::trash::delete_trash_item))
-        .route("/trash/{trash_id}/restore", post(routes::trash::restore_trash));
+        .route("/trash/{trash_id}/restore", post(routes::trash::restore_trash))
+        .route("/duplicates", get(routes::duplicates::list_duplicates))
+        .route("/duplicates/resolve", post(routes::duplicates::resolve_duplicates))
+        .route("/duplicates/dismiss", post(routes::duplicates::dismiss_duplicates))
+        .route("/duplicates/dismissed", delete(routes::duplicates::clear_dismissed));
     
     let app = Router::new()
         .nest("/api", api)
@@ -243,6 +247,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::trash::restore_trash,
         routes::trash::delete_trash_item,
         routes::trash::empty_trash,
+        routes::duplicates::list_duplicates,
+        routes::duplicates::resolve_duplicates,
+        routes::duplicates::dismiss_duplicates,
+        routes::duplicates::clear_dismissed,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -271,6 +279,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_download::DownloadManyForm,
         routes::trash::TrashItem,
         routes::trash::RestoreTrashResponse,
+        routes::duplicates::DuplicatesResponse,
+        routes::duplicates::DuplicateProjectGroup,
+        routes::duplicates::DuplicateProject,
+        routes::duplicates::SharedFileGroup,
+        routes::duplicates::SharedFileCopy,
+        routes::duplicates::RemoveMode,
+        routes::duplicates::ResolveDuplicatesRequest,
+        routes::duplicates::ResolveDuplicatesResponse,
+        routes::duplicates::MergedMetadata,
+        routes::duplicates::DismissDuplicatesRequest,
         routes::project_delete::DeleteProjectResponse,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,

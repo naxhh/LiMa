@@ -147,6 +147,20 @@ Deleted projects move to `<library>/.lima-trash/<id>/` with their metadata kept,
 | DELETE | `/trash/{trash_id}` | Delete one item for good |
 | DELETE | `/trash` | Empty the trash |
 
+### Duplicates
+
+Found by file hash, nothing is changed until you pick one to keep. Project groups are projects
+whose model files are the same, or at least 80% the same. Shared files are the same file in
+projects that aren't copies of each other (shown for reference, no action). Files are never
+deduplicated on disk.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/duplicates` | Project groups (suggested keeper first) and shared files, biggest first, with reclaimable bytes |
+| POST | `/duplicates/resolve` | `{keep_id, remove_ids, remove: "trash" \| "keep_files"}`: merge the others' tags, collections and favourite into the kept project (and description, source and cover where it has none), then trash them or remove them from LiMa |
+| POST | `/duplicates/dismiss` | `{key}`: hide a group as "not duplicates" until it changes |
+| DELETE | `/duplicates/dismissed` | Show every hidden group again |
+
 ### Metadata backup
 
 Backups are JSON (`format: "lima-metadata"`, `version: 1`) keyed by project folder, with file

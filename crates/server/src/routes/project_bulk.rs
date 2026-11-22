@@ -110,7 +110,7 @@ pub async fn bulk(State(state): State<AppState>, Json(req): Json<BulkRequest>) -
 }
 
 /// Deletes (or removes from LiMa) one project at a time: each is a folder move plus a transaction.
-async fn delete_many(state: &AppState, ids: &[String], keep_files: bool) -> BulkResponse {
+pub(crate) async fn delete_many(state: &AppState, ids: &[String], keep_files: bool) -> BulkResponse {
     use lima_db::queries::projects_delete::{delete_project, remove_project_keep_files};
     let mut out = BulkResponse::default();
     for id in ids {
