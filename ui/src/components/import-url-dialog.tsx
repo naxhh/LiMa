@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { BambuLogin } from "@/components/bambu-login";
+import { ZipExtractOptions } from "@/components/zip-extract-options";
+import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
 import { BAMBU_STATUS_KEY, apiErrorCode, apiErrorMessage, useBambuStatus } from "@/lib/bambu";
 
 type Preview = components["schemas"]["ImportPreviewResponse"];
@@ -57,6 +59,7 @@ export function ImportUrlDialog() {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [zipPrefs, setZipPrefs] = useZipPrefs();
 
   const reset = () => {
     setUrl("");
@@ -84,6 +87,9 @@ export function ImportUrlDialog() {
   const bambuQ = useBambuStatus(open && needsLogin);
   const loggedIn = bambuQ.data?.logged_in ?? false;
 
+  const selectedNames = (preview?.files ?? []).filter((f) => selected.has(f.id)).map((f) => f.name);
+  const zipCount = selectedNames.filter((n) => n.toLowerCase().endsWith(".zip")).length;
+
   const startM = useMutation({
     mutationFn: () =>
       apiJson<StartImportResponse>("POST", "/imports", {
@@ -93,6 +99,7 @@ export function ImportUrlDialog() {
         tags: parseTags(tagsText),
         file_ids: [...selected],
         include_images: includeImages,
+        ...zipFields(zipPrefs, selectedNames),
       }),
     onSuccess: (res) => setJobId(res.job_id),
     onError: (e) => {
@@ -246,6 +253,8 @@ export function ImportUrlDialog() {
                 </div>
               ))}
             </div>
+
+            <ZipExtractOptions count={zipCount} value={zipPrefs} onChange={setZipPrefs} />
 
             {loginBlocking ? <BambuLogin onLoggedIn={() => setShowLogin(false)} /> : null}
 

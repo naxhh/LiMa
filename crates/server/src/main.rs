@@ -12,6 +12,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 mod backups;
+mod archive;
 mod trash;
 mod routes;
 mod state;
@@ -115,6 +116,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/{project_id}/download", get(routes::project_download::project_download))
         .route("/projects/{project_id}/import", post(routes::project_import::project_import))
         .route("/projects/{project_id}/assets/{asset_id}", delete(routes::assets::delete::asset_delete))
+        .route("/projects/{project_id}/assets/{asset_id}/zip", get(routes::assets::zip::zip_contents))
+        .route("/projects/{project_id}/assets/{asset_id}/zip/entry", get(routes::assets::zip::zip_entry))
         
         .route("/tags", get(routes::tags::list::list_tags))
         .route("/tags", post(routes::tags::create::create_tag))
@@ -247,6 +250,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::trash::restore_trash,
         routes::trash::delete_trash_item,
         routes::trash::empty_trash,
+        routes::assets::zip::zip_contents,
+        routes::assets::zip::zip_entry,
         routes::duplicates::list_duplicates,
         routes::duplicates::resolve_duplicates,
         routes::duplicates::dismiss_duplicates,
@@ -279,6 +284,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project_download::DownloadManyForm,
         routes::trash::TrashItem,
         routes::trash::RestoreTrashResponse,
+        routes::project_import::ImportProjectResponse,
+        archive::ExtractSummary,
+        routes::assets::zip::ZipContentsResponse,
+        routes::assets::zip::ZipEntry,
         routes::duplicates::DuplicatesResponse,
         routes::duplicates::DuplicateProjectGroup,
         routes::duplicates::DuplicateProject,

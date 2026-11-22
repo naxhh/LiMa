@@ -17,6 +17,47 @@ use crate::models::http_error::{ApiErrorResponse, ApiErrorBody};
 pub struct ImportProjectRequest {
     pub bundle_id: String,
     pub new_main_image: Option<String>,
+    /// Extract zip files into the project, keeping their folders. Default false.
+    #[serde(default)]
+    pub extract_zips: bool,
+    /// With `extract_zips`, also keep the original archives. Default false.
+    #[serde(default)]
+    pub keep_zips: bool,
+}
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct ImportProjectResponse {
+    /// Files added to the project.
+    pub imported: usize,
+    /// What extracting zips did (all zero when `extract_zips` was off or there were none).
+    pub extracted: crate::archive::ExtractSummary,
+}
+
+/// Extracts the bundle's zips in place, before its files are moved into the project.
+pub(crate) async fn extract_zips(state: &AppState, project_id: &str, bundle_id: &str, keep_zips: bool) -> Result<crate::archive::ExtractSummary, ApiErrorResponse> {
+    let Some(dir) = state.paths.bundle(bundle_id) else {
+        return Err(ApiErrorResponse::new(StatusCode::NOT_FOUND, "bundle_not_found", "Bundle not found."));
+    };
+    let existing: Vec<String> = lima_db::queries::projects_detail::get_project_assets(state.db.pool(), project_id)
+        .await
+        .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "database_error", "Failed to read the project's files.").with_cause(&e.to_string()))?
+        .into_iter()
+        .map(|a| a.file_path)
+        .collect();
+    crate::archive::extract_bundle_zips(&dir, &existing, keep_zips).await.map_err(|e| match e {
+        crate::archive::ExtractError::Archive { name, error: lima_indexer::archive::ArchiveError::TooLarge } => {
+            ApiErrorResponse::new(StatusCode::PAYLOAD_TOO_LARGE, "zip_too_large", "A zip file is too large to extract.").with_cause(&name)
+        }
+        crate::archive::ExtractError::Archive { name, error: lima_indexer::archive::ArchiveError::Io(e) } => {
+            ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "filesystem_error", "Extracting a zip file failed.").with_cause(&format!("{name}: {e}"))
+        }
+        crate::archive::ExtractError::Archive { name, error } => {
+            ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_zip", "A zip file couldn't be read.").with_cause(&format!("{name}: {error}"))
+        }
+        crate::archive::ExtractError::Io(e) => {
+            ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "filesystem_error", "Extracting zip files failed.").with_cause(&e)
+        }
+    })
 }
 
 #[utoipa::path(
@@ -27,7 +68,8 @@ pub struct ImportProjectRequest {
         ("project_id" = String, Path, description = "The ID of the project to import assets into"),
     ),
     responses(
-        (status = 200, description = "Project imported successfully"),
+        (status = 200, description = "Files imported", body = ImportProjectResponse),
+        (status = 413, description = "A zip is too large to extract (limits: 10,000 files, 8 GiB)", body = ApiErrorBody),
         (status = 400, description = "Bad request", body = ApiErrorBody),
         (status = 404, description = "Project or bundle not found", body = ApiErrorBody),
         (status = 409, description = "Conflict during import", body = ApiErrorBody),
@@ -40,7 +82,7 @@ pub async fn project_import(
     State(app_state): State<AppState>,
     Path(project_id): Path<String>,
     Json(payload): Json<ImportProjectRequest>,
-) -> Result<StatusCode, ApiErrorResponse> {
+) -> Result<Json<ImportProjectResponse>, ApiErrorResponse> {
     if payload.bundle_id.is_empty() {
         return Err(ApiErrorResponse::new(
             StatusCode::BAD_REQUEST,
@@ -68,6 +110,12 @@ pub async fn project_import(
                 "Failed to retrieve project details.",
             ).with_cause(&e.to_string()));
         }
+    };
+
+    let extracted = if payload.extract_zips {
+        extract_zips(&app_state, &project.id, &payload.bundle_id, payload.keep_zips).await?
+    } else {
+        crate::archive::ExtractSummary::default()
     };
 
     let assets = lima_db::queries::projects_import::import_assets_from_bundle(
@@ -184,7 +232,7 @@ pub async fn project_import(
         
     }
 
-    Ok(StatusCode::OK)
+    Ok(Json(ImportProjectResponse { imported: assets.len(), extracted }))
 }
 
 /// Thumbnails for freshly imported images and models. Failures are only logged: the next

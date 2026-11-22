@@ -86,6 +86,12 @@ pub struct StartImportRequest {
     pub file_ids: Vec<String>,
     /// Download the model images too (default true).
     pub include_images: Option<bool>,
+    /// Extract downloaded zip files, keeping their folders (default false).
+    #[serde(default)]
+    pub extract_zips: bool,
+    /// With `extract_zips`, also keep the original archives (default false).
+    #[serde(default)]
+    pub keep_zips: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -303,7 +309,7 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportReque
     }
 
     tracing::info!("Importing {} into project {} ({} images, {} files)", model.url, project.id, images.len(), files.len());
-    let task = ImportTask { state: state.clone(), job_id: job_id.clone(), project_id: project.id.clone(), model, images, files, token };
+    let task = ImportTask { state: state.clone(), job_id: job_id.clone(), project_id: project.id.clone(), model, images, files, token, extract_zips: body.extract_zips, keep_zips: body.keep_zips };
     tokio::spawn(task.run());
 
     Ok(StartImportResponse { job_id, project_id: project.id })
@@ -341,6 +347,8 @@ struct ImportTask {
     images: Vec<RemoteImage>,
     files: Vec<RemoteFile>,
     token: Option<String>,
+    extract_zips: bool,
+    keep_zips: bool,
 }
 
 struct Fatal {
@@ -424,6 +432,25 @@ impl ImportTask {
         crate::routes::bundle_create::write_bundle_meta(&dir.to_path_buf(), metas)
             .await
             .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not write the bundle: {e}") })?;
+
+        if self.extract_zips {
+            // A zip that can't be extracted is imported as it is.
+            match crate::archive::extract_bundle_zips(dir, &[], self.keep_zips).await {
+                Ok(summary) => {
+                    if !summary.skipped.is_empty() {
+                        let n = summary.skipped.len();
+                        self.update(|j| j.warnings.push(format!("{n} file(s) in zips were left out (password protected or unsupported)")));
+                    }
+                }
+                Err(e) => {
+                    let msg = match e {
+                        crate::archive::ExtractError::Archive { name, error } => format!("{name} wasn't extracted: {error}"),
+                        crate::archive::ExtractError::Io(e) => format!("Zips weren't extracted: {e}"),
+                    };
+                    self.update(|j| j.warnings.push(msg));
+                }
+            }
+        }
 
         let assets = lima_db::queries::projects_import::import_assets_from_bundle(self.state.db.pool(), &self.state.paths, &self.project_id, bundle_id)
             .await

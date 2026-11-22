@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -39,6 +39,7 @@ import { FavouriteButton } from "@/components/favourite-button";
 import { ProjectTagsEditor } from "@/components/project-tags-editor";
 import { ProjectCollectionsEditor } from "@/components/project-collections-editor";
 import { MediaImage } from "@/components/media-image";
+import { ZipContentsPanel } from "@/components/zip-contents";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
 import { Markdown } from "@/components/markdown";
@@ -50,6 +51,10 @@ type PatchProjectRequest = { name?: string; description?: string; main_image_id?
 function fileExt(path: string) {
   const i = path.lastIndexOf(".");
   return i > 0 ? path.slice(i + 1).toUpperCase() : "";
+}
+
+function isZip(path: string) {
+  return path.toLowerCase().endsWith(".zip");
 }
 
 function fileName(path: string) {
@@ -454,6 +459,13 @@ function FilesTable({
   onDelete: (assetId: string) => void;
 }) {
   const [confirm, setConfirm] = React.useState<ProjectAsset | null>(null);
+  const [opened, setOpened] = React.useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   return (
     <section aria-labelledby="files-h" className="flex flex-col gap-3 pt-3">
@@ -494,69 +506,92 @@ function FilesTable({
             <tbody>
               {project.assets.map((a) => {
                 const url = libraryUrl(project.folder_path, a.file_path);
-                const Icon = a.kind === "model" ? Box : a.kind === "image" ? ImageIcon : FileIcon;
+                const zip = isZip(a.file_path);
+                const open = zip && opened.has(a.id);
+                const Icon = a.kind === "model" ? Box : a.kind === "image" ? ImageIcon : zip ? FileArchive : FileIcon;
                 return (
-                  <tr key={a.id} className="hover:bg-secondary/60">
-                    <td className="border-b px-4 py-2.5">
-                      <a href={url} download={fileName(a.file_path)} className="flex min-w-0 items-center gap-2.5 text-sm hover:text-signal">
-                        <span
-                          className={cn(
-                            "grid size-[30px] shrink-0 place-items-center rounded-lg",
-                            a.kind === "model" ? "bg-signal-soft text-signal" : "bg-secondary text-info",
-                          )}
-                        >
-                          <Icon className="size-[15px]" />
-                        </span>
-                        <span className="truncate">{a.file_path}</span>
-                        {a.id === project.main_image_id ? (
-                          <span className="rounded bg-signal-soft px-1.5 py-px font-mono text-[9px] tracking-[0.08em] text-signal">COVER</span>
-                        ) : null}
-                      </a>
-                    </td>
-                    <td className="border-b px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                      {a.kind} · {fileExt(a.file_path) || "—"}
-                    </td>
-                    <td className="border-b px-4 py-2.5 text-right font-mono text-xs">{formatBytes(a.size_bytes)}</td>
-                    <td className="border-b px-4 py-2.5 font-mono text-xs text-dim" title={a.file_hash ?? "not hashed yet"}>
-                      {a.file_hash ? `${a.file_hash.slice(0, 4)}…${a.file_hash.slice(-4)}` : "pending"}
-                    </td>
-                    <td className="border-b px-3 py-1.5">
-                      <div className="flex justify-end gap-1">
-                        {a.kind === "model" && viewerFormat(a.file_path) ? (
-                          <Button variant="outline" size="icon-sm" onClick={() => onView(a.id)} aria-label={`View ${a.file_path} in 3D`} title="View in 3D">
-                            <Rotate3d />
-                          </Button>
-                        ) : null}
-                        {a.kind === "model" && sliceable(a.file_path) ? (
-                          <OpenFileInSlicer file={{ url, name: fileName(a.file_path) }} />
-                        ) : null}
-                        <Button variant="outline" size="icon-sm" asChild>
-                          <a href={url} download={fileName(a.file_path)} aria-label={`Download ${a.file_path}`}>
-                            <Download />
-                          </a>
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${a.file_path}`}>
-                              <MoreHorizontal />
+                  <React.Fragment key={a.id}>
+                    <tr className="hover:bg-secondary/60">
+                      <td className="border-b px-4 py-2.5">
+                        <a href={url} download={fileName(a.file_path)} className="flex min-w-0 items-center gap-2.5 text-sm hover:text-signal">
+                          <span
+                            className={cn(
+                              "grid size-[30px] shrink-0 place-items-center rounded-lg",
+                              a.kind === "model" ? "bg-signal-soft text-signal" : "bg-secondary text-info",
+                            )}
+                          >
+                            <Icon className="size-[15px]" />
+                          </span>
+                          <span className="truncate">{a.file_path}</span>
+                          {a.id === project.main_image_id ? (
+                            <span className="rounded bg-signal-soft px-1.5 py-px font-mono text-[9px] tracking-[0.08em] text-signal">COVER</span>
+                          ) : null}
+                        </a>
+                      </td>
+                      <td className="border-b px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                        {a.kind} · {fileExt(a.file_path) || "—"}
+                      </td>
+                      <td className="border-b px-4 py-2.5 text-right font-mono text-xs">{formatBytes(a.size_bytes)}</td>
+                      <td className="border-b px-4 py-2.5 font-mono text-xs text-dim" title={a.file_hash ?? "not hashed yet"}>
+                        {a.file_hash ? `${a.file_hash.slice(0, 4)}…${a.file_hash.slice(-4)}` : "pending"}
+                      </td>
+                      <td className="border-b px-3 py-1.5">
+                        <div className="flex justify-end gap-1">
+                          {zip ? (
+                            <Button
+                              variant="outline"
+                              size="icon-sm"
+                              onClick={() => toggle(a.id)}
+                              aria-expanded={open}
+                              aria-label={`${open ? "Hide" : "Show"} what's inside ${a.file_path}`}
+                              title={open ? "Hide contents" : "Show contents"}
+                            >
+                              <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {a.kind === "image" && a.id !== project.main_image_id ? (
-                              <DropdownMenuItem onClick={() => onSetCover(a.id)}>
-                                <Star />
-                                Use as cover
+                          ) : null}
+                          {a.kind === "model" && viewerFormat(a.file_path) ? (
+                            <Button variant="outline" size="icon-sm" onClick={() => onView(a.id)} aria-label={`View ${a.file_path} in 3D`} title="View in 3D">
+                              <Rotate3d />
+                            </Button>
+                          ) : null}
+                          {a.kind === "model" && sliceable(a.file_path) ? (
+                            <OpenFileInSlicer file={{ url, name: fileName(a.file_path) }} />
+                          ) : null}
+                          <Button variant="outline" size="icon-sm" asChild>
+                            <a href={url} download={fileName(a.file_path)} aria-label={`Download ${a.file_path}`}>
+                              <Download />
+                            </a>
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${a.file_path}`}>
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {a.kind === "image" && a.id !== project.main_image_id ? (
+                                <DropdownMenuItem onClick={() => onSetCover(a.id)}>
+                                  <Star />
+                                  Use as cover
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem variant="destructive" onClick={() => setConfirm(a)}>
+                                <Trash2 />
+                                Delete file
                               </DropdownMenuItem>
-                            ) : null}
-                            <DropdownMenuItem variant="destructive" onClick={() => setConfirm(a)}>
-                              <Trash2 />
-                              Delete file
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr>
+                        <td colSpan={5} className="border-b p-0">
+                          <ZipContentsPanel projectId={project.id} assetId={a.id} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
                 );
               })}
             </tbody>

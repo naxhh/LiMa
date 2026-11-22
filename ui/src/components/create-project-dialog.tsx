@@ -7,6 +7,8 @@ import { apiJson, apiMultipart, bundleForm, apiJsonNoResponse, ApiError } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ZipExtractOptions } from "@/components/zip-extract-options";
+import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
 import { FileDropzone } from "@/components/file-dropzone";
 import {
   Dialog,
@@ -37,6 +39,8 @@ type CreateBundleResponse = {
 type ImportProjectRequest = {
   bundle_id: string;
   new_main_image?: string | null; // filename
+  extract_zips?: boolean;
+  keep_zips?: boolean;
 };
 
 function getApiErrorMessage(e: unknown): string {
@@ -77,6 +81,8 @@ export function CreateProjectDialog() {
 
   const [files, setFiles] = React.useState<File[]>([]);
   const [mainImageName, setMainImageName] = React.useState<string>("");
+  const [zipPrefs, setZipPrefs] = useZipPrefs();
+  const zipCount = files.filter((f) => f.name.toLowerCase().endsWith(".zip")).length;
 
   const [bundleId, setBundleId] = React.useState<string | null>(null);
   const [bundleError, setBundleError] = React.useState<string | null>(null);
@@ -112,7 +118,7 @@ export function CreateProjectDialog() {
         })(),
       } satisfies CreateProjectRequest);
 
-      const importPayload: ImportProjectRequest = { bundle_id: bundleId };
+      const importPayload: ImportProjectRequest = { bundle_id: bundleId, ...zipFields(zipPrefs, files.map((f) => f.name)) };
       const chosenMain = mainImageName.trim();
       if (chosenMain) importPayload.new_main_image = chosenMain;
 
@@ -223,6 +229,8 @@ export function CreateProjectDialog() {
                 Upload failed: {bundleError}
               </div>
             ) : null}
+
+            <ZipExtractOptions count={zipCount} value={zipPrefs} onChange={setZipPrefs} />
 
             {files.length > 0 ? (
               <div className="space-y-1">

@@ -91,6 +91,15 @@ pub async fn import_assets_from_bundle(
             return Err(ImportFromBundleError::Conflict { name: file_info.name.clone() } );
         }
 
+        // Extracted archives keep their folders.
+        if let Some(parent) = dst.parent() {
+            if let Err(e) = fs::create_dir_all(parent).await {
+                rollback_imported_files(&moved_files).await;
+                let _ = transaction.rollback().await;
+                return Err(ImportFromBundleError::FileSystemError(e.to_string()));
+            }
+        }
+
         if let Err(e) = move_file(&src, &dst).await {
             rollback_imported_files(&moved_files).await;
             let _ = transaction.rollback().await;
