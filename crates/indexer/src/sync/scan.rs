@@ -3,14 +3,18 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use lima_db::queries::{library_index as idx, sync as runs};
 use lima_domain::models::asset::asset_kind;
 use lima_domain::models::sync::SyncStats;
 use serde_json::json;
 use sqlx::{Pool, Sqlite};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use super::fs_walk::{self, FsFile};
+use crate::thumbnails;
 use super::{SyncMode, now};
 
 #[derive(Debug)]
@@ -68,19 +72,49 @@ struct Planned<'f> {
 pub(crate) struct Scanner<'a> {
     pool: &'a Pool<Sqlite>,
     root: &'a Path,
+    thumbs_root: &'a Path,
     run_id: &'a str,
     mode: SyncMode,
     stats: SyncStats,
+    /// Thumbnails render in the background while the scan moves on.
+    thumb_tasks: JoinSet<ThumbOutcome>,
+    thumb_permits: Arc<Semaphore>,
+}
+
+/// `None` when the thumbnail already existed and nothing was done.
+type ThumbOutcome = (PathBuf, Option<Result<(), String>>);
+
+/// An image asset that may need a thumbnail.
+struct ThumbJob {
+    asset_id: String,
+    source: PathBuf,
+    /// Content changed (or is new): regenerate even if a thumbnail exists.
+    force: bool,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(pool: &'a Pool<Sqlite>, root: &'a Path, run_id: &'a str, mode: SyncMode) -> Self {
-        Self { pool, root, run_id, mode, stats: SyncStats::default() }
+    pub fn new(pool: &'a Pool<Sqlite>, root: &'a Path, thumbs_root: &'a Path, run_id: &'a str, mode: SyncMode) -> Self {
+        let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
+        Self {
+            pool,
+            root,
+            thumbs_root,
+            run_id,
+            mode,
+            stats: SyncStats::default(),
+            thumb_tasks: JoinSet::new(),
+            thumb_permits: Arc::new(Semaphore::new(workers)),
+        }
     }
 
     /// Executes the scan. Stats are returned even when the run fails part way.
     pub async fn run(mut self) -> (SyncStats, Result<(), ScanError>) {
         let result = self.scan().await;
+        // Let in-flight thumbnails finish even if the scan failed.
+        self.drain_thumbs(true).await;
+        if result.is_ok() {
+            self.event("info", "run_finished", json!({ "stats": self.stats })).await;
+        }
         if let Err(e) = &result {
             self.event("error", "run_failed", json!({ "error": e.to_string() })).await;
         }
@@ -117,6 +151,7 @@ impl<'a> Scanner<'a> {
         let on_disk: HashSet<&str> = dirs.iter().map(String::as_str).collect();
         for project in indexed.iter().filter(|p| !on_disk.contains(p.folder_path.as_str())) {
             idx::remove_missing_project(self.pool, &project.id).await?;
+            self.remove_thumbs(&project.id, None).await;
             self.stats.projects_removed += 1;
             self.event(
                 "warn",
@@ -137,10 +172,10 @@ impl<'a> Scanner<'a> {
                 self.event("error", "project_failed", json!({ "folder_path": folder, "error": e.to_string() })).await;
             }
             self.stats.projects_scanned += 1;
+            self.drain_thumbs(false).await;
             self.save_stats().await;
         }
 
-        self.event("info", "run_finished", json!({ "stats": self.stats })).await;
         Ok(())
     }
 
@@ -224,11 +259,13 @@ impl<'a> Scanner<'a> {
         let mut changes = ProjectChanges::default();
         let mut content_changed: Vec<&str> = Vec::new();
         let mut first_image: Option<String> = None;
+        let mut thumb_jobs: Vec<ThumbJob> = Vec::new();
 
         for (i, planned) in plan.iter().enumerate() {
             let file = planned.file;
             let hash = hashes.get(&i).map(String::as_str);
 
+            let mut force_thumb = true;
             let asset_id = match &planned.action {
                 Action::Insert => {
                     changes.added += 1;
@@ -247,15 +284,21 @@ impl<'a> Scanner<'a> {
                             changes.updated += 1;
                             content_changed.push(&file.rel_path);
                         }
-                        (None, Some(new)) => idx::set_asset_hash(&mut tx, asset_id, new).await?,
-                        _ => {}
+                        (None, Some(new)) => {
+                            idx::set_asset_hash(&mut tx, asset_id, new).await?;
+                            force_thumb = false;
+                        }
+                        _ => force_thumb = false,
                     }
                     asset_id.clone()
                 }
             };
 
-            if first_image.is_none() && asset_kind(&file.rel_path) == "image" {
-                first_image = Some(asset_id);
+            if asset_kind(&file.rel_path) == "image" {
+                if first_image.is_none() {
+                    first_image = Some(asset_id.clone());
+                }
+                thumb_jobs.push(ThumbJob { asset_id, source: project_dir.join(&file.rel_path), force: force_thumb });
             }
         }
 
@@ -276,6 +319,11 @@ impl<'a> Scanner<'a> {
         let changed = is_new || changes.added + changes.updated + changes.removed > 0;
         idx::mark_project_scanned(&mut tx, &project_id, changed, &now).await?;
         tx.commit().await?;
+
+        for asset in &missing {
+            self.remove_thumbs(&project_id, Some(&asset.id)).await;
+        }
+        self.generate_thumbs(&project_id, thumb_jobs);
 
         self.stats.assets_added += changes.added;
         self.stats.assets_updated += changes.updated;
@@ -314,6 +362,66 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(())
+    }
+
+    /// Queues missing or stale thumbnails on the background workers.
+    fn generate_thumbs(&mut self, project_id: &str, jobs: Vec<ThumbJob>) {
+        for job in jobs {
+            let dest = thumbnails::thumb_path(self.thumbs_root, project_id, &job.asset_id);
+            let permits = self.thumb_permits.clone();
+            self.thumb_tasks.spawn(async move {
+                let _permit = permits.acquire_owned().await;
+                let source = job.source.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    if !job.force && dest.exists() {
+                        return None;
+                    }
+                    Some(thumbnails::generate(&job.source, &dest))
+                })
+                .await
+                .unwrap_or_else(|e| Some(Err(format!("Thumbnail task crashed: {e}"))));
+                (source, result)
+            });
+        }
+    }
+
+    /// Records finished thumbnail jobs. With `wait` blocks until all are done.
+    async fn drain_thumbs(&mut self, wait: bool) {
+        loop {
+            let next = if wait { self.thumb_tasks.join_next().await } else { self.thumb_tasks.try_join_next() };
+            let Some(joined) = next else { break };
+            match joined {
+                Ok((_, None)) => {}
+                Ok((_, Some(Ok(())))) => self.stats.thumbnails_generated += 1,
+                Ok((source, Some(Err(e)))) => {
+                    self.stats.errors += 1;
+                    let path = source.strip_prefix(self.root).unwrap_or(&source).display().to_string();
+                    self.event("warn", "thumbnail_failed", json!({ "path": path, "error": e })).await;
+                }
+                Err(e) => {
+                    self.stats.errors += 1;
+                    self.event("error", "thumbnail_failed", json!({ "error": e.to_string() })).await;
+                }
+            }
+        }
+        if wait {
+            self.save_stats().await;
+        }
+    }
+
+    /// Removes one asset thumbnail, or the whole project folder when `asset_id` is None.
+    async fn remove_thumbs(&self, project_id: &str, asset_id: Option<&str>) {
+        let root = self.thumbs_root.to_path_buf();
+        let project = project_id.to_string();
+        let asset = asset_id.map(str::to_string);
+        let result = tokio::task::spawn_blocking(move || match asset {
+            Some(asset) => thumbnails::remove_asset(&root, &project, &asset),
+            None => thumbnails::remove_project(&root, &project),
+        })
+        .await;
+        if let Ok(Err(e)) = result {
+            tracing::warn!("Failed to remove thumbnails for project {project_id}: {e}");
+        }
     }
 
     async fn skip_event(&mut self, path: &str, reason: &str) {

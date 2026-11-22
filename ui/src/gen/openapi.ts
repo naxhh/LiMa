@@ -437,6 +437,12 @@ export interface components {
              * @default 0
              */
             projects_total: number;
+            /**
+             * Format: int64
+             * @description Image thumbnails (re)generated during the run.
+             * @default 0
+             */
+            thumbnails_generated: number;
         };
         SyncStatusResponse: {
             run?: null | components["schemas"]["SyncRunRow"];

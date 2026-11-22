@@ -70,13 +70,18 @@ pub struct SyncManager {
 struct Inner {
     pool: Pool<Sqlite>,
     library_root: PathBuf,
+    thumbs_root: PathBuf,
     /// Id of the run currently executing, if any.
     current: Mutex<Option<String>>,
 }
 
 impl SyncManager {
     /// Creates the manager and marks runs left over from a previous process as failed.
-    pub async fn new(pool: Pool<Sqlite>, library_root: impl Into<PathBuf>) -> Result<Self, sqlx::Error> {
+    pub async fn new(
+        pool: Pool<Sqlite>,
+        library_root: impl Into<PathBuf>,
+        thumbs_root: impl Into<PathBuf>,
+    ) -> Result<Self, sqlx::Error> {
         let interrupted = lima_db::queries::sync::fail_interrupted_runs(&pool, &now()).await?;
         if interrupted > 0 {
             tracing::warn!("Marked {interrupted} interrupted sync run(s) as failed");
@@ -86,6 +91,7 @@ impl SyncManager {
             inner: Arc::new(Inner {
                 pool,
                 library_root: library_root.into(),
+                thumbs_root: thumbs_root.into(),
                 current: Mutex::new(None),
             }),
         })
@@ -125,7 +131,9 @@ impl SyncManager {
             let scan_inner = inner.clone();
             let scan_run_id = run_id.clone();
             let outcome = tokio::spawn(async move {
-                scan::Scanner::new(&scan_inner.pool, &scan_inner.library_root, &scan_run_id, mode).run().await
+                scan::Scanner::new(&scan_inner.pool, &scan_inner.library_root, &scan_inner.thumbs_root, &scan_run_id, mode)
+                    .run()
+                    .await
             })
             .await;
 

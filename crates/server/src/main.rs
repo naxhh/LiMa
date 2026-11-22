@@ -27,14 +27,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.migrate().await?;
 
     let ui_dir = ServeDir::new("ui/dist").fallback(ServeFile::new("ui/dist/index.html"));
-    let library_dir = ServeDir::new("data/library");
-    let thumbs_dir = ServeDir::new("data/state/thumbnails");
+    // TODO(#10): make these configurable.
+    let library_path = std::path::PathBuf::from("data/library");
+    let thumbs_path = std::path::PathBuf::from("data/state/thumbnails");
+    let library_dir = ServeDir::new(&library_path);
+    let thumbs_dir = ServeDir::new(&thumbs_path);
 
-    let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), "data/library").await?;
+    let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), &library_path, &thumbs_path).await?;
 
     let state = state::AppState {
         db: Arc::new(db),
         sync,
+        library_dir: library_path,
+        thumbs_dir: thumbs_path,
     };
 
     let api = Router::new()

@@ -26,7 +26,15 @@ pub async fn asset_delete(
         &project_id,
         &asset_id,
     ).await {
-        Ok(_) => Ok(StatusCode::OK),
+        Ok(_) => {
+            let thumbs = _state.thumbs_dir.clone();
+            let (project, asset) = (project_id.clone(), asset_id.clone());
+            let removed = tokio::task::spawn_blocking(move || lima_indexer::thumbnails::remove_asset(&thumbs, &project, &asset)).await;
+            if let Ok(Err(e)) = removed {
+                tracing::warn!("Failed to remove thumbnail of asset {asset_id}: {e}");
+            }
+            Ok(StatusCode::OK)
+        }
         Err(DeleteAssetError::NotFound { project_id: _ }) => {
             return Err(ApiErrorResponse::new(
                 StatusCode::NOT_FOUND,

@@ -228,10 +228,11 @@ function StatsGrid({ stats }: { stats: SyncStats }) {
     ["Assets updated", stats.assets_updated, "text-blue-600 dark:text-blue-400"],
     ["Assets removed", stats.assets_removed, "text-amber-600 dark:text-amber-400"],
     ["Files hashed", stats.assets_hashed],
+    ["Thumbnails", stats.thumbnails_generated],
     ["Errors", stats.errors, "text-red-600 dark:text-red-400"],
   ];
   return (
-    <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+    <dl className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3">
       {items.map(([label, value, color]) => (
         <div key={label} className="rounded-md bg-muted/50 px-3 py-2">
           <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -471,6 +472,8 @@ function describeEvent(e: SyncEvent): string {
       return `${d.folder_path} folder no longer exists`;
     case "asset_content_changed":
       return `${d.path}: content changed in place`;
+    case "thumbnail_failed":
+      return `${d.path ?? d.folder_path}: thumbnail failed (${d.error})`;
     case "entry_skipped":
       return `${d.path}: ${d.reason}`;
     case "project_failed":
