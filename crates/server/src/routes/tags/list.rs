@@ -83,7 +83,9 @@ pub async fn list_tags(
         encode_cursor(&Cursor {
             updated_at: last.updated_at.clone(),
             id: last.id.clone(),
-            rank: None
+            rank: None,
+            sort: None,
+            sort_value: None,
         })
     });    
 

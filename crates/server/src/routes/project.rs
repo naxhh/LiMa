@@ -5,6 +5,7 @@ use utoipa::ToSchema;
 use serde::{Serialize, Deserialize};
 use lima_domain::models::project::ProjectRow;
 use lima_domain::pagination::{Cursor, decode_cursor, encode_cursor};
+use lima_db::queries::projects::ProjectSort;
 
 use crate::{models::http_error::ApiErrorBody, state::AppState};
 use crate::models::http_error::ApiErrorResponse;
@@ -21,6 +22,10 @@ pub struct ListProjectsParams {
     pub formats: Option<String>,
     /// Only projects without images.
     pub no_image: Option<bool>,
+    /// Sort key for the results (updated, created, name, size, files).
+    pub sort: Option<String>,
+    /// Sort order (asc or desc).
+    pub order: Option<String>,
 }
 
 impl ListProjectsParams {
@@ -43,6 +48,22 @@ impl ListProjectsParams {
         let mut tag_ids = split(&self.tags);
         tag_ids.truncate(20);
         lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false) }
+    }
+    
+    /// Sort key and direction (true = descending). Name defaults to A–Z, the rest to newest/largest first.
+    fn sort(&self) -> Result<(ProjectSort, bool), ApiErrorResponse> {
+        let invalid = |msg: &'static str| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_sort", msg);
+        let sort = match self.sort.as_deref() {
+            None => ProjectSort::default(),
+            Some(s) => ProjectSort::parse(s).ok_or_else(|| invalid("sort must be one of: updated, created, name, size, files"))?,
+        };
+        let descending = match self.order.as_deref() {
+            None => sort != ProjectSort::Name,
+            Some("asc") => false,
+            Some("desc") => true,
+            Some(_) => return Err(invalid("order must be asc or desc")),
+        };
+        Ok((sort, descending))
     }
 }
 
@@ -104,6 +125,8 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
         ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
         ("formats" = Option<String>, Query, description = "Comma-separated model extensions (STL,3MF,...); projects must have at least one"),
         ("no_image" = Option<bool>, Query, description = "Only projects without images"),
+        ("sort" = Option<String>, Query, description = "Sort key: updated (default), created, name, size, files. Ignored when searching (results are by relevance)"),
+        ("order" = Option<String>, Query, description = "Sort order: asc or desc (default: asc for name, desc otherwise). Ignored when searching"),
     ),
     responses(
         (status = 200, description = "List of projects", body = ListProjectsResponse),
@@ -125,7 +148,6 @@ pub async fn list_projects(
 
     // TODO: likely move this to its own method
     if let Some(query) = params.query.as_deref().filter(|query| !query.trim().is_empty()) {
-
         if let Some(ref c) = cursor {
             if c.rank.is_none() {
                 return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause("Cursor is missing rank"));
@@ -147,6 +169,8 @@ pub async fn list_projects(
                 updated_at: row.project.updated_at.clone(),
                 id: row.project.id.clone(),
                 rank: Some(row.rank),
+                sort: None,
+                sort_value: None,
             })
         });
 
@@ -158,24 +182,43 @@ pub async fn list_projects(
         }));
     }
 
+    let (sort, descending) = params.sort()?;
+    let bad_cursor = |cause: &str| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(cause);
+    // The cursor must come from a page with the same sort, or the next page would skip or repeat projects.
+    let after = match cursor {
+        None => None,
+        Some(c) => match (c.sort.as_deref(), c.sort_value) {
+            (Some(s), Some(value)) if s == sort.as_str() => Some((value, c.id)),
+            _ => return Err(bad_cursor("Cursor was made for a different sort")),
+        },
+    };
 
-    let projects = lima_db::queries::projects::list_projects(
+    let projects_with_sort = lima_db::queries::projects::list_projects(
         state.db.pool(),
         limit,
-        cursor,
+        after,
+        sort,
+        descending,
         &filter,
     )
     .await
-    .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()))?;
+    .map_err(|e| match e {
+        sqlx::Error::Protocol(ref m) if m == lima_db::queries::projects::INVALID_CURSOR => bad_cursor(m),
+        e => ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()),
+    })?;
 
-    let next_cursor = projects.last().map(|project| {
+    let next_cursor = projects_with_sort.last().map(|(project, sort_value)| {
         encode_cursor(&Cursor {
             updated_at: project.updated_at.clone(),
             id: project.id.clone(),
             rank: None,
+            sort: Some(sort.as_str().to_string()),
+            sort_value: Some(sort_value.clone()),
         })
     });
 
+    let projects = projects_with_sort.into_iter().map(|(project, _)| project).collect();
+    
     Ok(Json(ListProjectsResponse {
         items: with_summaries(&state, projects).await?,
         next_cursor,
