@@ -75,6 +75,8 @@ pub(crate) struct Scanner<'a> {
     thumbs_root: &'a Path,
     run_id: &'a str,
     mode: SyncMode,
+    /// Only these project folders (watcher runs). `None` = whole library.
+    scope: Option<HashSet<String>>,
     stats: SyncStats,
     /// Thumbnails render in the background while the scan moves on.
     thumb_tasks: JoinSet<ThumbOutcome>,
@@ -93,7 +95,14 @@ struct ThumbJob {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(pool: &'a Pool<Sqlite>, root: &'a Path, thumbs_root: &'a Path, run_id: &'a str, mode: SyncMode) -> Self {
+    pub fn new(
+        pool: &'a Pool<Sqlite>,
+        root: &'a Path,
+        thumbs_root: &'a Path,
+        run_id: &'a str,
+        mode: SyncMode,
+        scope: Option<HashSet<String>>,
+    ) -> Self {
         let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
         Self {
             pool,
@@ -101,6 +110,7 @@ impl<'a> Scanner<'a> {
             thumbs_root,
             run_id,
             mode,
+            scope,
             stats: SyncStats::default(),
             thumb_tasks: JoinSet::new(),
             thumb_permits: Arc::new(Semaphore::new(workers)),
@@ -132,17 +142,37 @@ impl<'a> Scanner<'a> {
             self.skip_event(&name, &reason).await;
         }
 
-        let indexed = idx::list_indexed_projects(self.pool).await?;
+        let mut indexed = idx::list_indexed_projects(self.pool).await?;
 
         if dirs.is_empty() && !indexed.is_empty() {
             return Err(ScanError::LibraryEmpty { indexed: indexed.len() });
         }
 
+        // A scoped run only looks at (and may only remove) the requested folders.
+        let dirs: Vec<String> = match &self.scope {
+            Some(scope) => {
+                indexed.retain(|p| scope.contains(&p.folder_path));
+                dirs.into_iter().filter(|d| scope.contains(d)).collect()
+            }
+            None => dirs,
+        };
+        let scope_list: Option<Vec<&String>> = self.scope.as_ref().map(|s| {
+            let mut v: Vec<&String> = s.iter().collect();
+            v.sort();
+            v
+        });
+
         self.stats.projects_total = dirs.len() as u64;
         self.event(
             "info",
             "run_started",
-            json!({ "mode": self.mode.as_str(), "library": self.root.display().to_string(), "projects_on_disk": dirs.len(), "projects_indexed": indexed.len() }),
+            json!({
+                "mode": self.mode.as_str(),
+                "library": self.root.display().to_string(),
+                "folders": scope_list,
+                "projects_on_disk": dirs.len(),
+                "projects_indexed": indexed.len(),
+            }),
         )
         .await;
         self.save_stats().await;

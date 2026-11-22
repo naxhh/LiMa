@@ -1,24 +1,26 @@
-use lima_domain::models::sync::{SyncEventRow, SyncRunRow, SyncStats};
+use lima_domain::models::sync::{SyncEventRow, SyncOptions, SyncRunRow, SyncStats};
 use lima_domain::pagination::Cursor;
 use sqlx::{Pool, Sqlite};
 
 const RUN_COLUMNS: &str =
-    "id, mode, reason, status, stats_json, started_at, finished_at, error";
+    "id, mode, reason, status, options_json, stats_json, started_at, finished_at, error";
 
 pub async fn create_run(
     pool: &Pool<Sqlite>,
     id: &str,
     mode: &str,
     reason: &str,
+    options: &SyncOptions,
     now: &str,
 ) -> Result<SyncRunRow, sqlx::Error> {
     sqlx::query(
         r#"INSERT INTO sync_runs (id, mode, reason, status, options_json, stats_json, started_at, finished_at, error)
-           VALUES (?1, ?2, ?3, 'running', '{}', ?4, ?5, NULL, '')"#,
+           VALUES (?1, ?2, ?3, 'running', ?4, ?5, ?6, NULL, '')"#,
     )
     .bind(id)
     .bind(mode)
     .bind(reason)
+    .bind(serde_json::to_string(options).unwrap())
     .bind(serde_json::to_string(&SyncStats::default()).unwrap())
     .bind(now)
     .execute(pool)

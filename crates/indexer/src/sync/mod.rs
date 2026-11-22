@@ -3,14 +3,18 @@
 
 mod fs_walk;
 mod scan;
+mod watcher;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use lima_domain::models::sync::{SyncRunRow, SyncStats};
+use lima_domain::models::sync::{SyncOptions, SyncRunRow, SyncStats, WatcherStatus};
 use sqlx::{Pool, Sqlite};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
+
+pub use watcher::WatcherConfig;
 
 pub use scan::ScanError;
 
@@ -73,6 +77,11 @@ struct Inner {
     thumbs_root: PathBuf,
     /// Id of the run currently executing, if any.
     current: Mutex<Option<String>>,
+    /// Signalled whenever a run ends.
+    run_finished: Notify,
+    watcher_status: std::sync::Mutex<WatcherStatus>,
+    /// Keeps the OS watcher alive; dropping it stops events.
+    watcher: std::sync::Mutex<Option<notify::RecommendedWatcher>>,
 }
 
 impl SyncManager {
@@ -93,6 +102,9 @@ impl SyncManager {
                 library_root: library_root.into(),
                 thumbs_root: thumbs_root.into(),
                 current: Mutex::new(None),
+                run_finished: Notify::new(),
+                watcher_status: std::sync::Mutex::new(WatcherStatus::default()),
+                watcher: std::sync::Mutex::new(None),
             }),
         })
     }
@@ -102,8 +114,18 @@ impl SyncManager {
         self.inner.current.lock().await.clone()
     }
 
-    /// Records a new run and executes it in the background. Returns the freshly created run.
+    /// Records a new run over the whole library and executes it in the background.
     pub async fn start(&self, mode: SyncMode, reason: SyncReason) -> Result<SyncRunRow, StartSyncError> {
+        self.start_scoped(mode, reason, None).await
+    }
+
+    /// Like [`start`](Self::start) but limited to some project folders when `folders` is set.
+    pub async fn start_scoped(
+        &self,
+        mode: SyncMode,
+        reason: SyncReason,
+        folders: Option<Vec<String>>,
+    ) -> Result<SyncRunRow, StartSyncError> {
         let mut current = self.inner.current.lock().await;
         if let Some(run_id) = current.as_ref() {
             return Err(StartSyncError::AlreadyRunning { run_id: run_id.clone() });
@@ -115,6 +137,7 @@ impl SyncManager {
             &run_id,
             mode.as_str(),
             reason.as_str(),
+            &SyncOptions { folders: folders.clone() },
             &now(),
         )
         .await
@@ -125,13 +148,21 @@ impl SyncManager {
 
         tracing::info!("Sync run {run_id} started (mode={}, reason={})", mode.as_str(), reason.as_str());
 
+        let scope: Option<HashSet<String>> = folders.map(|f| f.into_iter().collect());
         let inner = self.inner.clone();
         tokio::spawn(async move {
             // Run the scan in its own task so a panic is reported as a failed run.
             let scan_inner = inner.clone();
             let scan_run_id = run_id.clone();
             let outcome = tokio::spawn(async move {
-                scan::Scanner::new(&scan_inner.pool, &scan_inner.library_root, &scan_inner.thumbs_root, &scan_run_id, mode)
+                scan::Scanner::new(
+                    &scan_inner.pool,
+                    &scan_inner.library_root,
+                    &scan_inner.thumbs_root,
+                    &scan_run_id,
+                    mode,
+                    scope,
+                )
                     .run()
                     .await
             })
@@ -153,9 +184,47 @@ impl SyncManager {
             }
 
             *inner.current.lock().await = None;
+            inner.run_finished.notify_waiters();
         });
 
         Ok(run)
+    }
+
+    /// Waits until the run in progress (if any) ends.
+    pub async fn wait_idle(&self) {
+        loop {
+            let notified = self.inner.run_finished.notified();
+            tokio::pin!(notified);
+            // Register before checking so a run ending in between is not missed.
+            notified.as_mut().enable();
+            if self.current_run_id().await.is_none() {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    pub fn watcher_status(&self) -> WatcherStatus {
+        self.inner.watcher_status.lock().unwrap().clone()
+    }
+
+    pub(crate) fn update_watcher_status(&self, f: impl FnOnce(&mut WatcherStatus)) {
+        f(&mut self.inner.watcher_status.lock().unwrap());
+    }
+
+    pub fn library_root(&self) -> &std::path::Path {
+        &self.inner.library_root
+    }
+
+    /// Starts watching the library folder and triggering incremental syncs for
+    /// changed project folders. Best effort: failures are reported through
+    /// [`watcher_status`](Self::watcher_status), manual syncs keep working.
+    pub fn start_watcher(&self, config: WatcherConfig) {
+        watcher::spawn(self.clone(), config);
+    }
+
+    pub(crate) fn set_os_watcher(&self, w: Option<notify::RecommendedWatcher>) {
+        *self.inner.watcher.lock().unwrap() = w;
     }
 }
 

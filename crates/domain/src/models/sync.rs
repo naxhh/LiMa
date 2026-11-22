@@ -12,11 +12,38 @@ pub struct SyncRunRow {
     pub reason: String,
     /// `queued`, `running`, `complete`, `failed` or `cancelled`
     pub status: String,
+    #[sqlx(json, rename = "options_json")]
+    pub options: SyncOptions,
     #[sqlx(json, rename = "stats_json")]
     pub stats: SyncStats,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
     pub error: String,
+}
+
+/// What a run was asked to do.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+#[serde(default)]
+pub struct SyncOptions {
+    /// Limit the run to these project folders. `None` scans the whole library.
+    pub folders: Option<Vec<String>>,
+}
+
+/// State of the filesystem watcher that triggers syncs automatically.
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
+pub struct WatcherStatus {
+    /// Enabled by configuration (`LIMA_WATCHER`).
+    pub enabled: bool,
+    /// Currently receiving filesystem events.
+    pub active: bool,
+    /// Last watcher error, if any. Manual syncs keep working regardless.
+    pub error: Option<String>,
+    /// Project folders with changes waiting for the next watcher run.
+    pub pending_folders: Vec<String>,
+    /// A whole-library rescan is pending (event overflow or watcher error).
+    pub full_rescan_pending: bool,
+    pub last_event_at: Option<String>,
+    pub last_triggered_at: Option<String>,
 }
 
 /// Counters for a sync run. Updated while the run progresses.

@@ -34,3 +34,4 @@ cargo run -p lima-server
 Environmentals:
 - **LIMA_SERVER_PORT** defaults to `6767`
 - **LIMA_DATABASE_URL** defaults to `sqlite:data/state/lima.db`
+- **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable
