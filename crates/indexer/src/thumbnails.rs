@@ -1,5 +1,6 @@
-//! JPEG thumbnails for image assets, stored under
+//! JPEG thumbnails for image and model assets, stored under
 //! `<thumbs_root>/<project_id>/<asset_id>.jpg` (served at `/media/thumbs`).
+//! Models get their embedded 3MF picture or a render (see [`crate::model_thumbs`]).
 //! All functions are blocking: call them through `spawn_blocking`.
 
 use std::fs;
@@ -17,6 +18,40 @@ pub fn thumb_path(thumbs_root: &Path, project_id: &str, asset_id: &str) -> PathB
     thumbs_root.join(project_id).join(format!("{asset_id}.jpg"))
 }
 
+/// Marker left when a model has no possible preview, so syncs don't retry it every time.
+fn no_preview_marker(dest: &Path) -> PathBuf {
+    dest.with_extension("none")
+}
+
+/// Whether `path` is the kind of asset that gets a thumbnail.
+pub fn has_thumbnail(path: &Path, kind: &str) -> bool {
+    kind == "image" || (kind == "model" && crate::model_thumbs::is_model(path))
+}
+
+/// Whether a thumbnail (or a recorded "no preview possible") already exists.
+pub fn is_done(dest: &Path) -> bool {
+    dest.exists() || no_preview_marker(dest).exists()
+}
+
+/// Thumbnail for any asset: images are downscaled, models get a preview.
+/// A model that can't be previewed leaves a marker so it isn't retried until it changes.
+pub fn generate_any(source: &Path, dest: &Path) -> Result<(), String> {
+    if !crate::model_thumbs::is_model(source) {
+        return generate(source, dest);
+    }
+    let _ = fs::remove_file(no_preview_marker(dest));
+    match crate::model_thumbs::preview(source) {
+        Ok(img) => write_jpeg(img, dest),
+        Err(e) => {
+            if let Some(dir) = dest.parent() {
+                let _ = fs::create_dir_all(dir);
+            }
+            let _ = fs::write(no_preview_marker(dest), &e);
+            Err(e)
+        }
+    }
+}
+
 /// Decodes `source` and writes a downscaled JPEG to `dest`. The write is atomic
 /// (temp file + rename) so a half written thumbnail is never served.
 pub fn generate(source: &Path, dest: &Path) -> Result<(), String> {
@@ -30,7 +65,11 @@ pub fn generate(source: &Path, dest: &Path) -> Result<(), String> {
     let orientation = decoder.orientation().map_err(|e| e.to_string())?;
     let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     img.apply_orientation(orientation);
+    write_jpeg(img, dest)
+}
 
+/// Downscales (never upscales) and writes `img` to `dest` as JPEG, atomically.
+fn write_jpeg(img: DynamicImage, dest: &Path) -> Result<(), String> {
     // Only downscale; small images are kept at their size.
     let thumb = if img.width() > THUMB_MAX_SIZE || img.height() > THUMB_MAX_SIZE {
         img.thumbnail(THUMB_MAX_SIZE, THUMB_MAX_SIZE)
@@ -60,7 +99,9 @@ pub fn generate(source: &Path, dest: &Path) -> Result<(), String> {
 
 /// Removes an asset thumbnail. Missing files are not an error.
 pub fn remove_asset(thumbs_root: &Path, project_id: &str, asset_id: &str) -> io::Result<()> {
-    ignore_missing(fs::remove_file(thumb_path(thumbs_root, project_id, asset_id)))
+    let dest = thumb_path(thumbs_root, project_id, asset_id);
+    ignore_missing(fs::remove_file(no_preview_marker(&dest)))?;
+    ignore_missing(fs::remove_file(dest))
 }
 
 /// Removes every thumbnail of a project. Missing folders are not an error.

@@ -1479,6 +1479,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zip 9.8.1",
 ]
 
 [[package]]

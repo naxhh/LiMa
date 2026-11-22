@@ -413,8 +413,8 @@ function Gallery({
                 a.id === current?.id ? "border-2 border-signal" : "hover:border-line-strong",
               )}
             >
-              <Box className="size-6" />
-              <span className="absolute right-1.5 bottom-1.5 left-1.5 truncate rounded bg-black/60 px-1 py-px text-center font-mono text-[9px] text-white/85">
+              <MediaImage src={thumbUrl(project.id, a.id)} alt="" fallbackLabel="" className="object-contain" />
+              <span className="absolute right-1.5 bottom-1.5 left-1.5 z-[3] truncate rounded bg-black/60 px-1 py-px text-center font-mono text-[9px] text-white/85">
                 3D · {fileExt(a.file_path)}
               </span>
             </button>

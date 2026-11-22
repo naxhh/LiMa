@@ -86,7 +86,7 @@ pub(crate) struct Scanner<'a> {
 /// `None` when the thumbnail already existed and nothing was done.
 type ThumbOutcome = (PathBuf, Option<Result<(), String>>);
 
-/// An image asset that may need a thumbnail.
+/// An image or model asset that may need a thumbnail.
 struct ThumbJob {
     asset_id: String,
     source: PathBuf,
@@ -295,6 +295,7 @@ impl<'a> Scanner<'a> {
         let mut content_changed: Vec<&str> = Vec::new();
         let mut first_image: Option<String> = None;
         let mut thumb_jobs: Vec<ThumbJob> = Vec::new();
+        let mut present: HashSet<String> = HashSet::new();
 
         for (i, planned) in plan.iter().enumerate() {
             let file = planned.file;
@@ -329,11 +330,14 @@ impl<'a> Scanner<'a> {
                 }
             };
 
-            if asset_kind(&file.rel_path) == "image" {
-                if first_image.is_none() {
-                    first_image = Some(asset_id.clone());
-                }
-                thumb_jobs.push(ThumbJob { asset_id, source: project_dir.join(&file.rel_path), force: force_thumb });
+            present.insert(asset_id.clone());
+            let kind = asset_kind(&file.rel_path);
+            if kind == "image" && first_image.is_none() {
+                first_image = Some(asset_id.clone());
+            }
+            let source = project_dir.join(&file.rel_path);
+            if thumbnails::has_thumbnail(&source, kind) {
+                thumb_jobs.push(ThumbJob { asset_id, source, force: force_thumb });
             }
         }
 
@@ -345,9 +349,16 @@ impl<'a> Scanner<'a> {
             changes.removed += 1;
         }
 
+        // The cover must be one of the project's files (it can point at one deleted earlier).
+        let had_cover = main_image_id.is_some();
+        if main_image_id.as_ref().is_some_and(|id| !present.contains(id)) {
+            main_image_id = None;
+        }
         if main_image_id.is_none() {
-            if let Some(image_id) = first_image {
-                idx::set_main_image(&mut tx, &project_id, &image_id).await?;
+            match first_image {
+                Some(image_id) => idx::set_main_image(&mut tx, &project_id, Some(&image_id)).await?,
+                None if had_cover => idx::set_main_image(&mut tx, &project_id, None).await?,
+                None => {}
             }
         }
 
@@ -408,10 +419,10 @@ impl<'a> Scanner<'a> {
                 let _permit = permits.acquire_owned().await;
                 let source = job.source.clone();
                 let result = tokio::task::spawn_blocking(move || {
-                    if !job.force && dest.exists() {
+                    if !job.force && thumbnails::is_done(&dest) {
                         return None;
                     }
-                    Some(thumbnails::generate(&job.source, &dest))
+                    Some(thumbnails::generate_any(&job.source, &dest))
                 })
                 .await
                 .unwrap_or_else(|e| Some(Err(format!("Thumbnail task crashed: {e}"))));
@@ -428,6 +439,10 @@ impl<'a> Scanner<'a> {
             match joined {
                 Ok((_, None)) => {}
                 Ok((_, Some(Ok(())))) => self.stats.thumbnails_generated += 1,
+                // Many models can't be previewed (huge, exotic, broken exports): that's normal, not an error.
+                Ok((source, Some(Err(e)))) if crate::model_thumbs::is_model(&source) => {
+                    tracing::debug!("No preview for {}: {e}", source.display());
+                }
                 Ok((source, Some(Err(e)))) => {
                     self.stats.errors += 1;
                     let path = source.strip_prefix(self.root).unwrap_or(&source).display().to_string();
