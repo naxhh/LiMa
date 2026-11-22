@@ -33,5 +33,13 @@ cargo run -p lima-server
 
 Environmentals:
 - **LIMA_SERVER_PORT** defaults to `6767`
-- **LIMA_DATABASE_URL** defaults to `sqlite:data/state/lima.db`
+- **LIMA_DATA_DIR** base folder for library and state. Defaults to `data`
+- **LIMA_LIBRARY_DIR** model library, one folder per project. Defaults to `$LIMA_DATA_DIR/library`
+- **LIMA_STATE_DIR** app state (database, staged uploads, thumbnails). Defaults to `$LIMA_DATA_DIR/state`
+- **LIMA_DATABASE_URL** defaults to `sqlite:$LIMA_STATE_DIR/lima.db?mode=rwc` (created if missing)
+- **LIMA_UI_DIR** built UI served at `/`. Defaults to `ui/dist`
 - **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable
+
+Missing library and state folders are created on start. For containers, mount the library
+(read/write: uploads and deletes write to it) and the state folder as volumes, e.g.
+`LIMA_LIBRARY_DIR=/library LIMA_STATE_DIR=/state`.

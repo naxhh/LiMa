@@ -20,20 +20,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let server_port = env::var("LIMA_SERVER_PORT").unwrap_or_else(|_| "6767".to_string());
-    let database_url = env::var("LIMA_DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:data/state/lima.db".to_string());
+    let paths = lima_domain::config::Paths::from_env();
+    for dir in paths.required_dirs() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+    }
+    tracing::info!(
+        "Library: {} | State: {} | UI: {}",
+        paths.library.display(),
+        paths.state.display(),
+        paths.ui.display()
+    );
 
-    let db = lima_db::Db::connect(&database_url).await?;
+    let db = lima_db::Db::connect(&paths.database_url).await?;
     db.migrate().await?;
 
-    let ui_dir = ServeDir::new("ui/dist").fallback(ServeFile::new("ui/dist/index.html"));
-    // TODO(#10): make these configurable.
-    let library_path = std::path::PathBuf::from("data/library");
-    let thumbs_path = std::path::PathBuf::from("data/state/thumbnails");
-    let library_dir = ServeDir::new(&library_path);
-    let thumbs_dir = ServeDir::new(&thumbs_path);
+    let ui_dir = ServeDir::new(&paths.ui).fallback(ServeFile::new(paths.ui.join("index.html")));
+    let library_dir = ServeDir::new(&paths.library);
+    let thumbs_dir = ServeDir::new(paths.thumbnails());
 
-    let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), &library_path, &thumbs_path).await?;
+    let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), &paths.library, paths.thumbnails()).await?;
 
     // Filesystem watcher: on by default, LIMA_WATCHER=false to disable.
     let watcher_enabled = !matches!(
@@ -49,8 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = state::AppState {
         db: Arc::new(db),
         sync,
-        library_dir: library_path,
-        thumbs_dir: thumbs_path,
+        paths: Arc::new(paths),
     };
 
     let api = Router::new()

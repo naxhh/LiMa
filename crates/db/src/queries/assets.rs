@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use lima_domain::config::Paths;
 
 use sqlx::{Pool, Sqlite, Transaction};
 use uuid::Uuid;
@@ -60,6 +60,7 @@ impl ToString for DeleteAssetError {
 
 pub async fn delete_asset(
     pool: &Pool<Sqlite>,
+    paths: &Paths,
     project_id: &str,
     asset_id: &str,
 ) -> Result<(), DeleteAssetError> {
@@ -108,7 +109,7 @@ pub async fn delete_asset(
     }
 
     // delete from disk
-    let full_asset_path: PathBuf = ["data", "library", &project_path, &file_path].iter().collect();
+    let full_asset_path = paths.project_dir(&project_path).join(&file_path);
     if let Err(e) = tokio::fs::remove_file(&full_asset_path).await {
         tracing::error!("Failed to delete asset file at {:?}: {}", full_asset_path, e);
         tx.rollback().await.map_err(DeleteAssetError::Db)?;

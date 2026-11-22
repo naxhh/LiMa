@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use lima_domain::config::Paths;
 
 use tokio::fs::create_dir_all;
 use sqlx::{Pool, Sqlite};
@@ -11,6 +11,7 @@ pub struct CreatedProject {
 
 pub async fn create_project(
     pool: &Pool<Sqlite>,
+    paths: &Paths,
     name: &str,
     folder_path: &str,
     description: &str,
@@ -21,7 +22,7 @@ pub async fn create_project(
     let mut tx = pool.begin().await?;
     let project_id = Uuid::new_v4().to_string();
 
-    let project_dir: PathBuf = ["data", "library", &folder_path].iter().collect();
+    let project_dir = paths.project_dir(folder_path);
     create_dir_all(&project_dir).await.map_err(|e| {
         sqlx::Error::Io(std::io::Error::new(
             std::io::ErrorKind::Other,

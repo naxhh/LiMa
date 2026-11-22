@@ -33,12 +33,12 @@ pub struct CreateBundleResponse {
     )
 )]
 pub async fn create_bundle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<CreateBundleResponse>), ApiErrorResponse> {
     // TODO: move logic to db module
     let bundle_id = Uuid::new_v4().to_string();
-    let bundle_folder: PathBuf = ["data", "state", "bundles", &bundle_id].iter().collect();
+    let bundle_folder = state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
     let mut failed_files: Vec<String> = Vec::new();
     let mut files_metadata: Vec<FileMeta> = Vec::new();
 

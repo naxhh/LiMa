@@ -21,9 +21,9 @@ pub async fn project_delete(
     Path(project_id): Path<String>,
 ) -> Result<StatusCode, ApiErrorResponse> {
 
-    match lima_db::queries::projects_delete::delete_project(state.db.pool(), &project_id).await {
+    match lima_db::queries::projects_delete::delete_project(state.db.pool(), &state.paths, &project_id).await {
         Ok(_) => {
-            let thumbs = state.thumbs_dir.clone();
+            let thumbs = state.paths.thumbnails();
             let project = project_id.clone();
             let removed = tokio::task::spawn_blocking(move || lima_indexer::thumbnails::remove_project(&thumbs, &project)).await;
             if let Ok(Err(e)) = removed {

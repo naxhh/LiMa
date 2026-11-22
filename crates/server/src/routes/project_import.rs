@@ -72,6 +72,7 @@ pub async fn project_import(
 
     let assets = lima_db::queries::projects_import::import_assets_from_bundle(
         app_state.db.pool(),
+        &app_state.paths,
         &project.id,
         &payload.bundle_id,
     ).await.map_err(|e| { match e {
@@ -199,8 +200,8 @@ async fn generate_thumbnails(
         .filter(|a| a.kind == "image")
         .map(|a| {
             (
-                state.library_dir.join(folder_path).join(&a.file_path),
-                lima_indexer::thumbnails::thumb_path(&state.thumbs_dir, project_id, &a.id),
+                state.paths.project_dir(folder_path).join(&a.file_path),
+                lima_indexer::thumbnails::thumb_path(&state.paths.thumbnails(), project_id, &a.id),
             )
         })
         .collect();
