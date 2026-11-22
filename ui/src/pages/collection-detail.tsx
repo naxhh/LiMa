@@ -25,8 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageBody } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
-import { ViewControls } from "@/components/view-controls";
-import { COLLECTION_SORTS, gridClass, useDensity, useViewPrefs } from "@/lib/view-prefs";
+import { SortSelect } from "@/components/sort-select";
+import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
 
 export function CollectionDetailPage() {
@@ -40,7 +40,6 @@ function CollectionDetailInner({ id }: { id: string }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useViewPrefs("lima.collection.view", COLLECTION_SORTS, searchParams);
-  const [density, setDensity] = useDensity();
   const collectionQ = useCollection(id, view.sort.id === COLLECTION_SORTS[0].id ? undefined : view.sort);
   const c = collectionQ.data;
   const setParams = (changes: Record<string, string | null>) =>
@@ -199,17 +198,11 @@ function CollectionDetailInner({ id }: { id: string }) {
             <span className="mr-auto font-mono text-xs text-muted-foreground">
               {c.projects.length} project{c.projects.length === 1 ? "" : "s"}
             </span>
-            <ViewControls
-              options={COLLECTION_SORTS}
-              sort={view.sort}
-              onSort={(sortId) => setParams(view.chooseSort(sortId))}
-              density={density}
-              onDensity={setDensity}
-            />
+            <SortSelect options={COLLECTION_SORTS} sort={view.sort} onSort={(sortId) => setParams(view.chooseSort(sortId))} />
           </div>
         ) : null}
 
-        <div className={gridClass(density)}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
           {!c
             ? Array.from({ length: 4 }, (_, i) => <ProjectCardSkeleton key={i} />)
             : c.projects.map((p) => (
@@ -218,7 +211,6 @@ function CollectionDetailInner({ id }: { id: string }) {
                   project={p}
                   onRemove={() => removeM.mutate(p.id)}
                   removeLabel={c.is_favourites ? "Remove from favourites" : "Remove from this collection"}
-                  compact={density === "compact"}
                 />
               ))}
         </div>

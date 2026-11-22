@@ -1,5 +1,5 @@
 /**
- * Sort order, page size and grid density for project grids.
+ * Sort order for project grids.
  * The URL wins (bookmarkable views); otherwise the last explicit choice from localStorage.
  */
 import * as React from "react";
@@ -31,10 +31,10 @@ export const COLLECTION_SORTS: SortOption[] = [
   ...PROJECT_SORTS,
 ];
 
-export const PAGE_SIZES = [24, 48, 96];
-export const DEFAULT_PAGE_SIZE = 48;
+/** Projects loaded per infinite-scroll batch. */
+export const PAGE_SIZE = 48;
 
-type Stored = { sortId?: string; perPage?: number };
+type Stored = { sortId?: string };
 
 function read<T>(key: string): T | null {
   try {
@@ -53,9 +53,9 @@ function write(key: string, value: unknown) {
 }
 
 /**
- * The current sort and page size for one kind of page (`storageKey`), from the URL params
- * `sort`, `order`, `per_page`, else the stored choice, else the defaults.
- * `choose*` return the URL changes to apply and remember the choice.
+ * The current sort for one kind of page (`storageKey`), from the URL params `sort` and
+ * `order`, else the stored choice, else the default. `chooseSort` returns the URL changes
+ * to apply and remembers the choice.
  */
 export function useViewPrefs(storageKey: string, options: SortOption[], params: URLSearchParams) {
   const [stored] = React.useState(() => read<Stored>(storageKey) ?? {});
@@ -64,15 +64,11 @@ export function useViewPrefs(storageKey: string, options: SortOption[], params: 
   const orderParam = params.get("order");
   const sort =
     options.find((o) => o.sort === sortParam && o.order === orderParam) ?? (sortParam ? options[0] : fallbackSort);
-  const perPageParam = Number(params.get("per_page"));
-  const storedPerPage = PAGE_SIZES.includes(stored.perPage ?? 0) ? stored.perPage! : DEFAULT_PAGE_SIZE;
-  const perPage = PAGE_SIZES.includes(perPageParam) ? perPageParam : storedPerPage;
 
   const remember = (change: Stored) => write(storageKey, { ...read<Stored>(storageKey), ...change });
 
   return {
     sort,
-    perPage,
     /** URL changes for picking a sort (the default clears the params). */
     chooseSort(id: string): Record<string, string | null> {
       const o = options.find((x) => x.id === id) ?? options[0];
@@ -80,31 +76,5 @@ export function useViewPrefs(storageKey: string, options: SortOption[], params: 
       const isDefault = o.id === options[0].id;
       return { sort: isDefault ? null : o.sort, order: isDefault ? null : o.order };
     },
-    choosePerPage(n: number): Record<string, string | null> {
-      remember({ perPage: n });
-      return { per_page: n === DEFAULT_PAGE_SIZE ? null : String(n) };
-    },
   };
-}
-
-export type Density = "comfortable" | "compact";
-const DENSITY_KEY = "lima.grid.density";
-
-/** Card density, shared by every project grid and remembered per browser. */
-export function useDensity(): [Density, (d: Density) => void] {
-  const [density, setDensity] = React.useState<Density>(() => (read<Density>(DENSITY_KEY) === "compact" ? "compact" : "comfortable"));
-  return [
-    density,
-    (d) => {
-      setDensity(d);
-      write(DENSITY_KEY, d);
-    },
-  ];
-}
-
-/** Grid classes for a density. */
-export function gridClass(density: Density) {
-  return density === "compact"
-    ? "grid grid-cols-3 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-3"
-    : "grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5";
 }
