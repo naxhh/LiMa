@@ -35,6 +35,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sync = lima_indexer::sync::SyncManager::new(db.pool().clone(), &library_path, &thumbs_path).await?;
 
+    // Filesystem watcher: on by default, LIMA_WATCHER=false to disable.
+    let watcher_enabled = !matches!(
+        env::var("LIMA_WATCHER").unwrap_or_default().to_ascii_lowercase().as_str(),
+        "0" | "false" | "off" | "no"
+    );
+    if watcher_enabled {
+        sync.start_watcher(lima_indexer::sync::WatcherConfig::default());
+    } else {
+        tracing::info!("Library watcher disabled (LIMA_WATCHER)");
+    }
+
     let state = state::AppState {
         db: Arc::new(db),
         sync,
@@ -147,6 +158,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lima_domain::models::sync::SyncRunRow,
         lima_domain::models::sync::SyncStats,
         lima_domain::models::sync::SyncEventRow,
+        lima_domain::models::sync::SyncOptions,
+        lima_domain::models::sync::WatcherStatus,
     )),
 )]
 pub struct ApiDoc;

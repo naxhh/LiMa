@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { ApiError, apiGet, apiJson } from "@/lib/api";
@@ -14,6 +14,15 @@ type SyncStatus = components["schemas"]["SyncStatusResponse"];
 type SyncRunsPage = components["schemas"]["ListSyncRunsResponse"];
 type SyncEvent = components["schemas"]["SyncEventRow"];
 type SyncEventsPage = components["schemas"]["ListSyncEventsResponse"];
+type WatcherStatus = components["schemas"]["WatcherStatus"];
+
+/** Short description of what a run covered. */
+function scopeLabel(run: SyncRun): string {
+  const folders = run.options?.folders;
+  if (!folders) return "whole library";
+  if (folders.length === 1) return folders[0];
+  return `${folders.length} folders`;
+}
 
 const RUNNING_POLL_MS = 1000;
 const IDLE_POLL_MS = 15000;
@@ -67,7 +76,12 @@ function useSyncStatus() {
   return useQuery({
     queryKey: ["sync", "status"],
     queryFn: () => apiGet<SyncStatus>("/sync/status"),
-    refetchInterval: (q) => (q.state.data?.running ? RUNNING_POLL_MS : IDLE_POLL_MS),
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      if (d?.running) return RUNNING_POLL_MS;
+      if (d?.watcher.pending_folders.length || d?.watcher.full_rescan_pending) return RUNNING_POLL_MS * 2;
+      return IDLE_POLL_MS;
+    },
   });
 }
 
@@ -98,6 +112,11 @@ export function AdminSyncPage() {
     }
     wasRunning.current = running;
   }, [running, qc]);
+
+  const latestRunId = statusQ.data?.run?.id;
+  React.useEffect(() => {
+    if (latestRunId) qc.invalidateQueries({ queryKey: ["sync", "runs"] });
+  }, [latestRunId, qc]);
 
   const startM = useMutation({
     mutationFn: (mode: "incremental" | "full") => apiJson<SyncRun>("POST", "/sync/run", { mode }),
@@ -146,12 +165,50 @@ export function AdminSyncPage() {
         </div>
       ) : null}
 
+      {statusQ.data ? <WatcherBar watcher={statusQ.data.watcher} /> : null}
+
       <CurrentStatus status={statusQ.data} isLoading={statusQ.isLoading} error={statusQ.error} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <RunsList selectedId={selectedId} live={running} />
         {selectedId ? <RunDetail runId={selectedId} /> : <EmptyPanel>Select a run to see its details.</EmptyPanel>}
       </div>
+    </div>
+  );
+}
+
+function WatcherBar({ watcher }: { watcher: WatcherStatus }) {
+  const pending = watcher.pending_folders;
+  let label: string;
+  let tone: string;
+  if (!watcher.enabled) {
+    label = "Watcher disabled (LIMA_WATCHER=false). Changes are only picked up by manual syncs.";
+    tone = "text-muted-foreground";
+  } else if (!watcher.active) {
+    label = `Watcher not running: ${watcher.error ?? "unknown error"}. Use manual syncs.`;
+    tone = "text-amber-700 dark:text-amber-400";
+  } else if (watcher.full_rescan_pending) {
+    label = "Watching the library · full rescan queued";
+    tone = "text-blue-600 dark:text-blue-400";
+  } else if (pending.length > 0) {
+    const names = pending.slice(0, 3).join(", ") + (pending.length > 3 ? ` +${pending.length - 3}` : "");
+    label = `Watching the library · changes waiting to sync: ${names}`;
+    tone = "text-blue-600 dark:text-blue-400";
+  } else {
+    label = "Watching the library · new and changed files sync automatically";
+    tone = "text-emerald-700 dark:text-emerald-400";
+  }
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-2 text-sm", tone)}>
+      {watcher.enabled && watcher.active ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+      <span>{label}</span>
+      {watcher.last_triggered_at ? (
+        <span className="text-xs text-muted-foreground">Last automatic sync {formatDate(watcher.last_triggered_at)}</span>
+      ) : null}
+      {watcher.active && watcher.error ? (
+        <span className="text-xs text-amber-700 dark:text-amber-400">Last error: {watcher.error}</span>
+      ) : null}
     </div>
   );
 }
@@ -291,6 +348,7 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
                 <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                   <span>
                     {run.mode} · {run.reason}
+                    {run.options?.folders ? ` · ${scopeLabel(run)}` : ""}
                   </span>
                   <span>{formatDuration(run.started_at, run.finished_at)}</span>
                   <span>{changes === 0 ? "no changes" : `${changes} change${changes === 1 ? "" : "s"}`}</span>
@@ -346,6 +404,12 @@ function RunDetail({ runId }: { runId: string }) {
           <Field label="Started" value={formatDate(run.started_at)} />
           <Field label="Duration" value={formatDuration(run.started_at, run.finished_at, now)} />
         </dl>
+        <div className="text-sm">
+          <div className="text-xs text-muted-foreground">Scope</div>
+          <div className="break-words">
+            {run.options?.folders ? run.options.folders.join(", ") : "Whole library"}
+          </div>
+        </div>
         {run.error ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {run.error}
@@ -481,7 +545,9 @@ function describeEvent(e: SyncEvent): string {
     case "run_failed":
       return String(d.error);
     case "run_started":
-      return `${d.mode ?? ""} · ${d.projects_on_disk} folders on disk, ${d.projects_indexed} indexed`;
+      return Array.isArray(d.folders)
+        ? `${d.mode ?? ""} · ${(d.folders as string[]).join(", ")}`
+        : `${d.mode ?? ""} · ${d.projects_on_disk} folders on disk, ${d.projects_indexed} indexed`;
     default:
       return JSON.stringify(d);
   }

@@ -195,7 +195,7 @@ async fn only_one_run_at_a_time() {
 #[tokio::test(flavor = "multi_thread")]
 async fn startup_fails_leftover_runs() {
     let fx = Fixture::new().await;
-    lima_db::queries::sync::create_run(fx.db.pool(), "stale", "full", "manual", &now()).await.unwrap();
+    lima_db::queries::sync::create_run(fx.db.pool(), "stale", "full", "manual", &Default::default(), &now()).await.unwrap();
     let _manager = fx.manager().await;
     let run = lima_db::queries::sync::get_run(fx.db.pool(), "stale").await.unwrap().unwrap();
     assert_eq!(run.status, "failed");
@@ -330,4 +330,101 @@ async fn manages_thumbnails() {
     assert_eq!(removed.status, "complete");
     assert!(!thumb.exists());
     assert!(!fx.thumbs().join(&dragon_project).exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_run_only_touches_requested_folders() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    fx.write("dragon/dragon.3mf", "3mf");
+    let manager = fx.manager().await;
+    run_full(&fx, &manager).await;
+
+    fs::remove_dir_all(fx.library().join("dragon")).unwrap();
+    fx.write("benchy/extra.stl", "extra");
+    fx.write("castle/castle.stl", "castle");
+
+    let run = manager
+        .start_scoped(SyncMode::Incremental, SyncReason::Watcher, Some(vec!["benchy".into(), "castle".into()]))
+        .await
+        .unwrap();
+    assert_eq!(run.options.folders.as_deref(), Some(&["benchy".to_string(), "castle".to_string()][..]));
+    let done = wait_done(fx.db.pool(), &run.id).await;
+    assert_eq!(done.status, "complete", "error: {}", done.error);
+    assert_eq!(done.stats.projects_total, 2);
+    assert_eq!(done.stats.projects_added, 1);
+    assert_eq!(done.stats.assets_added, 2);
+    // dragon is gone from disk but was out of scope: still indexed.
+    assert_eq!(done.stats.projects_removed, 0);
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'").await, 1);
+
+    // Scoping to a removed folder removes it.
+    manager.wait_idle().await;
+    let run = manager
+        .start_scoped(SyncMode::Incremental, SyncReason::Watcher, Some(vec!["dragon".into()]))
+        .await
+        .unwrap();
+    let done = wait_done(fx.db.pool(), &run.id).await;
+    assert_eq!(done.stats.projects_removed, 1);
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects").await, 2);
+}
+
+async fn wait_for(fx: &Fixture, sql: &str, expected: i64) {
+    for _ in 0..200 {
+        if fx.count(sql).await == expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("timed out waiting for `{sql}` == {expected} (got {})", fx.count(sql).await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn watcher_syncs_changed_folders() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    let manager = fx.manager().await;
+    run_full(&fx, &manager).await;
+
+    manager.start_watcher(WatcherConfig {
+        quiet_period: Duration::from_millis(300),
+        max_delay: Duration::from_secs(3),
+    });
+    let status = manager.watcher_status();
+    assert!(status.enabled && status.active, "{status:?}");
+
+    // New project folder dropped in.
+    fx.write("dragon/dragon.3mf", "3mf");
+    fx.write("dragon/notes.txt", "notes");
+    wait_for(&fx, "SELECT COUNT(*) FROM assets a JOIN projects p ON p.id = a.project_id WHERE p.folder_path = 'dragon'", 2).await;
+
+    let run = lima_db::queries::sync::latest_run(fx.db.pool()).await.unwrap().unwrap();
+    assert_eq!(run.reason, "watcher");
+    assert_eq!(run.options.folders, Some(vec!["dragon".to_string()]));
+
+    // File removed from an existing project.
+    fs::remove_file(fx.library().join("benchy/benchy.stl")).unwrap();
+    wait_for(&fx, "SELECT COUNT(*) FROM assets WHERE file_path = 'benchy.stl'", 0).await;
+
+    // Whole project folder removed.
+    fs::remove_dir_all(fx.library().join("dragon")).unwrap();
+    wait_for(&fx, "SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'", 0).await;
+
+    // Hidden files do not trigger runs.
+    manager.wait_idle().await;
+    let runs_before = fx.count("SELECT COUNT(*) FROM sync_runs").await;
+    fx.write("benchy/.DS_Store", "junk");
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert_eq!(fx.count("SELECT COUNT(*) FROM sync_runs").await, runs_before);
+    assert!(manager.watcher_status().pending_folders.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn watcher_reports_missing_library() {
+    let fx = Fixture::new().await;
+    let manager = SyncManager::new(fx.db.pool().clone(), Path::new("/definitely/not/here"), fx.thumbs()).await.unwrap();
+    manager.start_watcher(WatcherConfig::default());
+    let status = manager.watcher_status();
+    assert!(status.enabled && !status.active);
+    assert!(status.error.is_some());
 }

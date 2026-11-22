@@ -374,6 +374,14 @@ export interface components {
             level: string;
             run_id: string;
         };
+        /** @description What a run was asked to do. */
+        SyncOptions: {
+            /**
+             * @description Limit the run to these project folders. `None` scans the whole library.
+             * @default null
+             */
+            folders: string[] | null;
+        };
         /** @description A recorded synchronization run between the library folder and the database. */
         SyncRunRow: {
             error: string;
@@ -381,6 +389,7 @@ export interface components {
             id: string;
             /** @description `full` or `incremental` */
             mode: string;
+            options: components["schemas"]["SyncOptions"];
             /** @description `manual`, `scheduled` or `watcher` */
             reason: string;
             started_at?: string | null;
@@ -448,6 +457,8 @@ export interface components {
             run?: null | components["schemas"]["SyncRunRow"];
             /** @description True while a run is executing. */
             running: boolean;
+            /** @description Filesystem watcher that triggers syncs automatically. */
+            watcher: components["schemas"]["WatcherStatus"];
         };
         Tag: {
             color: string;
@@ -455,6 +466,21 @@ export interface components {
             id: string;
             name: string;
             updated_at: string;
+        };
+        /** @description State of the filesystem watcher that triggers syncs automatically. */
+        WatcherStatus: {
+            /** @description Currently receiving filesystem events. */
+            active: boolean;
+            /** @description Enabled by configuration (`LIMA_WATCHER`). */
+            enabled: boolean;
+            /** @description Last watcher error, if any. Manual syncs keep working regardless. */
+            error?: string | null;
+            /** @description A whole-library rescan is pending (event overflow or watcher error). */
+            full_rescan_pending: boolean;
+            last_event_at?: string | null;
+            last_triggered_at?: string | null;
+            /** @description Project folders with changes waiting for the next watcher run. */
+            pending_folders: string[];
         };
     };
     responses: never;

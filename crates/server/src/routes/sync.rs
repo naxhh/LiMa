@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use lima_domain::models::sync::{SyncEventRow, SyncRunRow};
+use lima_domain::models::sync::{SyncEventRow, SyncRunRow, WatcherStatus};
 use lima_domain::pagination::{Cursor, decode_cursor, encode_cursor};
 use lima_indexer::sync::{StartSyncError, SyncMode, SyncReason};
 use serde::{Deserialize, Serialize};
@@ -66,6 +66,8 @@ pub struct SyncStatusResponse {
     pub running: bool,
     /// The run in progress, or the most recent one.
     pub run: Option<SyncRunRow>,
+    /// Filesystem watcher that triggers syncs automatically.
+    pub watcher: WatcherStatus,
 }
 
 #[utoipa::path(
@@ -88,6 +90,7 @@ pub async fn sync_status(State(state): State<AppState>) -> Result<Json<SyncStatu
     Ok(Json(SyncStatusResponse {
         running: run.as_ref().is_some_and(|r| r.status == "running"),
         run,
+        watcher: state.sync.watcher_status(),
     }))
 }
 

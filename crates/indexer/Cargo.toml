@@ -13,7 +13,7 @@ notify = "8.2.0"
 serde_json = "1.0.149"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
 time = { version = "0.3.45", features = ["formatting"] }
-tokio = { version = "1.49.0", features = ["rt", "sync", "macros"] }
+tokio = { version = "1.49.0", features = ["rt", "sync", "macros", "time"] }
 tracing = "0.1.44"
 uuid = { version = "1.19.0", features = ["v4"] }
 
