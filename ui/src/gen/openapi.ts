@@ -815,7 +815,11 @@ export interface components {
             limit?: number | null;
             /** @description Only projects without images. */
             no_image?: boolean | null;
+            /** @description Sort order (asc or desc). */
+            order?: string | null;
             query?: string | null;
+            /** @description Sort key for the results (updated, created, name, size, files). */
+            sort?: string | null;
             /** @description Comma-separated tag ids; projects must have all of them. */
             tags?: string | null;
         };
@@ -2185,6 +2189,10 @@ export interface operations {
                 formats?: string;
                 /** @description Only projects without images */
                 no_image?: boolean;
+                /** @description Sort key: updated (default), created, name, size, files. Ignored when searching (results are by relevance) */
+                sort?: string;
+                /** @description Sort order: asc or desc (default: asc for name, desc otherwise). Ignored when searching */
+                order?: string;
             };
             header?: never;
             path?: never;

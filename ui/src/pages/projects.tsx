@@ -16,14 +16,57 @@ type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
 
 const PAGE_SIZES = [24, 48, 96];
 const DEFAULT_PAGE_SIZE = 48;
+
+const SORT_OPTIONS = [
+  { id: "updated-desc", label: "Recently updated", sort: "updated", order: "desc" },
+  { id: "updated-asc", label: "Oldest updated", sort: "updated", order: "asc" },
+  { id: "created-desc", label: "Newest added", sort: "created", order: "desc" },
+  { id: "created-asc", label: "Oldest added", sort: "created", order: "asc" },
+  { id: "name-asc", label: "Name A–Z", sort: "name", order: "asc" },
+  { id: "name-desc", label: "Name Z–A", sort: "name", order: "desc" },
+  { id: "size-desc", label: "Largest", sort: "size", order: "desc" },
+  { id: "size-asc", label: "Smallest", sort: "size", order: "asc" },
+  { id: "files-desc", label: "Most files", sort: "files", order: "desc" },
+  { id: "files-asc", label: "Fewest files", sort: "files", order: "asc" },
+] as const;
+type SortOption = (typeof SORT_OPTIONS)[number];
+const DEFAULT_SORT = SORT_OPTIONS[0];
+
+/** Last chosen sort and page size, used when the URL doesn't say. */
+const VIEW_KEY = "lima.projects.view";
+
+function readStoredView(): { sort: SortOption; perPage: number } {
+  const fallback = { sort: DEFAULT_SORT, perPage: DEFAULT_PAGE_SIZE };
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null") as { sortId?: string; perPage?: number } | null;
+    return {
+      sort: SORT_OPTIONS.find((o) => o.id === v?.sortId) ?? fallback.sort,
+      perPage: PAGE_SIZES.includes(v?.perPage ?? 0) ? v!.perPage! : fallback.perPage,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function storeView(change: { sortId?: string; perPage?: number }) {
+  try {
+    const current = readStoredView();
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ sortId: current.sort.id, perPage: current.perPage, ...change }));
+  } catch {
+    // Not available (private mode etc.): the URL still works.
+  }
+}
 const TAG_CHIPS = 10;
+
+const SELECT_CLASS =
+  "h-8 rounded-lg border border-input bg-background px-2 font-mono text-xs text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60";
 
 type Filters = { tags: string[]; formats: string[]; noImage: boolean };
 
 /** Model formats offered as quick filters. */
 const FORMAT_CHIPS = ["STL", "3MF", "STEP", "OBJ"];
 
-function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters; sort?: string; order?: string }) {
+function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters; sort?: SortOption }) {
   const usp = new URLSearchParams();
   usp.set("limit", String(params.limit));
   if (params.cursor) usp.set("cursor", params.cursor);
@@ -31,15 +74,11 @@ function buildUrl(params: { limit: number; cursor?: string | null; query?: strin
   if (params.filters.tags.length) usp.set("tags", params.filters.tags.join(","));
   if (params.filters.formats.length) usp.set("formats", params.filters.formats.join(","));
   if (params.filters.noImage) usp.set("no_image", "true");
-  
-  // Only include sort/order parameters when not searching
-  if (params.sort && !params.query) {
-    usp.set("sort", params.sort);
+  // Searches are ordered by relevance.
+  if (params.sort && !params.query?.trim()) {
+    usp.set("sort", params.sort.sort);
+    usp.set("order", params.sort.order);
   }
-  if (params.order && !params.query) {
-    usp.set("order", params.order);
-  }
-  
   return `/projects?${usp.toString()}`;
 }
 
@@ -70,63 +109,25 @@ export function ProjectsPage() {
   );
   const filtered = filters.tags.length > 0 || filters.formats.length > 0 || filters.noImage;
 
-  // Read sort and page size from URL or localStorage
-  const storedView = React.useMemo(() => {
-    try {
-      const stored = localStorage.getItem("lima.projects.view");
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  }, []);
-  
-  const pageSizeParam = searchParams.get("per_page");
-  const defaultPageSize = storedView?.perPage ?? DEFAULT_PAGE_SIZE;
-  const perPage = pageSizeParam ? parseInt(pageSizeParam, 10) : defaultPageSize;
-  if (isNaN(perPage) || !PAGE_SIZES.includes(perPage)) {
-    // Invalid page size, use default
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set("per_page", String(defaultPageSize));
-    setSearchParams(newParams, { replace: true });
-  }
-  
+  // Sort and page size: from the URL, else the last choice, else the defaults.
+  const [stored] = React.useState(readStoredView);
   const sortParam = searchParams.get("sort");
   const orderParam = searchParams.get("order");
-  const defaultSort = storedView?.sort ?? "updated";
-  const defaultOrder = storedView?.order ?? "desc";
-  
-  // Determine current sort and order
-  const sort = query ? "relevance" : sortParam || defaultSort;
-  const order = query ? "desc" : orderParam || defaultOrder;
-  
-  // Store view preferences in localStorage when they change
-  React.useEffect(() => {
-    try {
-      localStorage.setItem("lima.projects.view", JSON.stringify({
-        perPage,
-        sort,
-        order,
-      }));
-    } catch {
-      // Ignore errors from localStorage
-    }
-  }, [perPage, sort, order]);
+  const sortOption =
+    SORT_OPTIONS.find((o) => o.sort === sortParam && o.order === orderParam) ?? (sortParam ? DEFAULT_SORT : stored.sort);
+  const perPageParam = Number(searchParams.get("per_page"));
+  const perPage = PAGE_SIZES.includes(perPageParam) ? perPageParam : stored.perPage;
+  const searching = debouncedQ.trim().length > 0;
 
   const projectsQ = useInfiniteQuery({
-    queryKey: ["projects", { limit: perPage, query: debouncedQ, filters, sort, order }],
+    queryKey: ["projects", { limit: perPage, query: debouncedQ, filters, sort: searching ? null : sortOption.id }],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      apiGet<ListProjectsResponse>(buildUrl({ 
-        limit: perPage, 
-        cursor: pageParam, 
-        query: debouncedQ, 
-        filters,
-        sort: sort === "relevance" ? undefined : sort,
-        order: sort === "relevance" ? undefined : order
-      })),
+      apiGet<ListProjectsResponse>(
+        buildUrl({ limit: perPage, cursor: pageParam, query: debouncedQ, filters, sort: searching ? undefined : sortOption }),
+      ),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
-  
   const items = projectsQ.data?.pages.flatMap((p) => p.items) ?? [];
 
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
@@ -200,45 +201,44 @@ export function ProjectsPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            {/* Sort control */}
             <select
-              value={sort}
-              onChange={(e) => {
-                const newSort = e.target.value;
-                // For search, we can't change sort, so reset to relevance
-                if (query) {
-                  setParams({ sort: "relevance" });
-                } else {
-                  setParams({ sort: newSort === "updated" ? null : newSort });
-                }
-              }}
-              disabled={!!query}
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-ring"
               aria-label="Sort projects"
+              value={query ? "relevance" : sortOption.id}
+              disabled={!!query}
+              onChange={(e) => {
+                const o = SORT_OPTIONS.find((x) => x.id === e.target.value) ?? DEFAULT_SORT;
+                const isDefault = o.id === DEFAULT_SORT.id;
+                setParams({ sort: isDefault ? null : o.sort, order: isDefault ? null : o.order });
+                storeView({ sortId: o.id });
+              }}
+              className={SELECT_CLASS}
             >
-              <option value="relevance" disabled={!query}>Best match</option>
-              <option value="updated">Recently updated</option>
-              <option value="created">Newest added</option>
-              <option value="name">Name A–Z</option>
-              <option value="size">Largest</option>
-              <option value="files">Most files</option>
+              {query ? (
+                <option value="relevance">Best match</option>
+              ) : (
+                SORT_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))
+              )}
             </select>
-            
-            {/* Page size control */}
             <select
+              aria-label="Projects per page"
               value={perPage}
               onChange={(e) => {
-                const newPerPage = parseInt(e.target.value, 10);
-                setParams({ per_page: newPerPage === DEFAULT_PAGE_SIZE ? null : String(newPerPage) });
+                const n = Number(e.target.value);
+                setParams({ per_page: n === DEFAULT_PAGE_SIZE ? null : String(n) });
+                storeView({ perPage: n });
               }}
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-ring"
-              aria-label="Items per page"
+              className={SELECT_CLASS}
             >
-              <option value={24}>24</option>
-              <option value={48}>48</option>
-              <option value={96}>96</option>
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n} / page
+                </option>
+              ))}
             </select>
-            
             <span className="font-mono text-xs text-muted-foreground">
               {projectsQ.isLoading
                 ? "loading…"
