@@ -100,6 +100,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collections/{collection_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_collection_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_collection_source"];
+        trace?: never;
+    };
+    "/api/collections/{collection_id}/source/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sync_collection_now"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/duplicates": {
         parameters: {
             query?: never;
@@ -206,6 +238,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["start_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_collection_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/collections/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["collection_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/collections/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["collection_job_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -938,6 +1018,76 @@ export interface components {
             /** @description Projects in the collection, in the requested order (default: most recently added first). */
             projects: components["schemas"]["ProjectListItem"][];
         };
+        CollectionJob: {
+            collection_id: string;
+            /** @description Model being imported. */
+            current?: string | null;
+            done: number;
+            /** @description Why the whole run stopped (e.g. the Bambu login expired). */
+            error?: string | null;
+            error_code?: string | null;
+            failed: components["schemas"]["FailedModel"][];
+            id: string;
+            imported: number;
+            /** @description Already in the library: added to the collection without downloading. */
+            linked: number;
+            /** @description Models that left the source collection. */
+            removed: number;
+            /** @description `running`, `complete` or `failed`. */
+            status: string;
+            /** @description Models to import or link in this run. */
+            total: number;
+        };
+        CollectionPreviewModel: {
+            author?: string | null;
+            cover?: string | null;
+            id: string;
+            name: string;
+            /** @description The library already has a project from this model page: it's linked, not downloaded. */
+            project_id?: string | null;
+            url: string;
+        };
+        CollectionPreviewRequest: {
+            url: string;
+        };
+        CollectionPreviewResponse: {
+            author?: string | null;
+            /** @description Already imported: the LiMa collection it went to. */
+            collection_id?: string | null;
+            description: string;
+            logged_in: boolean;
+            /** @description Downloading files needs a Bambu login (MakerWorld). */
+            login_required: boolean;
+            models: components["schemas"]["CollectionPreviewModel"][];
+            name: string;
+            /** @description `makerworld` or `thingiverse`. */
+            source: string;
+            /** @description The collection has more models than can be imported at once (1,000). */
+            truncated: boolean;
+            url: string;
+        };
+        CollectionSourceResponse: {
+            /** @description Models left out (unticked, or whose project was deleted). */
+            excluded: number;
+            /** @description Models that couldn't be imported yet (retried on the next sync). */
+            failed: number;
+            /** @description MakerWorld: whether the server has a Bambu login for background syncs. */
+            has_login: boolean;
+            /**
+             * Format: int64
+             * @description How often synced collections are checked, in hours (0 = only by hand).
+             */
+            interval_hours: number;
+            /** @description The sync running now, if any. */
+            job_id?: string | null;
+            keep_in_sync: boolean;
+            last_error?: string | null;
+            last_synced_at?: string | null;
+            /** @description Models seen in the source collection. */
+            models: number;
+            source: string;
+            url: string;
+        };
         CreateBundleResponse: {
             failed_files: string[];
             files: string[];
@@ -1024,6 +1174,10 @@ export interface components {
             files: number;
             /** @description Entries left out (password protected or unsupported compression), as `archive.zip/path`. */
             skipped: string[];
+        };
+        FailedModel: {
+            error: string;
+            name: string;
         };
         HealthResponse: {
             db: boolean;
@@ -1359,6 +1513,22 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
         };
+        StartCollectionImportRequest: {
+            /**
+             * @description Keep importing models added to the source collection, and delete (to the trash) the
+             *     ones removed from it. MakerWorld stores the Bambu login on the server for this.
+             */
+            keep_in_sync?: boolean;
+            /** @description Models to import, from the preview. The rest are left out (also by later syncs). */
+            model_ids: string[];
+            /** @description LiMa collection name; defaults to the source collection's. */
+            name?: string | null;
+            url: string;
+        };
+        StartCollectionImportResponse: {
+            collection_id: string;
+            job_id: string;
+        };
         StartImportRequest: {
             /** @description Defaults to the model description. */
             description?: string | null;
@@ -1386,6 +1556,9 @@ export interface components {
              *     `full` also re-hashes every file to detect in-place content changes.
              */
             mode?: string | null;
+        };
+        StartSyncResponse: {
+            job_id: string;
         };
         SyncEventRow: {
             created_at: string;
@@ -1508,6 +1681,9 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
             trashed_at: string;
+        };
+        UpdateCollectionSourceRequest: {
+            keep_in_sync: boolean;
         };
         /** @description State of the filesystem watcher that triggers syncs automatically. */
         WatcherStatus: {
@@ -1971,6 +2147,112 @@ export interface operations {
             };
         };
     };
+    get_collection_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where the collection was imported from, and its sync state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSourceResponse"];
+                };
+            };
+            /** @description Not imported from a site */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    update_collection_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCollectionSourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSourceResponse"];
+                };
+            };
+            /** @description Turning on sync for MakerWorld needs a Bambu login */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not imported from a site */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    sync_collection_now: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync started (or already running) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartSyncResponse"];
+                };
+            };
+            /** @description Not imported from a site */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     list_duplicates: {
         parameters: {
             query?: never;
@@ -2255,6 +2537,130 @@ export interface operations {
             };
             /** @description The site answered unexpectedly */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    start_collection_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCollectionImportRequest"];
+            };
+        };
+        responses: {
+            /** @description LiMa collection created; models are importing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartCollectionImportResponse"];
+                };
+            };
+            /** @description Bambu login required (code bambu_login_required) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Already imported (code collection_already_imported) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    collection_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The collection and its models */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionPreviewResponse"];
+                };
+            };
+            /** @description Not a MakerWorld or Thingiverse collection link */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Collection not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Thingiverse token missing or rejected */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    collection_job_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Progress of a collection import or sync */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionJob"];
+                };
+            };
+            /** @description Unknown job (or finished more than an hour ago) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

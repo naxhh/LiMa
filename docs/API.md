@@ -149,6 +149,25 @@ Deleted projects move to `<library>/.lima-trash/<id>/` with their metadata kept,
 | DELETE | `/trash/{trash_id}` | Delete one item for good |
 | DELETE | `/trash` | Empty the trash |
 
+### Collection imports
+
+MakerWorld (`makerworld.com/<lang>/collections/<id>-<slug>`) and Thingiverse
+(`thingiverse.com/<user>/collections/<id>`) collections. Each chosen model becomes a project
+(models already in the library, by `source_url`, are linked instead) in a new LiMa collection.
+With `keep_in_sync`, models added upstream are imported and models removed upstream are
+deleted to the trash (or only taken out of the collection when they were already in the
+library); unticked models and projects you delete are never imported again. MakerWorld
+stores the Bambu token on the server for background syncs.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/imports/collections/preview` | `{url}`: the collection and its models |
+| POST | `/imports/collections` | `{url, model_ids, keep_in_sync, name?}`: create the collection and start importing |
+| GET | `/imports/collections/{job_id}` | Progress of an import or sync |
+| GET | `/collections/{collection_id}/source` | Where it came from and its sync state |
+| PATCH | `/collections/{collection_id}/source` | `{keep_in_sync}` |
+| POST | `/collections/{collection_id}/source/sync` | Sync now |
+
 ### Duplicates
 
 Found by file hash, nothing is changed until you pick one to keep. Project groups are projects

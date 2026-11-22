@@ -26,3 +26,4 @@ pub mod ignored_folders;
 pub mod trash;
 pub mod bulk;
 pub mod duplicates;
+pub mod collection_sources;

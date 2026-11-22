@@ -119,7 +119,7 @@ pub struct ImportJobResponse {
     finished_at: Option<i64>,
 }
 
-fn fetch_error(e: ImportError) -> ApiErrorResponse {
+pub(crate) fn fetch_error(e: ImportError) -> ApiErrorResponse {
     match e {
         ImportError::UnsupportedUrl => ApiErrorResponse::new(
             StatusCode::BAD_REQUEST,
@@ -143,7 +143,12 @@ fn fetch_error(e: ImportError) -> ApiErrorResponse {
 }
 
 async fn fetch(state: &AppState, url: &str) -> Result<RemoteModel, ApiErrorResponse> {
-    let model_ref = lima_importers::parse_url(url).ok_or_else(|| fetch_error(ImportError::UnsupportedUrl))?;
+    let Some(model_ref) = lima_importers::parse_url(url) else {
+        if lima_importers::collections::parse_collection_url(url).is_some() {
+            return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "collection_url", "That's a collection link: use the collection import."));
+        }
+        return Err(fetch_error(ImportError::UnsupportedUrl));
+    };
     let tokens = lima_importers::Tokens { thingiverse: state.thingiverse_token.as_deref(), ..Default::default() };
     lima_importers::fetch_model(&state.http, &model_ref, tokens).await.map_err(fetch_error)
 }
@@ -185,7 +190,7 @@ pub async fn import_preview(
     }))
 }
 
-fn source_name(m: &RemoteModel) -> &'static str {
+pub(crate) fn source_name(m: &RemoteModel) -> &'static str {
     match m.source {
         lima_importers::Source::Printables => "printables",
         lima_importers::Source::Makerworld => "makerworld",
@@ -347,7 +352,7 @@ pub async fn import_status(State(state): State<AppState>, UrlPath(job_id): UrlPa
         .ok_or_else(|| ApiErrorResponse::new(StatusCode::NOT_FOUND, "job_not_found", "Import job not found."))
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_default()
 }
 
@@ -361,6 +366,72 @@ struct ImportTask {
     token: Option<String>,
     extract_zips: bool,
     keep_zips: bool,
+}
+
+/// Imports one model into a new project right away (no job): creates the project under a
+/// free name, downloads `files` and the images, and imports them. Used by collection
+/// imports. On failure nothing is left behind. Returns the project id.
+pub(crate) async fn import_model_now(
+    state: &AppState,
+    model: RemoteModel,
+    files: Vec<RemoteFile>,
+    bambu_token: Option<String>,
+) -> Result<String, ModelImportError> {
+    let now = now_rfc3339();
+    let tags: Vec<String> = model.tags.iter().filter_map(|t| lima_domain::models::tag::normalize_tag_name(t)).collect();
+    let base = if model.name.trim().is_empty() { format!("{} {}", source_name(&model), model.source_id) } else { model.name.clone() };
+    let mut project = None;
+    for n in 1..=50 {
+        let name = if n == 1 { base.clone() } else { format!("{base} ({n})") };
+        let folder = crate::routes::project_create::slugify_string(&name);
+        if folder.is_empty() || state.paths.project_dir(&folder).exists() {
+            continue;
+        }
+        match lima_db::queries::projects_create::create_project(state.db.pool(), &state.paths, &name, &folder, &model.description, None, &tags, &now).await {
+            Ok(p) => {
+                project = Some(p);
+                break;
+            }
+            Err(e) if e.to_string().to_ascii_lowercase().contains("unique") => continue,
+            Err(e) => return Err(ModelImportError::Other(format!("Could not create the project: {e}"))),
+        }
+    }
+    let project = project.ok_or_else(|| ModelImportError::Other("No free project name".into()))?;
+    if let Err(e) = lima_db::queries::projects_source::set_project_source(state.db.pool(), &project.id, &model.url, model.author.as_deref(), model.license.as_deref()).await {
+        tracing::warn!("Could not record the source of project {}: {e}", project.id);
+    }
+
+    let task = ImportTask {
+        state: state.clone(),
+        job_id: String::new(),
+        project_id: project.id.clone(),
+        images: model.images.clone(),
+        model,
+        files,
+        token: bambu_token,
+        extract_zips: false,
+        keep_zips: false,
+    };
+    let bundle_id = uuid::Uuid::new_v4().to_string();
+    let bundle_dir = state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
+    let result = task.download_and_import(&bundle_id, &bundle_dir).await;
+    let _ = tokio::fs::remove_dir_all(&bundle_dir).await;
+    match result {
+        Ok(()) => Ok(project.id),
+        Err(fatal) => {
+            if let Err(e) = lima_db::queries::projects_delete::delete_project(state.db.pool(), &state.paths, &project.id).await {
+                tracing::error!("Could not remove project {} after a failed import: {e:?}", project.id);
+            }
+            Err(if fatal.code == "bambu_login_required" { ModelImportError::LoginRequired } else { ModelImportError::Other(fatal.message) })
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum ModelImportError {
+    /// The Bambu token was refused: stop, every other MakerWorld download will fail too.
+    LoginRequired,
+    Other(String),
 }
 
 struct Fatal {
