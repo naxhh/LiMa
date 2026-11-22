@@ -9,5 +9,5 @@ time = "0.3.44"
 uuid = "1.19.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-sqlx = { version = "0.8.6", features = ["macros"] }
+sqlx = { version = "0.8.6", features = ["macros", "json"] }
 utoipa = "5.4.0"

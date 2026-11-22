@@ -194,16 +194,8 @@ pub async fn write_bundle_meta(
     Ok(())
 }
 
-// TODO: move to models and enum so we keep track of the support we provide.
 fn extract_kind(filename: &str) -> &'static str {
-    let lower = filename.to_ascii_lowercase();
-    if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".webp") {
-        "image"
-    } else if lower.ends_with(".stl") || lower.ends_with(".obj") || lower.ends_with(".3mf") || lower.ends_with(".fbx") || lower.ends_with(".glb") || lower.ends_with(".gltf") {
-        "model"
-    } else {
-        "other"
-    }
+    lima_domain::models::asset::asset_kind(filename)
 }
 
 fn guess_mime(path: &str) -> String {

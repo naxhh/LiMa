@@ -11,3 +11,5 @@ pub mod tags;
 
 pub mod bundle_create;
 pub mod bundle_delete;
+
+pub mod sync;

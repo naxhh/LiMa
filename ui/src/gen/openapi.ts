@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/bundles": {
+    "/api/bundles": {
         parameters: {
             query?: never;
             header?: never;
@@ -20,7 +20,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bundles/{bundle_id}": {
+    "/api/bundles/{bundle_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -36,7 +36,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health": {
+    "/api/health": {
         parameters: {
             query?: never;
             header?: never;
@@ -52,7 +52,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects": {
+    "/api/projects": {
         parameters: {
             query?: never;
             header?: never;
@@ -68,7 +68,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}": {
+    "/api/projects/{project_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,10 +81,10 @@ export interface paths {
         delete: operations["project_delete"];
         options?: never;
         head?: never;
-        patch: operations["project_update"];
+        patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/assets/{asset_id}": {
+    "/api/projects/{project_id}/assets/{asset_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,7 +100,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/import": {
+    "/api/projects/{project_id}/import": {
         parameters: {
             query?: never;
             header?: never;
@@ -116,7 +116,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tags": {
+    "/api/sync/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_sync_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_sync_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_sync_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["sync_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags": {
         parameters: {
             query?: never;
             header?: never;
@@ -130,6 +210,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["project_update"];
         trace?: never;
     };
 }
@@ -186,6 +282,32 @@ export interface components {
             items: components["schemas"]["ProjectRow"][];
             next_cursor?: string | null;
         };
+        ListSyncEventsParams: {
+            /**
+             * Format: int64
+             * @description Return events with an id greater than this (exclusive). Use the last seen id to tail a run.
+             */
+            after?: number | null;
+            /** Format: int64 */
+            limit?: number | null;
+        };
+        ListSyncEventsResponse: {
+            items: components["schemas"]["SyncEventRow"][];
+            /**
+             * Format: int64
+             * @description Pass as `after` to fetch the next page. Null when there are no more events right now.
+             */
+            next_after?: number | null;
+        };
+        ListSyncRunsParams: {
+            cursor?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+        };
+        ListSyncRunsResponse: {
+            items: components["schemas"]["SyncRunRow"][];
+            next_cursor?: string | null;
+        };
         ListTagsParams: {
             cursor?: string | null;
             /** Format: int64 */
@@ -212,6 +334,7 @@ export interface components {
             assets: components["schemas"]["ProjectAssetResponse"][];
             created_at: string;
             description: string;
+            folder_path: string;
             id: string;
             last_scanned_at?: string | null;
             main_image_id?: string | null;
@@ -233,6 +356,83 @@ export interface components {
             color: string;
             id: string;
             name: string;
+        };
+        StartSyncRequest: {
+            /** @description `full` (default) or `incremental`. Only `full` is supported for now. */
+            mode?: string | null;
+        };
+        SyncEventRow: {
+            created_at: string;
+            data: Record<string, never>;
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** @description `trace`, `debug`, `info`, `warn` or `error` */
+            level: string;
+            run_id: string;
+        };
+        /** @description A recorded synchronization run between the library folder and the database. */
+        SyncRunRow: {
+            error: string;
+            finished_at?: string | null;
+            id: string;
+            /** @description `full` or `incremental` */
+            mode: string;
+            /** @description `manual`, `scheduled` or `watcher` */
+            reason: string;
+            started_at?: string | null;
+            stats: components["schemas"]["SyncStats"];
+            /** @description `queued`, `running`, `complete`, `failed` or `cancelled` */
+            status: string;
+        };
+        /** @description Counters for a sync run. Updated while the run progresses. */
+        SyncStats: {
+            /**
+             * Format: int64
+             * @default 0
+             */
+            assets_added: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            assets_removed: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            assets_updated: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            projects_added: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            projects_removed: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            projects_scanned: number;
+            /**
+             * Format: int64
+             * @description Number of project folders found on disk (known once discovery finishes).
+             * @default 0
+             */
+            projects_total: number;
+        };
+        SyncStatusResponse: {
+            run?: null | components["schemas"]["SyncRunRow"];
+            /** @description True while a run is executing. */
+            running: boolean;
         };
         Tag: {
             color: string;
@@ -526,58 +726,6 @@ export interface operations {
             };
         };
     };
-    project_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The ID of the project to update */
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchProjectRequest"];
-            };
-        };
-        responses: {
-            /** @description Project updated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorBody"];
-                };
-            };
-            /** @description Project not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorBody"];
-                };
-            };
-        };
-    };
     asset_delete: {
         parameters: {
             query?: never;
@@ -698,6 +846,217 @@ export interface operations {
             };
         };
     };
+    start_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Optional run options */
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["StartSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Sync run started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRunRow"];
+                };
+            };
+            /** @description Invalid or unsupported mode */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description A sync run is already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_sync_runs: {
+        parameters: {
+            query?: {
+                /** @description Maximum runs to return (default: 20, max: 100) */
+                limit?: number;
+                /** @description Opaque pagination cursor */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync runs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSyncRunsResponse"];
+                };
+            };
+            /** @description Invalid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    get_sync_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Sync run id */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncRunRow"];
+                };
+            };
+            /** @description Run not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_sync_events: {
+        parameters: {
+            query?: {
+                /** @description Only events with id greater than this */
+                after?: number;
+                /** @description Maximum events to return (default: 200, max: 1000) */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Sync run id */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync events, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSyncEventsResponse"];
+                };
+            };
+            /** @description Run not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    sync_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current or last sync run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncStatusResponse"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     list_tags: {
         parameters: {
             query?: {
@@ -773,6 +1132,58 @@ export interface operations {
                 };
             };
             /** @description Failure to connect to the database */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    project_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the project to update */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Project updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
