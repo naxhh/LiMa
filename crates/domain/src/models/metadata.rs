@@ -24,6 +24,9 @@ pub struct MetadataBackup {
     pub collections: Vec<BackupCollection>,
     #[serde(default)]
     pub projects: Vec<BackupProject>,
+    /// Folders removed from LiMa with their files kept (sync skips them).
+    #[serde(default)]
+    pub ignored_folders: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -104,6 +107,10 @@ pub struct RestoreReport {
     pub collections_created: usize,
     pub collection_links_added: usize,
     pub covers_set: usize,
+    /// Folders added to the ignore list.
+    pub ignored_folders_added: usize,
+    /// Projects removed from the index (files kept) because the backup lists their folder as ignored.
+    pub projects_hidden: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

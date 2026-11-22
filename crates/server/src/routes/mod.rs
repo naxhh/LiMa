@@ -20,3 +20,4 @@ pub mod project_favourite;
 pub mod bambu;
 pub mod imports;
 pub mod metadata;
+pub mod ignored_folders;

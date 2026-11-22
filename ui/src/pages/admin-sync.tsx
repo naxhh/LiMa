@@ -1,10 +1,11 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { Archive, EyeOff, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import type { components } from "@/gen/openapi";
-import { ApiError, apiGet, apiJson } from "@/lib/api";
+import { ApiError, apiGet, apiJson, apiNoBody } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/format";
@@ -17,6 +18,7 @@ type SyncRunsPage = components["schemas"]["ListSyncRunsResponse"];
 type SyncEvent = components["schemas"]["SyncEventRow"];
 type SyncEventsPage = components["schemas"]["ListSyncEventsResponse"];
 type WatcherStatus = components["schemas"]["WatcherStatus"];
+type IgnoredFoldersPage = components["schemas"]["ListIgnoredFoldersResponse"];
 
 /** Short description of what a run covered. */
 function scopeLabel(run: SyncRun): string {
@@ -179,6 +181,7 @@ export function AdminSyncPage() {
           <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-5">
             {statusQ.data ? <WatcherCard watcher={statusQ.data.watcher} /> : null}
             <RunsList selectedId={selectedId} live={running} />
+            <IgnoredFolders />
           </aside>
         </div>
       </PageBody>
@@ -237,6 +240,64 @@ function WatcherCard({ watcher }: { watcher: WatcherStatus }) {
             </>
           ) : null}
         </dl>
+      ) : null}
+    </section>
+  );
+}
+
+/** Folders removed from LiMa with their files kept. Un-ignoring brings them back with a sync. */
+function IgnoredFolders() {
+  const qc = useQueryClient();
+  const ignoredQ = useQuery({
+    queryKey: ["ignored-folders"],
+    queryFn: () => apiGet<IgnoredFoldersPage>("/ignored-folders"),
+  });
+  const unignoreM = useMutation({
+    mutationFn: (folder: string) => apiNoBody("DELETE", `/ignored-folders?folder_path=${encodeURIComponent(folder)}`),
+    onSuccess: (_, folder) => {
+      toast.success(`Bringing back ${folder}`, { description: "A sync of that folder has started." });
+      void Promise.all([
+        qc.invalidateQueries({ queryKey: ["ignored-folders"] }),
+        qc.invalidateQueries({ queryKey: ["sync"] }),
+      ]);
+    },
+    onError: (err, folder) => toast.error(`Couldn't un-ignore ${folder}`, { description: errorMessage(err) }),
+  });
+  const items = ignoredQ.data?.items ?? [];
+
+  return (
+    <section aria-labelledby="ignored-h" className="flex flex-col gap-3 rounded-2xl border bg-card p-4.5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="ignored-h" className="font-display text-[17px] font-semibold">
+          Ignored folders
+        </h2>
+        {items.length > 0 ? <span className="font-mono text-xs text-dim">{items.length}</span> : null}
+      </div>
+      <p className="text-sm text-muted-foreground">Removed from LiMa with their files kept. Sync skips them.</p>
+      {ignoredQ.isError ? <div className="text-sm text-destructive">{errorMessage(ignoredQ.error)}</div> : null}
+      {ignoredQ.isSuccess && items.length === 0 ? <div className="font-mono text-xs text-dim">none</div> : null}
+      {items.length > 0 ? (
+        <ul className="-mx-1.5 flex flex-col">
+          {items.map((f) => (
+            <li key={f.folder_path} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-secondary/60">
+              <EyeOff className="size-3.5 shrink-0 text-dim" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-mono text-xs" title={f.folder_path}>
+                  {f.folder_path}
+                </div>
+                <div className="font-mono text-[11px] text-dim">{timeAgo(f.created_at)}</div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={unignoreM.isPending && unignoreM.variables === f.folder_path}
+                onClick={() => unignoreM.mutate(f.folder_path)}
+              >
+                Un-ignore
+              </Button>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );

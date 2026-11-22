@@ -64,7 +64,7 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 |--------|------|---------|
 | POST | `/projects` | Create project (metadata only) |
 | GET | `/projects` | List projects (cursor pagination + search). Each item includes file counts, total size, model formats and tags. Search matches word prefixes. Filters: `tags` (comma-separated tag ids, all must match), `formats` (comma-separated model extensions, any matches), `no_image=true` |
-| DELETE | `/projects/{project_id}` | Delete project (DB + filesystem) |
+| DELETE | `/projects/{project_id}` | Delete project and its folder. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
 | GET | `/projects/{project_id}` | Get single project details |
 | GET | `/projects/{project_id}/download` | All of the project's files as a streamed zip |
 | PUT | `/projects/{project_id}/favourite` | Add the project to Favourites |
@@ -130,12 +130,15 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 | GET | `/sync/runs` | List sync runs |
 | GET | `/sync/runs/{run_id}` | Get sync run details |
 | GET | `/sync/runs/{run_id}/events` | Sync event log |
+| GET | `/ignored-folders` | Folders removed from LiMa with their files kept; sync skips them |
+| DELETE | `/ignored-folders?folder_path=…` | Un-ignore a folder and sync it right away |
 
 ### Metadata backup
 
 Backups are JSON (`format: "lima-metadata"`, `version: 1`) keyed by project folder, with file
 hashes so renamed folders can be matched. Restores replace names, descriptions, covers and
-sources, and add tags, collections and favourites (nothing is removed).
+sources, and add tags, collections and favourites (nothing is removed). Ignored folders in the
+backup are ignored again, and dropped from the index if a sync had brought them back.
 
 | Method | Path | Purpose |
 |--------|------|---------|

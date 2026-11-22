@@ -135,7 +135,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/sync/status", get(routes::sync::sync_status))
         .route("/sync/runs", get(routes::sync::list_sync_runs))
         .route("/sync/runs/{run_id}", get(routes::sync::get_sync_run))
-        .route("/sync/runs/{run_id}/events", get(routes::sync::list_sync_events));
+        .route("/sync/runs/{run_id}/events", get(routes::sync::list_sync_events))
+        .route("/ignored-folders", get(routes::ignored_folders::list_ignored_folders))
+        .route("/ignored-folders", delete(routes::ignored_folders::unignore_folder));
     
     let app = Router::new()
         .nest("/api", api)
@@ -215,6 +217,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::sync::list_sync_runs,
         routes::sync::get_sync_run,
         routes::sync::list_sync_events,
+        routes::ignored_folders::list_ignored_folders,
+        routes::ignored_folders::unignore_folder,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -234,6 +238,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lima_domain::models::metadata::RestoreReport,
         lima_domain::models::metadata::RenamedMatch,
         routes::project::ListProjectsParams,
+        routes::ignored_folders::ListIgnoredFoldersResponse,
+        routes::ignored_folders::IgnoredFolderItem,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
         routes::project_update::PatchProjectRequest,

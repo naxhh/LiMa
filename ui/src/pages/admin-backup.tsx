@@ -264,6 +264,9 @@ function RestoreDialog({ source, onClose, onDone }: { source: RestoreSource; onC
               <Stat label="Tags to create" value={report.tags_created} />
               <Stat label="Tags to add" value={report.tag_links_added} />
               <Stat label="Collection adds" value={report.collection_links_added + report.collections_created} />
+              {report.ignored_folders_added > 0 || report.projects_hidden > 0 ? (
+                <Stat label="Ignored folders" value={report.ignored_folders_added} />
+              ) : null}
             </dl>
 
             {report.matched_by_files.length > 0 ? (
