@@ -18,7 +18,8 @@ fn db_error(message: &'static str, e: sqlx::Error) -> ApiErrorResponse {
 
 #[derive(Deserialize, ToSchema, Default)]
 pub struct StartSyncRequest {
-    /// `full` (default) or `incremental`. Only `full` is supported for now.
+    /// `incremental` (default) only hashes new, changed or unhashed files.
+    /// `full` also re-hashes every file to detect in-place content changes.
     pub mode: Option<String>,
 }
 
@@ -29,7 +30,7 @@ pub struct StartSyncRequest {
     request_body(content = Option<StartSyncRequest>, description = "Optional run options"),
     responses(
         (status = 202, description = "Sync run started", body = SyncRunRow),
-        (status = 400, description = "Invalid or unsupported mode", body = ApiErrorBody),
+        (status = 400, description = "Invalid mode", body = ApiErrorBody),
         (status = 409, description = "A sync run is already in progress", body = ApiErrorBody),
         (status = 503, description = "Database failure", body = ApiErrorBody),
     )
@@ -39,7 +40,7 @@ pub async fn start_sync(
     body: Option<Json<StartSyncRequest>>,
 ) -> Result<(StatusCode, Json<SyncRunRow>), ApiErrorResponse> {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let mode = match body.mode.as_deref().unwrap_or("full") {
+    let mode = match body.mode.as_deref().unwrap_or("incremental") {
         "full" => SyncMode::Full,
         "incremental" => SyncMode::Incremental,
         _ => {
@@ -55,9 +56,6 @@ pub async fn start_sync(
             "A sync run is already in progress",
         )
         .with_details(serde_json::json!({ "run_id": run_id }))),
-        Err(e @ StartSyncError::UnsupportedMode(_)) => {
-            Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "unsupported_mode", "Sync mode not supported yet").with_cause(&e.to_string()))
-        }
         Err(StartSyncError::Db(e)) => Err(db_error("Failed to start sync run", e)),
     }
 }

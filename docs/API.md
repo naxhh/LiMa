@@ -119,7 +119,7 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
-| POST | `/sync/run` | Trigger filesystem sync (`full` only for now) | ✅ Done |
+| POST | `/sync/run` | Trigger filesystem sync (`incremental` default, `full` re-hashes everything) | ✅ Done |
 | GET | `/sync/status` | Current/last sync status | ✅ Done |
 | GET | `/sync/runs` | List sync runs | ✅ Done |
 | GET | `/sync/runs/{run_id}` | Get sync run details | ✅ Done |

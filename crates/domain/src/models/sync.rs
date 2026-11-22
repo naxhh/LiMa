@@ -31,6 +31,8 @@ pub struct SyncStats {
     pub assets_added: u64,
     pub assets_updated: u64,
     pub assets_removed: u64,
+    /// Files whose content was hashed during the run.
+    pub assets_hashed: u64,
     pub errors: u64,
 }
 

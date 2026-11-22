@@ -110,7 +110,7 @@ pub async fn create_bundle(
                         mtime: extract_mtime(&file).await.ok(),
                         mime: guess_mime(&file_name),
                         kind: extract_kind(&file_name).to_string(),
-                        checksum: compute_checksum(&file_destination).await.ok(),
+                        checksum: compute_checksum(file_destination.clone()).await.ok(),
                     });
                     break;
                 },
@@ -214,21 +214,8 @@ async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
         })
 }
 
-async fn compute_checksum(path: &PathBuf) -> Result<String, Error> {
-    use tokio::{fs::File, io::AsyncReadExt};
-    use sha2::{Sha256, Digest};
-
-    let mut hasher = Sha256::new();
-    let mut reader = File::open(path).await?;
-    let mut buffer = [0u8; 8192];
-
-    loop {
-        let n = reader.read(&mut buffer).await?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-
-    Ok(format!("{:x}", hasher.finalize()))
+async fn compute_checksum(path: PathBuf) -> Result<String, Error> {
+    tokio::task::spawn_blocking(move || lima_indexer::hash::hash_file(&path))
+        .await
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?
 }
