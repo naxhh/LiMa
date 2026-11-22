@@ -21,6 +21,10 @@ pub struct ListProjectsParams {
     pub formats: Option<String>,
     /// Only projects without images.
     pub no_image: Option<bool>,
+    /// Sort key for the results (updated, created, name, size, files).
+    pub sort: Option<String>,
+    /// Sort order (asc or desc).
+    pub order: Option<String>,
 }
 
 impl ListProjectsParams {
@@ -43,6 +47,30 @@ impl ListProjectsParams {
         let mut tag_ids = split(&self.tags);
         tag_ids.truncate(20);
         lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false) }
+    }
+    
+    fn sort(&self) -> lima_db::queries::projects::ProjectSort {
+        match self.sort.as_deref() {
+            Some("created") => lima_db::queries::projects::ProjectSort::Created,
+            Some("name") => lima_db::queries::projects::ProjectSort::Name,
+            Some("size") => lima_db::queries::projects::ProjectSort::Size,
+            Some("files") => lima_db::queries::projects::ProjectSort::Files,
+            _ => lima_db::queries::projects::ProjectSort::Updated, // default
+        }
+    }
+    
+    fn order(&self) -> bool {
+        match self.order.as_deref() {
+            Some("asc") => false,
+            Some("desc") => true,
+            _ => {
+                // Default order depends on sort key
+                match self.sort.as_deref() {
+                    Some("name") => false,  // name ascending by default
+                    _ => true,              // all others descending by default
+                }
+            }
+        }
     }
 }
 
@@ -104,6 +132,8 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
         ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
         ("formats" = Option<String>, Query, description = "Comma-separated model extensions (STL,3MF,...); projects must have at least one"),
         ("no_image" = Option<bool>, Query, description = "Only projects without images"),
+        ("sort" = Option<String>, Query, description = "Sort key for results: updated, created, name, size, files"),
+        ("order" = Option<String>, Query, description = "Sort order: asc or desc"),
     ),
     responses(
         (status = 200, description = "List of projects", body = ListProjectsResponse),
@@ -117,6 +147,8 @@ pub async fn list_projects(
 ) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let filter = params.filter();
+    let sort = params.sort();
+    let descending = params.order();
 
     let cursor = match params.cursor {
         Some(ref c) => Some(decode_cursor(c).map_err(|e| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(&e))?),
@@ -125,7 +157,6 @@ pub async fn list_projects(
 
     // TODO: likely move this to its own method
     if let Some(query) = params.query.as_deref().filter(|query| !query.trim().is_empty()) {
-
         if let Some(ref c) = cursor {
             if c.rank.is_none() {
                 return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause("Cursor is missing rank"));
@@ -147,6 +178,8 @@ pub async fn list_projects(
                 updated_at: row.project.updated_at.clone(),
                 id: row.project.id.clone(),
                 rank: Some(row.rank),
+                sort: None,
+                sort_value: None,
             })
         });
 
@@ -158,24 +191,48 @@ pub async fn list_projects(
         }));
     }
 
+    // For non-search requests, use the new sorting and pagination
+    let cursor_value = match cursor {
+        Some(c) => {
+            // Validate that cursor sort matches current sort
+            if let Some(cursor_sort) = &c.sort {
+                if let Some(current_sort) = lima_db::queries::projects::ProjectSort::parse(cursor_sort) {
+                    if current_sort != sort {
+                        return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Cursor sort does not match requested sort"));
+                    }
+                }
+            }
+            
+            // For size and files sorts, we need to bind as i64
+            let sort_value = c.sort_value.map(|v| (v, c.id));
+            sort_value
+        },
+        None => None,
+    };
 
-    let projects = lima_db::queries::projects::list_projects(
+    let projects_with_sort = lima_db::queries::projects::list_projects(
         state.db.pool(),
         limit,
-        cursor,
+        cursor_value,
+        sort,
+        descending,
         &filter,
     )
     .await
     .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()))?;
 
-    let next_cursor = projects.last().map(|project| {
+    let next_cursor = projects_with_sort.last().map(|(project, sort_value)| {
         encode_cursor(&Cursor {
             updated_at: project.updated_at.clone(),
             id: project.id.clone(),
             rank: None,
+            sort: Some(sort.as_str().to_string()),
+            sort_value: Some(sort_value.clone()),
         })
     });
 
+    let projects = projects_with_sort.into_iter().map(|(project, _)| project).collect();
+    
     Ok(Json(ListProjectsResponse {
         items: with_summaries(&state, projects).await?,
         next_cursor,

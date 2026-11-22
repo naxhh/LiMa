@@ -138,7 +138,13 @@ pub async fn list_sync_runs(
 
     let next_cursor = if items.len() as i64 == limit {
         items.last().map(|r| {
-            encode_cursor(&Cursor { updated_at: r.started_at.clone().unwrap_or_default(), id: r.id.clone(), rank: None })
+            encode_cursor(&Cursor { 
+                updated_at: r.started_at.clone().unwrap_or_default(), 
+                id: r.id.clone(), 
+                rank: None,
+                sort: None,
+                sort_value: None,
+            })
         })
     } else {
         None

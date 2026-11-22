@@ -14,7 +14,8 @@ import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
 
 type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
 
-const PAGE_SIZE = 48;
+const PAGE_SIZES = [24, 48, 96];
+const DEFAULT_PAGE_SIZE = 48;
 const TAG_CHIPS = 10;
 
 type Filters = { tags: string[]; formats: string[]; noImage: boolean };
@@ -22,7 +23,7 @@ type Filters = { tags: string[]; formats: string[]; noImage: boolean };
 /** Model formats offered as quick filters. */
 const FORMAT_CHIPS = ["STL", "3MF", "STEP", "OBJ"];
 
-function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters }) {
+function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters; sort?: string; order?: string }) {
   const usp = new URLSearchParams();
   usp.set("limit", String(params.limit));
   if (params.cursor) usp.set("cursor", params.cursor);
@@ -30,6 +31,15 @@ function buildUrl(params: { limit: number; cursor?: string | null; query?: strin
   if (params.filters.tags.length) usp.set("tags", params.filters.tags.join(","));
   if (params.filters.formats.length) usp.set("formats", params.filters.formats.join(","));
   if (params.filters.noImage) usp.set("no_image", "true");
+  
+  // Only include sort/order parameters when not searching
+  if (params.sort && !params.query) {
+    usp.set("sort", params.sort);
+  }
+  if (params.order && !params.query) {
+    usp.set("order", params.order);
+  }
+  
   return `/projects?${usp.toString()}`;
 }
 
@@ -60,13 +70,63 @@ export function ProjectsPage() {
   );
   const filtered = filters.tags.length > 0 || filters.formats.length > 0 || filters.noImage;
 
+  // Read sort and page size from URL or localStorage
+  const storedView = React.useMemo(() => {
+    try {
+      const stored = localStorage.getItem("lima.projects.view");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  
+  const pageSizeParam = searchParams.get("per_page");
+  const defaultPageSize = storedView?.perPage ?? DEFAULT_PAGE_SIZE;
+  const perPage = pageSizeParam ? parseInt(pageSizeParam, 10) : defaultPageSize;
+  if (isNaN(perPage) || !PAGE_SIZES.includes(perPage)) {
+    // Invalid page size, use default
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("per_page", String(defaultPageSize));
+    setSearchParams(newParams, { replace: true });
+  }
+  
+  const sortParam = searchParams.get("sort");
+  const orderParam = searchParams.get("order");
+  const defaultSort = storedView?.sort ?? "updated";
+  const defaultOrder = storedView?.order ?? "desc";
+  
+  // Determine current sort and order
+  const sort = query ? "relevance" : sortParam || defaultSort;
+  const order = query ? "desc" : orderParam || defaultOrder;
+  
+  // Store view preferences in localStorage when they change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("lima.projects.view", JSON.stringify({
+        perPage,
+        sort,
+        order,
+      }));
+    } catch {
+      // Ignore errors from localStorage
+    }
+  }, [perPage, sort, order]);
+
   const projectsQ = useInfiniteQuery({
-    queryKey: ["projects", { limit: PAGE_SIZE, query: debouncedQ, filters }],
+    queryKey: ["projects", { limit: perPage, query: debouncedQ, filters, sort, order }],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      apiGet<ListProjectsResponse>(buildUrl({ limit: PAGE_SIZE, cursor: pageParam, query: debouncedQ, filters })),
+      apiGet<ListProjectsResponse>(buildUrl({ 
+        limit: perPage, 
+        cursor: pageParam, 
+        query: debouncedQ, 
+        filters,
+        sort: sort === "relevance" ? undefined : sort,
+        order: sort === "relevance" ? undefined : order
+      })),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
+  
   const items = projectsQ.data?.pages.flatMap((p) => p.items) ?? [];
 
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
@@ -138,15 +198,57 @@ export function ProjectsPage() {
               NO IMAGE
             </FilterToggle>
           </div>
-          <span className="font-mono text-xs text-muted-foreground">
-            {projectsQ.isLoading
-              ? "loading…"
-              : query || filtered
-                ? `${items.length}${hasNextPage ? "+" : ""} match${items.length === 1 ? "" : "es"}`
-                : stats
-                  ? `showing ${items.length} of ${stats.projects}`
-                  : `showing ${items.length}`}
-          </span>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Sort control */}
+            <select
+              value={sort}
+              onChange={(e) => {
+                const newSort = e.target.value;
+                // For search, we can't change sort, so reset to relevance
+                if (query) {
+                  setParams({ sort: "relevance" });
+                } else {
+                  setParams({ sort: newSort === "updated" ? null : newSort });
+                }
+              }}
+              disabled={!!query}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label="Sort projects"
+            >
+              <option value="relevance" disabled={!query}>Best match</option>
+              <option value="updated">Recently updated</option>
+              <option value="created">Newest added</option>
+              <option value="name">Name A–Z</option>
+              <option value="size">Largest</option>
+              <option value="files">Most files</option>
+            </select>
+            
+            {/* Page size control */}
+            <select
+              value={perPage}
+              onChange={(e) => {
+                const newPerPage = parseInt(e.target.value, 10);
+                setParams({ per_page: newPerPage === DEFAULT_PAGE_SIZE ? null : String(newPerPage) });
+              }}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label="Items per page"
+            >
+              <option value={24}>24</option>
+              <option value={48}>48</option>
+              <option value={96}>96</option>
+            </select>
+            
+            <span className="font-mono text-xs text-muted-foreground">
+              {projectsQ.isLoading
+                ? "loading…"
+                : query || filtered
+                  ? `${items.length}${hasNextPage ? "+" : ""} match${items.length === 1 ? "" : "es"}`
+                  : stats
+                    ? `showing ${items.length} of ${stats.projects}`
+                    : `showing ${items.length}`}
+            </span>
+          </div>
         </div>
         {query || filtered ? (
           <ActiveFilters
@@ -194,7 +296,7 @@ export function ProjectsPage() {
         </div>
 
         <div ref={sentinelRef} className="h-8" />
-        {isFetchingNextPage || (!hasNextPage && items.length > PAGE_SIZE) ? (
+        {isFetchingNextPage || (!hasNextPage && items.length > perPage) ? (
           <div className="flex items-center justify-center gap-2.5 pt-4 font-mono text-xs text-dim">
             <span className="h-px w-10 bg-line-strong" />
             {isFetchingNextPage ? "loading more" : "end of library"}

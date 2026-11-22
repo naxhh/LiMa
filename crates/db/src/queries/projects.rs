@@ -2,6 +2,42 @@ use sqlx::{Sqlite, Pool};
 use lima_domain::models::project::ProjectRow;
 use lima_domain::pagination::Cursor;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProjectSort { #[default] Updated, Created, Name, Size, Files }
+
+impl ProjectSort {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProjectSort::Updated => "updated",
+            ProjectSort::Created => "created",
+            ProjectSort::Name => "name",
+            ProjectSort::Size => "size",
+            ProjectSort::Files => "files",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "updated" => Some(ProjectSort::Updated),
+            "created" => Some(ProjectSort::Created),
+            "name" => Some(ProjectSort::Name),
+            "size" => Some(ProjectSort::Size),
+            "files" => Some(ProjectSort::Files),
+            _ => None,
+        }
+    }
+
+    fn sql_expr(&self) -> &'static str {
+        match self {
+            ProjectSort::Updated => "p.updated_at",
+            ProjectSort::Created => "p.created_at",
+            ProjectSort::Name => "lower(p.name)",
+            ProjectSort::Size => "(SELECT COALESCE(SUM(a.size_bytes), 0) FROM assets a WHERE a.project_id = p.id)",
+            ProjectSort::Files => "(SELECT COUNT(*) FROM assets a WHERE a.project_id = p.id)",
+        }
+    }
+}
+
 /// Narrows project lists and searches. The default matches everything.
 #[derive(Debug, Clone, Default)]
 pub struct ProjectFilter {
@@ -48,34 +84,105 @@ pub(crate) fn filter_sql(t: usize, f: usize, n: usize) -> String {
 pub async fn list_projects(
     pool: &Pool<Sqlite>,
     limit: i64,
-    cursor: Option<Cursor>,
+    cursor_value: Option<(serde_json::Value, String)>,
+    sort: ProjectSort,
+    descending: bool,
     filter: &ProjectFilter,
-) -> Result<Vec<ProjectRow>, sqlx::Error> {
+) -> Result<Vec<(ProjectRow, serde_json::Value)>, sqlx::Error> {
     let (tags, formats, no_image) = filter.binds();
+    
+    // Determine the comparison operator and direction based on descending flag
+    let cmp = if descending { "<" } else { ">" };
+    let dir = if descending { "DESC" } else { "ASC" };
+    
+    // Get the SQL expression for sorting
+    let expr = sort.sql_expr();
+    
     let sql = format!(
         r#"
-        SELECT p.id, p.folder_path, p.name, p.description, p.main_image_id, p.created_at, p.updated_at, p.last_scanned_at
-        FROM projects p
-        WHERE (?1 IS NULL OR (p.updated_at, p.id) < (?1, ?2))
-        {filter}
-        ORDER BY p.updated_at DESC, p.id DESC
+        WITH s AS (
+            SELECT p.id, p.folder_path, p.name, p.description, p.main_image_id, p.created_at, p.updated_at, p.last_scanned_at,
+                   {expr} AS sort_value
+            FROM projects p
+            WHERE 1 = 1 {filter}
+        )
+        SELECT * FROM s
+        WHERE (?1 IS NULL OR (sort_value, id) {cmp} (?1, ?2))
+        ORDER BY sort_value {dir}, id {dir}
         LIMIT ?3
         "#,
-        filter = filter_sql(4, 5, 6)
+        filter = filter_sql(4, 5, 6),
+        expr = expr,
+        cmp = cmp,
+        dir = dir
     );
-    let (updated_at, id) = match &cursor {
-        Some(c) => (Some(c.updated_at.as_str()), Some(c.id.as_str())),
+    
+    let (sort_value, id) = match &cursor_value {
+        Some((value, id)) => {
+            // Bind based on the sort type - i64 for Size/Files, string otherwise
+            (Some(value), Some(id))
+        },
         None => (None, None),
     };
-    sqlx::query_as::<_, ProjectRow>(&sql)
-        .bind(updated_at)
-        .bind(id)
+    
+    // Create a small struct to hold the project row plus sort value
+    #[derive(sqlx::FromRow)]
+    struct ProjectWithSortValue {
+        id: String,
+        folder_path: String,
+        name: String,
+        description: String,
+        main_image_id: Option<String>,
+        created_at: String,
+        updated_at: String,
+        last_scanned_at: Option<String>,
+        sort_value: serde_json::Value,
+    }
+    
+    let mut query = sqlx::query_as::<_, ProjectWithSortValue>(&sql);
+    
+    // Bind parameters - handle different types based on sort
+    if let Some((value, id)) = &cursor_value {
+        match sort {
+            ProjectSort::Size | ProjectSort::Files => {
+                // For Size and Files, bind as i64
+                query = query.bind(value.as_i64()).bind(id);
+            }
+            _ => {
+                // For other sorts, bind as string
+                query = query.bind(value.as_str()).bind(id);
+            }
+        }
+    } else {
+        query = query.bind(None::<i64>).bind(None::<String>);
+    }
+    
+    query = query
         .bind(limit)
         .bind(tags)
         .bind(formats)
-        .bind(no_image)
-        .fetch_all(pool)
-        .await
+        .bind(no_image);
+
+    let rows = query.fetch_all(pool).await?;
+    
+    // Convert to the expected return type (ProjectRow, sort_value)
+    let result: Vec<(ProjectRow, serde_json::Value)> = rows.into_iter()
+        .map(|row| {
+            let project_row = ProjectRow {
+                id: row.id,
+                folder_path: row.folder_path,
+                name: row.name,
+                description: row.description,
+                main_image_id: row.main_image_id,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                last_scanned_at: row.last_scanned_at,
+            };
+            (project_row, row.sort_value)
+        })
+        .collect();
+    
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -127,7 +234,7 @@ mod tests {
 
         let pla = tag_id(pool, "PLA").await;
         let gift = tag_id(pool, "gift").await;
-        let all = |f: ProjectFilter| async move { names(list_projects(pool, 50, None, &f).await.unwrap()) };
+        let all = |f: ProjectFilter| async move { names(list_projects(pool, 50, None, ProjectSort::Updated, true, &f).await.unwrap()) };
 
         assert_eq!(all(ProjectFilter::default()).await, vec!["dragon", "bins", "duct", "mentions pla"]);
         assert_eq!(all(ProjectFilter { tag_ids: vec![pla.clone()], ..Default::default() }).await, vec!["dragon", "bins"]);
@@ -139,11 +246,12 @@ mod tests {
 
         // Pagination keeps working with a filter.
         let f = ProjectFilter { formats: vec!["STL".into(), "3MF".into()], ..Default::default() };
-        let page1 = list_projects(pool, 2, None, &f).await.unwrap();
+        let page1 = list_projects(pool, 2, None, ProjectSort::Updated, true, &f).await.unwrap();
         let last = page1.last().unwrap();
-        let cursor = Cursor { updated_at: last.updated_at.clone(), id: last.id.clone(), rank: None };
-        assert_eq!(names(page1), vec!["dragon", "bins"]);
-        assert_eq!(names(list_projects(pool, 2, Some(cursor), &f).await.unwrap()), vec!["duct"]);
+        let cursor = Cursor { updated_at: last.0.updated_at.clone(), id: last.0.id.clone(), rank: None, sort: None, sort_value: None };
+        assert_eq!(names(page1.into_iter().map(|p| p.0).collect()), vec!["dragon", "bins"]);
+        let page2 = list_projects(pool, 2, Some((last.1, last.0.id.clone())), ProjectSort::Updated, true, &f).await.unwrap();
+        assert_eq!(names(page2.into_iter().map(|p| p.0).collect()), vec!["duct"]);
 
         // Search combines with filters.
         let hits = crate::queries::projects_search::search_projects(pool, "d", 50, None, &ProjectFilter { formats: vec!["STEP".into()], ..Default::default() })
@@ -151,5 +259,72 @@ mod tests {
             .unwrap();
         assert_eq!(hits.into_iter().map(|h| h.project.name).collect::<Vec<_>>(), vec!["duct"]);
         let _ = std::fs::remove_dir_all(dir);
+    }
+    
+    #[tokio::test]
+    async fn sorts_and_paginates() {
+        let dir = std::env::temp_dir().join(format!("lima-db-test-sort-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::connect(&format!("sqlite:{}?mode=rwc", dir.join("t.db").display())).await.unwrap();
+        db.migrate().await.unwrap();
+        let pool = db.pool();
+
+        // Create 5 projects with different names and file counts
+        project(pool, "Alpha Project", "2026-01-01T00:00:00Z", &[("file1.stl", "model")], &[]).await;
+        project(pool, "Beta Project", "2026-01-02T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model")], &[]).await;
+        project(pool, "Gamma Project", "2026-01-03T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model"), ("file3.step", "model")], &[]).await;
+        project(pool, "Delta Project", "2026-01-04T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model"), ("file3.step", "model"), ("file4.obj", "model")], &[]).await;
+        project(pool, "Epsilon Project", "2026-01-05T00:00:00Z", &[("file1.stl", "model")], &[]).await;
+
+        // Test sorting by name (ascending and descending)
+        let names_asc = list_projects(pool, 50, None, ProjectSort::Name, false, &ProjectFilter::default()).await.unwrap();
+        let names_asc = names_asc.into_iter().map(|(p, _)| p.name).collect::<Vec<_>>();
+        
+        assert_eq!(names_asc, vec!["Alpha Project", "Beta Project", "Delta Project", "Epsilon Project", "Gamma Project"]);
+        // For descending order we'll need to test with a different approach since we're not using closures
+
+        // Test pagination for name sort
+        let page1 = list_projects(pool, 2, None, ProjectSort::Name, false, &ProjectFilter::default()).await.unwrap();
+        let last1 = page1.last().unwrap();
+        let page2 = list_projects(pool, 2, Some((last1.1.clone(), last1.0.id.clone())), ProjectSort::Name, false, &ProjectFilter::default()).await.unwrap();
+        let page3 = list_projects(pool, 2, Some((page2.last().unwrap().1.clone(), page2.last().unwrap().0.id.clone())), ProjectSort::Name, false, &ProjectFilter::default()).await.unwrap();
+        
+        // Combine pages and check for duplicates or gaps
+        let all_pages: Vec<String> = page1.iter().chain(page2.iter()).chain(page3.iter())
+            .map(|(p, _)| p.name.clone())
+            .collect();
+        assert_eq!(all_pages.len(), 5);
+        assert_eq!(all_pages, vec!["Alpha Project", "Beta Project", "Delta Project", "Epsilon Project", "Gamma Project"]);
+        
+        // Test sorting by size (create projects with different file counts)
+        let dir2 = std::env::temp_dir().join(format!("lima-db-test-size-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir2).unwrap();
+        let db2 = Db::connect(&format!("sqlite:{}?mode=rwc", dir2.join("t.db").display())).await.unwrap();
+        db2.migrate().await.unwrap();
+        let pool2 = db2.pool();
+
+        // Create projects with different file counts to test size sorting
+        project(pool2, "Small Project", "2026-01-01T00:00:00Z", &[("file1.stl", "model")], &[]).await;  // 1 file
+        project(pool2, "Medium Project", "2026-01-02T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model")], &[]).await; // 2 files
+        project(pool2, "Large Project", "2026-01-03T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model"), ("file3.step", "model")], &[]).await; // 3 files
+        project(pool2, "Another Large Project", "2026-01-04T00:00:00Z", &[("file1.stl", "model"), ("file2.3mf", "model"), ("file3.step", "model")], &[]).await; // 3 files (same count)
+        
+        let mut sizes = |sort, desc| {
+            list_projects(pool2, 50, None, sort, desc, &ProjectFilter::default())
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|(p, _)| p.name)
+                .collect::<Vec<_>>()
+        };
+        
+        // Test ascending size order (small to large)
+        assert_eq!(sizes(ProjectSort::Files, false), vec!["Small Project", "Medium Project", "Another Large Project", "Large Project"]);
+        
+        // Test descending size order (large to small)  
+        assert_eq!(sizes(ProjectSort::Files, true), vec!["Large Project", "Another Large Project", "Medium Project", "Small Project"]);
+        
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(dir2);
     }
 }
