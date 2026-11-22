@@ -87,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auto_backup,
         backup_keep,
         trash_days,
+        thingiverse_token: std::env::var("LIMA_THINGIVERSE_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
     };
     if trash_days > 0 {
         trash::spawn_auto_purge(state.clone(), trash_days);

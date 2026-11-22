@@ -752,6 +752,7 @@ function sourceLabel(url: string): string {
     const host = new URL(url).hostname.replace(/^www\./, "");
     if (host === "printables.com") return "Printables";
     if (host === "makerworld.com") return "MakerWorld";
+    if (host === "thingiverse.com") return "Thingiverse";
     return host;
   } catch {
     return url;

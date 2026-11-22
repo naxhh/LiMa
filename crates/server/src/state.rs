@@ -17,4 +17,6 @@ pub struct AppState {
     pub backup_keep: usize,
     /// Days deleted projects stay in the trash; 0 = no trash, deletes are final.
     pub trash_days: u64,
+    /// Thingiverse app token (`LIMA_THINGIVERSE_TOKEN`); Thingiverse imports need it.
+    pub thingiverse_token: Option<String>,
 }

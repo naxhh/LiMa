@@ -20,7 +20,7 @@ type PreviewFile = components["schemas"]["ImportFile"];
 type StartImportResponse = components["schemas"]["StartImportResponse"];
 type ImportJob = components["schemas"]["ImportJobResponse"];
 
-const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld" };
+const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld", thingiverse: "Thingiverse" };
 
 function parseTags(input: string): string[] {
   const seen = new Set<string>();
@@ -180,7 +180,7 @@ export function ImportUrlDialog() {
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.printables.com/model/… or https://makerworld.com/…/models/…"
+            placeholder="A Printables, MakerWorld or Thingiverse model link"
             autoFocus
             disabled={running}
           />

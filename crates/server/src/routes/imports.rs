@@ -124,7 +124,17 @@ fn fetch_error(e: ImportError) -> ApiErrorResponse {
         ImportError::UnsupportedUrl => ApiErrorResponse::new(
             StatusCode::BAD_REQUEST,
             "unsupported_url",
-            "Only Printables and MakerWorld model links are supported.",
+            "Only Printables, MakerWorld and Thingiverse model links are supported.",
+        ),
+        ImportError::TokenMissing => ApiErrorResponse::new(
+            StatusCode::PRECONDITION_FAILED,
+            "thingiverse_token_missing",
+            "Thingiverse imports need an app token. Create one at thingiverse.com/apps/create and set LIMA_THINGIVERSE_TOKEN on the server.",
+        ),
+        ImportError::TokenRejected => ApiErrorResponse::new(
+            StatusCode::PRECONDITION_FAILED,
+            "thingiverse_token_rejected",
+            "Thingiverse rejected the app token in LIMA_THINGIVERSE_TOKEN.",
         ),
         ImportError::NotFound => ApiErrorResponse::new(StatusCode::NOT_FOUND, "model_not_found", "No model found at that link."),
         e => ApiErrorResponse::new(StatusCode::BAD_GATEWAY, "upstream_error", "Could not read the model page.")
@@ -134,7 +144,8 @@ fn fetch_error(e: ImportError) -> ApiErrorResponse {
 
 async fn fetch(state: &AppState, url: &str) -> Result<RemoteModel, ApiErrorResponse> {
     let model_ref = lima_importers::parse_url(url).ok_or_else(|| fetch_error(ImportError::UnsupportedUrl))?;
-    lima_importers::fetch_model(&state.http, &model_ref).await.map_err(fetch_error)
+    let tokens = lima_importers::Tokens { thingiverse: state.thingiverse_token.as_deref(), ..Default::default() };
+    lima_importers::fetch_model(&state.http, &model_ref, tokens).await.map_err(fetch_error)
 }
 
 #[utoipa::path(
@@ -178,6 +189,7 @@ fn source_name(m: &RemoteModel) -> &'static str {
     match m.source {
         lima_importers::Source::Printables => "printables",
         lima_importers::Source::Makerworld => "makerworld",
+        lima_importers::Source::Thingiverse => "thingiverse",
     }
 }
 
@@ -407,12 +419,13 @@ impl ImportTask {
 
         for img in &self.images {
             self.update(|j| j.current = Some(img.name.clone()));
-            let res = lima_importers::download_to(http, &img.url, &dir.join(&img.name)).await;
+            let res = lima_importers::download_image(http, &self.model, img, dir).await;
             self.collect(&img.name, res, &mut metas).await?;
         }
         for file in &self.files {
             self.update(|j| j.current = Some(file.name.clone()));
-            let res = lima_importers::download_file(http, &self.model, file, self.token.as_deref(), dir).await;
+            let tokens = lima_importers::Tokens { bambu: self.token.as_deref(), thingiverse: self.state.thingiverse_token.as_deref() };
+            let res = lima_importers::download_file(http, &self.model, file, tokens, dir).await;
             if self.collect(&file.name, res, &mut metas).await? {
                 files_ok += 1;
             }

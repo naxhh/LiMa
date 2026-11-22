@@ -1,4 +1,4 @@
-//! Fetch model pages from external sites (Printables, MakerWorld) so they can be
+//! Fetch model pages from external sites (Printables, MakerWorld, Thingiverse) so they can be
 //! imported into the library from a URL.
 //!
 //! Every site goes through its JSON API rather than its HTML pages: the pages sit
@@ -13,6 +13,7 @@ use tokio::io::AsyncWriteExt;
 pub mod bambu;
 pub mod makerworld;
 pub mod printables;
+pub mod thingiverse;
 mod text;
 
 pub use text::html_to_markdown;
@@ -28,6 +29,7 @@ pub const USER_AGENT: &str =
 pub enum Source {
     Printables,
     Makerworld,
+    Thingiverse,
 }
 
 impl Source {
@@ -83,8 +85,12 @@ pub struct RemoteFile {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImportError {
-    #[error("unsupported URL: only Printables and MakerWorld model links are supported")]
+    #[error("unsupported URL: only Printables, MakerWorld and Thingiverse model links are supported")]
     UnsupportedUrl,
+    #[error("Thingiverse imports need an app token (LIMA_THINGIVERSE_TOKEN)")]
+    TokenMissing,
+    #[error("the site rejected the configured token")]
+    TokenRejected,
     #[error("model not found")]
     NotFound,
     #[error("login required to download from this site")]
@@ -112,7 +118,16 @@ pub fn client() -> reqwest::Client {
         .expect("static reqwest config is valid")
 }
 
-/// Recognises a Printables or MakerWorld model URL.
+/// Credentials some sites need.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Tokens<'a> {
+    /// Bambu access token, for MakerWorld downloads (from the user's browser).
+    pub bambu: Option<&'a str>,
+    /// Thingiverse app token, for everything on Thingiverse (server configuration).
+    pub thingiverse: Option<&'a str>,
+}
+
+/// Recognises a Printables, MakerWorld or Thingiverse model URL.
 pub fn parse_url(raw: &str) -> Option<ModelRef> {
     let url = url::Url::parse(raw.trim()).ok()?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -123,6 +138,12 @@ pub fn parse_url(raw: &str) -> Option<ModelRef> {
 
     // Both sites put the model under ".../model(s)/<id>-<slug>", optionally after a
     // language prefix ("/es/model/...", "/en/models/...").
+    // Thingiverse: "/thing:<id>", optionally followed by "/files" and the like.
+    if host == "thingiverse.com" {
+        let id: String = segments.first()?.strip_prefix("thing:")?.chars().take_while(|c| c.is_ascii_digit()).collect();
+        return (!id.is_empty()).then_some(ModelRef { source: Source::Thingiverse, id });
+    }
+
     let (source, marker) = match host.as_str() {
         "printables.com" => (Source::Printables, "model"),
         "makerworld.com" => (Source::Makerworld, "models"),
@@ -134,37 +155,54 @@ pub fn parse_url(raw: &str) -> Option<ModelRef> {
     (!id.is_empty()).then_some(ModelRef { source, id })
 }
 
-/// Fetches the model metadata and file list. Never needs a login.
-pub async fn fetch_model(client: &reqwest::Client, model: &ModelRef) -> Result<RemoteModel> {
+/// Fetches the model metadata and file list. Never needs a user login; Thingiverse
+/// needs its app token.
+pub async fn fetch_model(client: &reqwest::Client, model: &ModelRef, tokens: Tokens<'_>) -> Result<RemoteModel> {
     match model.source {
         Source::Printables => printables::fetch(client, &model.id).await,
         Source::Makerworld => makerworld::fetch(client, &model.id).await,
+        Source::Thingiverse => thingiverse::fetch(client, &model.id, tokens.thingiverse).await,
     }
 }
 
-/// Downloads one file of `model` into `dir` under `file.name`. `token` is the
-/// Bambu access token, only used for MakerWorld.
+/// Downloads one file of `model` into `dir` under `file.name`.
 pub async fn download_file(
     client: &reqwest::Client,
     model: &RemoteModel,
     file: &RemoteFile,
-    token: Option<&str>,
+    tokens: Tokens<'_>,
     dir: &Path,
 ) -> Result<PathBuf> {
+    let dest = dir.join(&file.name);
     let url = match model.source {
         Source::Printables => printables::download_url(client, &model.source_id, file).await?,
-        Source::Makerworld => makerworld::download_url(client, file, token.ok_or(ImportError::LoginRequired)?).await?,
+        Source::Makerworld => makerworld::download_url(client, file, tokens.bambu.ok_or(ImportError::LoginRequired)?).await?,
+        Source::Thingiverse => return thingiverse::download(client, file, tokens.thingiverse.ok_or(ImportError::TokenMissing)?, &dest).await,
     };
-    download_to(client, &url, &dir.join(&file.name)).await
+    download_to(client, &url, &dest).await
+}
+
+/// Downloads one of `model`'s images into `dir` under `image.name`.
+pub async fn download_image(client: &reqwest::Client, model: &RemoteModel, image: &RemoteImage, dir: &Path) -> Result<PathBuf> {
+    let dest = dir.join(&image.name);
+    match model.source {
+        Source::Thingiverse => thingiverse::download_image(client, &image.url, &dest).await,
+        _ => download_to(client, &image.url, &dest).await,
+    }
 }
 
 /// Downloads a public URL (images) into `dest`.
 pub async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Result<PathBuf> {
-    let res = client.get(url).send().await?;
+    download_with(client.get(url), dest).await
+}
+
+/// Sends `request` and streams the response body into `dest`.
+pub(crate) async fn download_with(request: reqwest::RequestBuilder, dest: &Path) -> Result<PathBuf> {
+    let res = request.send().await?;
     if !res.status().is_success() {
         return Err(ImportError::Upstream {
             site: "download",
-            message: format!("{} returned {}", host_of(url), res.status()),
+            message: format!("{} returned {}", res.url().host_str().unwrap_or_default(), res.status()),
         });
     }
     // Keep the file's original date when the server tells it.
@@ -194,10 +232,6 @@ pub async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Re
         }
     }
     Ok(dest.to_path_buf())
-}
-
-fn host_of(url: &str) -> String {
-    url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default()
 }
 
 /// Makes a site-provided name safe to use as a file name in a project folder.
@@ -268,8 +302,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_thingiverse_urls() {
+        let want = Some(ModelRef { source: Source::Thingiverse, id: "763622".into() });
+        assert_eq!(parse_url("https://www.thingiverse.com/thing:763622"), want);
+        assert_eq!(parse_url("https://thingiverse.com/thing:763622/files"), want);
+        assert_eq!(parse_url("https://www.thingiverse.com/thing:763622?utm=x#comments"), want);
+        assert_eq!(parse_url("https://www.thingiverse.com/creativetools/designs"), None);
+        assert_eq!(parse_url("https://www.thingiverse.com/thing:abc"), None);
+    }
+
+    #[test]
     fn rejects_other_urls() {
-        assert_eq!(parse_url("https://www.thingiverse.com/thing:763622"), None);
         assert_eq!(parse_url("https://www.printables.com/@someone"), None);
         assert_eq!(parse_url("https://makerworld.com/en/models/abc"), None);
         assert_eq!(parse_url("ftp://printables.com/model/1"), None);
