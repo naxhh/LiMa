@@ -10,6 +10,9 @@ pub struct ProjectDetailRow {
     pub created_at: String,
     pub updated_at: String,
     pub last_scanned_at: Option<String>,
+    pub source_url: Option<String>,
+    pub source_author: Option<String>,
+    pub source_license: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -64,7 +67,10 @@ pub async fn get_project(
             main_image_id,
             created_at,
             updated_at,
-            last_scanned_at
+            last_scanned_at,
+            source_url,
+            source_author,
+            source_license
         FROM projects
         WHERE id = ?1
         "#,

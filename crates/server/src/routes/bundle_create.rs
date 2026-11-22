@@ -198,13 +198,13 @@ fn extract_kind(filename: &str) -> &'static str {
     lima_domain::models::asset::asset_kind(filename)
 }
 
-fn guess_mime(path: &str) -> String {
+pub(crate) fn guess_mime(path: &str) -> String {
     MimeGuess::from_path(path)
     .first_or_octet_stream()
     .to_string()
 }
 
-async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
+pub(crate) async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
     let metadata = file.metadata().await?;
 
     OffsetDateTime::from(metadata.modified()?)
@@ -214,7 +214,7 @@ async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
         })
 }
 
-async fn compute_checksum(path: PathBuf) -> Result<String, Error> {
+pub(crate) async fn compute_checksum(path: PathBuf) -> Result<String, Error> {
     tokio::task::spawn_blocking(move || lima_indexer::hash::hash_file(&path))
         .await
         .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?

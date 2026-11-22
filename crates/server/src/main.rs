@@ -57,6 +57,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db: Arc::new(db),
         sync,
         paths: Arc::new(paths),
+        http: lima_importers::client(),
+        imports: Default::default(),
     };
 
     let api = Router::new()
@@ -90,6 +92,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .route_layer(DefaultBodyLimit::disable()),
         )
         .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete))
+
+        .route("/imports", post(routes::imports::start_import))
+        .route("/imports/preview", post(routes::imports::import_preview))
+        .route("/imports/{job_id}", get(routes::imports::import_status))
+        .route("/integrations/bambu/status", get(routes::bambu::bambu_status))
+        .route("/integrations/bambu/login", post(routes::bambu::bambu_login))
+        .route("/integrations/bambu/login/send-code", post(routes::bambu::bambu_send_code))
+        .route("/integrations/bambu/login/code", post(routes::bambu::bambu_login_code))
+        .route("/integrations/bambu/login/tfa", post(routes::bambu::bambu_login_tfa))
+        .route("/integrations/bambu/token", post(routes::bambu::bambu_set_token))
+        .route("/integrations/bambu/logout", post(routes::bambu::bambu_logout))
 
         .route("/sync/run", post(routes::sync::start_sync))
         .route("/sync/status", get(routes::sync::sync_status))
@@ -153,6 +166,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::bundle_create::create_bundle,
         routes::bundle_delete::bundle_delete,
 
+        routes::imports::import_preview,
+        routes::imports::start_import,
+        routes::imports::import_status,
+        routes::bambu::bambu_status,
+        routes::bambu::bambu_login,
+        routes::bambu::bambu_send_code,
+        routes::bambu::bambu_login_code,
+        routes::bambu::bambu_login_tfa,
+        routes::bambu::bambu_set_token,
+        routes::bambu::bambu_logout,
+
         routes::sync::start_sync,
         routes::sync::sync_status,
         routes::sync::list_sync_runs,
@@ -193,6 +217,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::collections::membership::AddCollectionProjectRequest,
 
         routes::bundle_create::CreateBundleResponse,
+
+        routes::imports::ImportPreviewRequest,
+        routes::imports::ImportPreviewResponse,
+        routes::imports::ImportImage,
+        routes::imports::ImportFile,
+        routes::imports::StartImportRequest,
+        routes::imports::StartImportResponse,
+        routes::imports::ImportJobResponse,
+        routes::bambu::BambuStatusResponse,
+        routes::bambu::BambuLoginRequest,
+        routes::bambu::BambuSendCodeRequest,
+        routes::bambu::BambuCodeRequest,
+        routes::bambu::BambuTfaRequest,
+        routes::bambu::BambuTokenRequest,
+        routes::bambu::BambuLoginResponse,
 
         routes::sync::StartSyncRequest,
         routes::sync::SyncStatusResponse,

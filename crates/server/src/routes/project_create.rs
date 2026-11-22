@@ -88,7 +88,7 @@ fn now() -> String {
     OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
 }
 
-fn slugify_string(input: &str) -> String {
+pub(crate) fn slugify_string(input: &str) -> String {
     let out = input
         .trim()
         .to_lowercase()

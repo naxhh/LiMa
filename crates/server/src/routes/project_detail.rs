@@ -16,6 +16,10 @@ pub struct ProjectDetailResponse {
     pub created_at: String,
     pub updated_at: String,
     pub last_scanned_at: Option<String>,
+    /// Page the project was imported from, when it came from a URL import.
+    pub source_url: Option<String>,
+    pub source_author: Option<String>,
+    pub source_license: Option<String>,
 
     pub assets : Vec<ProjectAssetResponse>,
     pub tags : Vec<ProjectTagResponse>,
@@ -139,6 +143,9 @@ pub async fn project_detail(
             created_at: project.created_at,
             updated_at: project.updated_at,
             last_scanned_at: project.last_scanned_at,
+            source_url: project.source_url,
+            source_author: project.source_author,
+            source_license: project.source_license,
             assets: map_assets(project_assets),
             tags: map_tags(project_tags),
             collections,

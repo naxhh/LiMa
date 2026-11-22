@@ -189,7 +189,7 @@ pub async fn project_import(
 
 /// Thumbnails for freshly imported images. Failures are only logged: the next
 /// sync retries any image without a thumbnail.
-async fn generate_thumbnails(
+pub(crate) async fn generate_thumbnails(
     state: &AppState,
     project_id: &str,
     folder_path: &str,

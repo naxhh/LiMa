@@ -120,6 +120,30 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 ---
 
+### URL imports (Printables, MakerWorld)
+
+| Method | Path | Purpose | Status |
+|------|------|---------|--------|
+| POST | `/imports/preview` | Read a model page (`{url}`): name, description, tags, images, files. Downloads nothing | ✅ Done |
+| POST | `/imports` | Create the project now and download the chosen `file_ids` (+ images) in the background. `401 bambu_login_required` when a MakerWorld download has no working Bambu token | ✅ Done |
+| GET | `/imports/{job_id}` | Import progress (`downloading`, `importing`, `complete`, `failed`). A failed import removes its project. Jobs live in memory for an hour after they finish | ✅ Done |
+| GET | `/integrations/bambu/status` | Whether this browser's Bambu token works | ✅ Done |
+| POST | `/integrations/bambu/login` | Start a Bambu login (`{account, password}`) → `logged_in`, `code_sent` or `tfa_required` | ✅ Done |
+| POST | `/integrations/bambu/login/send-code` | Email a login code with no password (`{account}`), for Google/Apple sign-in accounts | ✅ Done |
+| POST | `/integrations/bambu/login/code` | Finish with the emailed code (`{account, code}`) | ✅ Done |
+| POST | `/integrations/bambu/login/tfa` | Finish with an authenticator code (`{tfa_key, code}`) | ✅ Done |
+| POST | `/integrations/bambu/token` | Use a token pasted from makerworld.com's `token` cookie | ✅ Done |
+| POST | `/integrations/bambu/logout` | Drop the token cookie | ✅ Done |
+
+Printables works without an account. MakerWorld metadata is public, but downloads
+need a Bambu account token. Lima never stores the token: the login endpoints set it as an
+`HttpOnly; SameSite=Strict` cookie named `lima_bambu_token`, scoped to `/api`, and `Secure` when
+`X-Forwarded-Proto: https`. It expires with the token, or after 30 days when the token doesn't say.
+Each browser logs in on its own. Imported projects record `source_url`, `source_author` and
+`source_license`.
+
+---
+
 ### Sync / Maintenance
 
 | Method | Path | Purpose | Status |

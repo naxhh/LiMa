@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/db","crates/domain", "crates/indexer","crates/server"]
+members = ["crates/db","crates/domain", "crates/importers", "crates/indexer","crates/server"]
 
 # Image decoding/encoding and hashing are painfully slow unoptimized;
 # build dependencies with optimizations even in dev.
