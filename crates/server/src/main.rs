@@ -12,6 +12,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 mod backups;
+mod trash;
 mod routes;
 mod state;
 mod models;
@@ -69,6 +70,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => tracing::info!("Automatic metadata backups disabled (LIMA_BACKUP_INTERVAL_HOURS=0)"),
     }
 
+    let trash_days = trash::days_from_env();
+    if trash_days > 0 {
+        tracing::info!("Deleted projects stay in the trash for {trash_days} days");
+    } else {
+        tracing::info!("Trash disabled (LIMA_TRASH_DAYS=0): deletes are final");
+    }
+
     let state = state::AppState {
         db: Arc::new(db),
         sync,
@@ -77,7 +85,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         imports: Default::default(),
         auto_backup,
         backup_keep,
+        trash_days,
     };
+    if trash_days > 0 {
+        trash::spawn_auto_purge(state.clone(), trash_days);
+    }
 
     let api = Router::new()
         .route("/health", get(routes::health::health_check))
@@ -137,7 +149,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/sync/runs/{run_id}", get(routes::sync::get_sync_run))
         .route("/sync/runs/{run_id}/events", get(routes::sync::list_sync_events))
         .route("/ignored-folders", get(routes::ignored_folders::list_ignored_folders))
-        .route("/ignored-folders", delete(routes::ignored_folders::unignore_folder));
+        .route("/ignored-folders", delete(routes::ignored_folders::unignore_folder))
+        .route("/trash", get(routes::trash::list_trash))
+        .route("/trash", delete(routes::trash::empty_trash))
+        .route("/trash/{trash_id}", delete(routes::trash::delete_trash_item))
+        .route("/trash/{trash_id}/restore", post(routes::trash::restore_trash));
     
     let app = Router::new()
         .nest("/api", api)
@@ -219,6 +235,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::sync::list_sync_events,
         routes::ignored_folders::list_ignored_folders,
         routes::ignored_folders::unignore_folder,
+        routes::trash::list_trash,
+        routes::trash::restore_trash,
+        routes::trash::delete_trash_item,
+        routes::trash::empty_trash,
     ),
     components(schemas(
         crate::models::http_error::ApiErrorBody,
@@ -240,6 +260,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::ListProjectsParams,
         routes::ignored_folders::ListIgnoredFoldersResponse,
         routes::ignored_folders::IgnoredFolderItem,
+        routes::trash::ListTrashResponse,
+        routes::trash::TrashItem,
+        routes::trash::RestoreTrashResponse,
+        routes::project_delete::DeleteProjectResponse,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,
         routes::project_update::PatchProjectRequest,

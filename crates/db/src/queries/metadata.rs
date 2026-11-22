@@ -164,6 +164,34 @@ struct LibraryProject {
 /// matched to an unclaimed library folder holding (almost) the same files.
 /// Names, descriptions, covers and sources from the backup overwrite the current
 /// ones; tags and collection memberships are added to what's already there.
+/// A backup holding only one project, with just the tags and collections it uses,
+/// so restoring it later recreates exactly that project's metadata.
+pub async fn export_project(pool: &Pool<Sqlite>, project_id: &str, now: &str) -> Result<Option<MetadataBackup>, sqlx::Error> {
+    let Some(folder) = sqlx::query_scalar::<_, String>("SELECT folder_path FROM projects WHERE id = ?1")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let mut backup = export_metadata(pool, now).await?;
+    backup.projects.retain(|p| p.folder_path == folder);
+    let Some(project) = backup.projects.first() else { return Ok(None) };
+    let tags: HashSet<&str> = project.tags.iter().map(String::as_str).collect();
+    let collections: HashSet<&str> = project.collections.iter().filter_map(|m| m.name.as_deref()).collect();
+    let tags_keep: Vec<BackupTag> = backup.tags.iter().filter(|t| tags.contains(t.name.as_str())).cloned().collect();
+    let collections_keep: Vec<BackupCollection> = backup
+        .collections
+        .iter()
+        .filter(|c| c.system_key.is_some() || collections.contains(c.name.as_str()))
+        .cloned()
+        .collect();
+    backup.tags = tags_keep;
+    backup.collections = collections_keep;
+    backup.ignored_folders.clear();
+    Ok(Some(backup))
+}
+
 /// With `dry_run` nothing is written and the report says what would change.
 pub async fn restore_metadata(
     pool: &Pool<Sqlite>,
@@ -658,6 +686,32 @@ mod tests {
         assert_eq!(count("SELECT COUNT(*) FROM projects WHERE folder_path = 'removed'").await, 0);
         assert_eq!(count("SELECT COUNT(*) FROM projects WHERE folder_path = 'kept'").await, 1);
         assert_eq!(count("SELECT COUNT(*) FROM ignored_folders").await, 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn exports_one_project_with_only_what_it_uses() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        let dragon = indexed(pool, "dragon", &[("dragon.stl", "model", "h1")]).await;
+        let bins = indexed(pool, "bins", &[("bin.stl", "model", "h3")]).await;
+        let mut tx = pool.begin().await.unwrap();
+        let pla = crate::queries::tags::ensure_tags(&mut tx, &["PLA".into()], T).await.unwrap();
+        let petg = crate::queries::tags::ensure_tags(&mut tx, &["PETG".into()], T).await.unwrap();
+        crate::queries::tags::set_project_tags(&mut tx, &dragon, &pla).await.unwrap();
+        crate::queries::tags::set_project_tags(&mut tx, &bins, &petg).await.unwrap();
+        tx.commit().await.unwrap();
+        let desk = crate::queries::collections::create_collection(pool, "Desk", "", T).await.unwrap();
+        crate::queries::collections::create_collection(pool, "Garage", "", T).await.unwrap();
+        crate::queries::collections::add_project(pool, &desk.id, &dragon, T).await.unwrap();
+
+        let b = export_project(pool, &dragon, T).await.unwrap().unwrap();
+        assert_eq!(b.projects.len(), 1);
+        assert_eq!(b.projects[0].folder_path, "dragon");
+        assert_eq!(b.tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), vec!["PLA"]);
+        let names: Vec<_> = b.collections.iter().filter(|c| c.system_key.is_none()).map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["Desk"]);
+        assert!(export_project(pool, "missing", T).await.unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 }

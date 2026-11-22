@@ -42,6 +42,7 @@ Environmentals:
 - **LIMA_BACKUP_DIR** automatic metadata backups. Defaults to `$LIMA_STATE_DIR/backups`; put it on a different disk than the database
 - **LIMA_BACKUP_INTERVAL_HOURS** hours between automatic backups (only written when something changed). Defaults to `24`; `0` disables
 - **LIMA_BACKUP_KEEP** how many backup files to keep. Defaults to `14`
+- **LIMA_TRASH_DAYS** how long deleted projects stay in the trash (`<library>/.lima-trash/`) before they're deleted for good. Defaults to `30`; `0` turns the trash off so deletes are final
 
 Missing library and state folders are created on start. For containers, mount the library
 (read/write: uploads and deletes write to it) and the state folder as volumes, e.g.

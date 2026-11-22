@@ -11,6 +11,7 @@ import { sliceable } from "@/lib/slicers";
 import { OpenFileInSlicer, OpenProjectInSlicer } from "@/components/open-in-slicer";
 import { ModelViewer } from "@/components/model-viewer";
 import { viewerFormat } from "@/lib/viewer";
+import { useTrash } from "@/lib/trash";
 import { apiErrorMessage } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +83,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
   const patchM = usePatchProject(projectId);
   const deleteAssetM = useDeleteAsset(projectId);
   const deleteProjectM = useDeleteProject(projectId, project?.name ?? "project");
+  const trashDays = useTrash().data?.retention_days ?? 0;
 
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -279,10 +281,12 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
             >
               <div className="flex items-center gap-2 font-medium text-destructive">
                 <Trash2 className="size-4" />
-                Delete files
+                {trashDays > 0 ? "Move to trash" : "Delete files"}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Removes the folder and its {project.assets.length} file{project.assets.length === 1 ? "" : "s"} from disk. It can’t be undone.
+                {trashDays > 0
+                  ? `The folder and its ${project.assets.length} file${project.assets.length === 1 ? "" : "s"} go to LiMa’s trash. Restore them, with tags and collections, from Sync → Trash for ${trashDays} days.`
+                  : `Removes the folder and its ${project.assets.length} file${project.assets.length === 1 ? "" : "s"} from disk. It can’t be undone.`}
               </p>
             </button>
           </div>

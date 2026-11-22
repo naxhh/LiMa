@@ -15,4 +15,6 @@ pub struct AppState {
     pub auto_backup: Option<crate::backups::AutoBackup>,
     /// How many backup files to keep.
     pub backup_keep: usize,
+    /// Days deleted projects stay in the trash; 0 = no trash, deletes are final.
+    pub trash_days: u64,
 }

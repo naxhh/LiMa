@@ -31,7 +31,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function apiJson<T>(method: "POST" | "PATCH" | "PUT", path: string, body: unknown): Promise<T> {
+export async function apiJson<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: { "content-type": "application/json", accept: "application/json" },
