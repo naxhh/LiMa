@@ -107,12 +107,13 @@ Nothing. We may add API tokens in the future from a hard-coded list.
 
 | Method | Path | Purpose | Status |
 |------|------|---------|--------|
-| GET | `/collections` | List collections | 🔵 Post-v0 |
-| POST | `/collections` | Create collection | 🔵 Post-v0 |
-| PATCH | `/collections/{collection_id}` | Update collection | 🔵 Post-v0 |
-| DELETE | `/collections/{collection_id}` | Delete collection | 🔵 Post-v0 |
-| POST | `/collections/{collection_id}/projects` | Add project to collection | 🔵 Post-v0 |
-| DELETE | `/collections/{collection_id}/projects/{project_id}` | Remove project from collection | 🔵 Post-v0 |
+| GET | `/collections` | List collections with project count and up to 4 cover images | ✅ Done |
+| POST | `/collections` | Create collection (`name`, optional `description`; names unique ignoring case) | ✅ Done |
+| GET | `/collections/{collection_id}` | Collection with its projects (newest added first) | ✅ Done |
+| PATCH | `/collections/{collection_id}` | Update name and/or description | ✅ Done |
+| DELETE | `/collections/{collection_id}` | Delete collection (projects are kept) | ✅ Done |
+| POST | `/collections/{collection_id}/projects` | Add project (`{project_id}`; adding twice is a no-op) | ✅ Done |
+| DELETE | `/collections/{collection_id}/projects/{project_id}` | Remove project from collection | ✅ Done |
 
 ---
 

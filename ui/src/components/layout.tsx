@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 
-type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean; soon?: boolean };
+type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean };
 
 const NAV: NavItem[] = [
   { to: "/", label: "Library", icon: LayoutGrid, end: true },
   { to: "/tags", label: "Tags", icon: TagIcon },
-  { to: "/collections", label: "Collections", icon: Layers, soon: true },
+  { to: "/collections", label: "Collections", icon: Layers },
   { to: "/admin/sync", label: "Sync", icon: RefreshCw },
 ];
 
@@ -98,31 +98,21 @@ export function AppHeader() {
       <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8">
         <Logo />
         <nav aria-label="Main" className="hidden gap-1 md:flex">
-          {NAV.map((item) =>
-            item.soon ? (
-              <span
-                key={item.to}
-                className="cursor-default rounded-lg px-3 py-2 text-sm text-dim"
-                title="Collections are coming soon"
-              >
-                {item.label}
-              </span>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-lg px-3 py-2 text-sm transition-colors",
-                    isActive ? "bg-secondary font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ),
-          )}
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                cn(
+                  "rounded-lg px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-secondary font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+                )
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
         <div className="order-last flex w-full md:order-none md:w-auto md:flex-1">
           <HeaderSearch />
@@ -145,14 +135,6 @@ export function MobileNav() {
     >
       {NAV.map((item) => {
         const Icon = item.icon;
-        if (item.soon) {
-          return (
-            <span key={item.to} className="flex h-13 flex-col items-center justify-center gap-1 text-[11px] text-dim">
-              <Icon className="size-5" />
-              {item.label}
-            </span>
-          );
-        }
         return (
           <NavLink
             key={item.to}

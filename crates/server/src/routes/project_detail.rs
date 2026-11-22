@@ -19,7 +19,14 @@ pub struct ProjectDetailResponse {
 
     pub assets : Vec<ProjectAssetResponse>,
     pub tags : Vec<ProjectTagResponse>,
-    // TODO: add collections?
+    /// Collections the project belongs to, by name.
+    pub collections: Vec<ProjectCollectionResponse>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ProjectCollectionResponse {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -106,6 +113,16 @@ pub async fn project_detail(
         }
     };
 
+    let collections = lima_db::queries::collections::collections_for_project(state.db.pool(), &project_id)
+        .await
+        .map_err(|e| {
+            ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "An internal server error occurred")
+                .with_cause(&e.to_string())
+        })?
+        .into_iter()
+        .map(|c| ProjectCollectionResponse { id: c.id, name: c.name })
+        .collect();
+
     Ok((
         StatusCode::OK,
         Json(ProjectDetailResponse {
@@ -119,6 +136,7 @@ pub async fn project_detail(
             last_scanned_at: project.last_scanned_at,
             assets: map_assets(project_assets),
             tags: map_tags(project_tags),
+            collections,
         }),
     ))
 

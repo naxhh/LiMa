@@ -50,8 +50,14 @@ export async function apiJson<T>(method: "POST" | "PATCH" | "PUT", path: string,
 }
 
 
-export async function apiNoBody(method: "DELETE" | "POST", path: string): Promise<void> {
-  const res = await fetch(`/api${path}`, { method });
+/** Request whose response has no body (204). Pass `body` to send JSON. */
+export async function apiNoBody(method: "DELETE" | "POST", path: string, body?: unknown): Promise<void> {
+  const res = await fetch(
+    `/api${path}`,
+    body === undefined
+      ? { method }
+      : { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+  );
   if (!res.ok) throw new ApiError(res.status, await parseBody(res));
 }
 

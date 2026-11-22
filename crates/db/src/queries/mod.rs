@@ -19,3 +19,4 @@ pub mod projects_summary;
 pub mod tags;
 pub mod assets;pub mod sync;
 pub mod library_index;
+pub mod collections;

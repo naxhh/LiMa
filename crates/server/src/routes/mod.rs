@@ -14,3 +14,4 @@ pub mod bundle_delete;
 
 pub mod sync;
 pub mod stats;
+pub mod collections;

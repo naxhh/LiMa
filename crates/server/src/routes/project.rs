@@ -37,7 +37,7 @@ pub struct ProjectListItem {
     pub tags: Vec<ProjectTagResponse>,
 }
 
-async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) -> Result<Vec<ProjectListItem>, ApiErrorResponse> {
+pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) -> Result<Vec<ProjectListItem>, ApiErrorResponse> {
     let ids: Vec<String> = projects.iter().map(|p| p.id.clone()).collect();
     let mut summaries = lima_db::queries::projects_summary::project_summaries(state.db.pool(), &ids)
         .await
