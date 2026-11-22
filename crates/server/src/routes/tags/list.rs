@@ -19,9 +19,25 @@ pub struct ListTagsParams {
 pub struct Tag {
     pub id: String,
     pub name: String,
+    /// `#RRGGBB`
     pub color: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Number of projects using the tag.
+    pub project_count: i64,
+}
+
+impl From<lima_db::queries::tags::TagRow> for Tag {
+    fn from(row: lima_db::queries::tags::TagRow) -> Self {
+        Tag {
+            id: row.id,
+            name: row.name,
+            color: row.color,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            project_count: row.project_count,
+        }
+    }
 }
 
 #[derive(Serialize, ToSchema)]
@@ -33,6 +49,7 @@ pub struct ListTagsResponse {
 #[utoipa::path(
     get,
     path = "/api/tags",
+    tag = "Tags",
     params(
         ("limit" = Option<i64>, Query, description = "Maximum number of tags to return (default: 50, max: 200)"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor"),
@@ -71,7 +88,7 @@ pub async fn list_tags(
     });    
 
     Ok(Json(ListTagsResponse {
-        items: tags.into_iter().map(|row| Tag { id: row.id, name: row.name, color: row.color, created_at: row.created_at, updated_at: row.updated_at }).collect(),
+        items: tags.into_iter().map(Tag::from).collect(),
         next_cursor,
     }))
 }

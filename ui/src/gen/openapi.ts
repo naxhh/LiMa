@@ -81,7 +81,7 @@ export interface paths {
         delete: operations["project_delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["project_update"];
         trace?: never;
     };
     "/api/projects/{project_id}/assets/{asset_id}": {
@@ -212,7 +212,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}": {
+    "/api/tags/{tag_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -222,10 +222,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["delete_tag"];
         options?: never;
         head?: never;
-        patch: operations["project_update"];
+        patch: operations["update_tag"];
         trace?: never;
     };
 }
@@ -256,14 +256,10 @@ export interface components {
             id: string;
         };
         CreateTagRequest: {
+            /** @description `#RRGGBB`. Derived from the name when omitted. */
+            color?: string | null;
+            /** @description Trimmed, 1 to 64 characters. Unique ignoring case. */
             name: string;
-        };
-        CreateTagResponse: {
-            color: string;
-            created_at: string;
-            id: string;
-            name: string;
-            updated_at: string;
         };
         HealthResponse: {
             db: boolean;
@@ -322,6 +318,12 @@ export interface components {
             main_image_id?: string | null;
             name?: string | null;
             tags?: string[] | null;
+        };
+        PatchTagRequest: {
+            /** @description New `#RRGGBB` color. */
+            color?: string | null;
+            /** @description New name. Trimmed, 1 to 64 characters, unique ignoring case. */
+            name?: string | null;
         };
         ProjectAssetResponse: {
             file_path: string;
@@ -461,10 +463,16 @@ export interface components {
             watcher: components["schemas"]["WatcherStatus"];
         };
         Tag: {
+            /** @description `#RRGGBB` */
             color: string;
             created_at: string;
             id: string;
             name: string;
+            /**
+             * Format: int64
+             * @description Number of projects using the tag.
+             */
+            project_count: number;
             updated_at: string;
         };
         /** @description State of the filesystem watcher that triggers syncs automatically. */
@@ -758,6 +766,58 @@ export interface operations {
             };
             /** @description Failed to delete project */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    project_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the project to update */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Project updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1154,16 +1214,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Tag created successfully */
+            /** @description Tag created */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CreateTagResponse"];
+                    "application/json": components["schemas"]["Tag"];
                 };
             };
-            /** @description Invalid request body */
+            /** @description Invalid name or color */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1172,7 +1232,16 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
-            /** @description Failure to connect to the database */
+            /** @description A tag with that name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1183,39 +1252,26 @@ export interface operations {
             };
         };
     };
-    project_update: {
+    delete_tag: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The ID of the project to update */
-                project_id: string;
+                /** @description Tag id */
+                tag_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchProjectRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Project updated successfully */
-            200: {
+            /** @description Tag deleted and removed from all projects */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorBody"];
-                };
-            };
-            /** @description Project not found */
+            /** @description Tag not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1224,7 +1280,70 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
-            /** @description Service Unavailable */
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    update_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag id */
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            /** @description Nothing to update, or invalid name/color */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Another tag already uses that name */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
             503: {
                 headers: {
                     [name: string]: unknown;

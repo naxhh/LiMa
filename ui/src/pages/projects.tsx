@@ -8,18 +8,9 @@ import { Input } from "@/components/ui/input";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { MediaCard } from "@/components/media-card";
 
-import { Link } from "react-router-dom";
-import { MoreHorizontal } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 
 
@@ -57,6 +48,7 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 }
 
 export function ProjectsPage() {
+  const qc = useQueryClient();
   const deleteProjectM = useMutation({
     mutationFn: (projectId: string) => apiNoBody("DELETE", `/projects/${projectId}`),
     onSuccess: async () => {
@@ -64,8 +56,24 @@ export function ProjectsPage() {
     },
   });
 
-  const [q, setQ] = React.useState("");
+  // The search lives in ?query= so it can be linked to (e.g. from the tags page).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [q, setQ] = React.useState(() => searchParams.get("query") ?? "");
   const debouncedQ = useDebouncedValue(q, 250);
+
+  React.useEffect(() => {
+    const fromUrl = searchParams.get("query") ?? "";
+    setQ((cur) => (cur === fromUrl ? cur : fromUrl));
+    // Only react to navigation, not to our own URL updates below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("query")]);
+
+  React.useEffect(() => {
+    const trimmed = debouncedQ.trim();
+    if ((searchParams.get("query") ?? "") === trimmed) return;
+    setSearchParams(trimmed ? { query: trimmed } : {}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ]);
   const limit = 50;
 
   const projectsQ = useInfiniteQuery({
@@ -130,8 +138,6 @@ export function ProjectsPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {items.map((p) => {
-          const tags = (p as any).tags ?? [];
-
           return (
             <MediaCard
               href={`/projects/${p.id}`}

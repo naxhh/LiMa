@@ -2,13 +2,13 @@ import * as React from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiJson, apiJsonNoResponse, apiNoBody, ApiError } from "@/lib/api";
+import { apiGet, apiJson, apiNoBody, ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { ProjectTagsEditor } from "@/components/project-tags-editor";
 import {
   Dialog,
   DialogContent,
@@ -19,15 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
 
-import { MoreHorizontal } from "lucide-react";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { MediaCard } from "../components/media-card";
 import { libraryUrl } from "@/lib/media";
 
@@ -48,6 +40,7 @@ type ProjectTag = {
 
 type ProjectDetailResponse = {
   id: string;
+  folder_path: string;
   name: string;
   description: string;
   main_image_id: string | null;
@@ -62,11 +55,6 @@ type PatchProjectRequest = {
   name?: string | null;
   description?: string | null;
   main_image_id?: string | null;
-};
-
-type ImportProjectRequest = {
-  bundle_id: string;
-  new_main_image?: string | null; // filename (file_path), not asset id
 };
 
 function getApiErrorMessage(e: unknown): string {
@@ -108,14 +96,6 @@ export function ProjectDetailPage() {
     },
   });
 
-  const importM = useMutation({
-    mutationFn: (payload: ImportProjectRequest) =>
-      apiJsonNoResponse<void>("POST", `/projects/${projectId}/import`, payload),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["project", projectId] });
-      await qc.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
 
   const setMainImageM = useMutation({
     mutationFn: (assetId: string) =>
@@ -150,19 +130,8 @@ export function ProjectDetailPage() {
           </div>
 
           {/* Tags */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {project.tags.length === 0 ? (
-              <span className="text-sm text-muted-foreground">No tags</span>
-            ) : (
-              project.tags.map((t) => (
-                <Badge
-                  key={t.id}
-                  style={{ backgroundColor: t.color, color: "#fff", border: "none" }}
-                >
-                  {t.name}
-                </Badge>
-              ))
-            )}
+          <div className="pt-2">
+            <ProjectTagsEditor projectId={project.id} tags={project.tags} />
           </div>
         </div>
 
@@ -210,8 +179,6 @@ export function ProjectDetailPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {project.assets.map((a) => {
-              const isMain = project.main_image_id === a.id;
-
               return (
                 <MediaCard
                   key={a.id}
