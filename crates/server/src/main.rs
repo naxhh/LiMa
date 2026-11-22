@@ -116,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/metadata/backups/{name}", get(routes::metadata::download_backup))
         .route("/metadata/backups/{name}/restore", post(routes::metadata::restore_backup))
         .route("/projects", get(routes::project::list_projects))
+        .route("/projects/ids", get(routes::project::list_project_ids))
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/bulk", post(routes::project_bulk::bulk))
         .route("/projects/download", post(routes::project_download::download_many))
@@ -218,6 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::metadata::download_backup,
         routes::metadata::restore_backup,
         routes::project::list_projects,
+        routes::project::list_project_ids,
         routes::project_create::create_project,
         routes::project_delete::project_delete,
         routes::project_detail::project_detail,
@@ -314,6 +316,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::trash::RestoreTrashResponse,
         routes::project_import::ImportProjectResponse,
         archive::ExtractSummary,
+        routes::assets::delete::DeleteAssetResponse,
+        routes::project::ProjectIdsResponse,
         routes::assets::zip::ZipContentsResponse,
         routes::assets::zip::ZipEntry,
         routes::duplicates::DuplicatesResponse,

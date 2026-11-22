@@ -27,6 +27,51 @@ pub struct MetadataBackup {
     /// Folders removed from LiMa with their files kept (sync skips them).
     #[serde(default)]
     pub ignored_folders: Vec<String>,
+    /// Collections imported from a site, with what sync knows about each model.
+    #[serde(default)]
+    pub collection_sources: Vec<BackupCollectionSource>,
+    /// Duplicate groups marked "not duplicates".
+    #[serde(default)]
+    pub duplicate_dismissals: Vec<BackupDismissal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BackupCollectionSource {
+    /// Name of the LiMa collection it fills.
+    pub collection: String,
+    /// `printables`, `makerworld` or `thingiverse`.
+    pub source: String,
+    pub source_id: String,
+    pub url: String,
+    #[serde(default)]
+    pub keep_in_sync: bool,
+    #[serde(default)]
+    pub items: Vec<BackupSourceItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BackupSourceItem {
+    pub model_id: String,
+    pub model_url: String,
+    pub name: String,
+    /// Folder of the project imported or linked for this model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder: Option<String>,
+    /// The collection created that project (it's deleted if the model leaves the source).
+    #[serde(default)]
+    pub imported: bool,
+    /// Left out by the user; sync never imports it.
+    #[serde(default)]
+    pub excluded: bool,
+}
+
+/// A hidden duplicate group: projects by folder, or a shared file by hash.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BackupDismissal {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub project_folders: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -111,6 +156,12 @@ pub struct RestoreReport {
     pub ignored_folders_added: usize,
     /// Projects removed from the index (files kept) because the backup lists their folder as ignored.
     pub projects_hidden: usize,
+    /// Imported collections whose source (and sync state) came back.
+    #[serde(default)]
+    pub collection_sources_added: usize,
+    /// Duplicate groups hidden again.
+    #[serde(default)]
+    pub duplicate_dismissals_added: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

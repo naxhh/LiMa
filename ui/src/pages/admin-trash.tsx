@@ -39,7 +39,7 @@ export function AdminTrashPage() {
 
   const restore = async (item: TrashItem) => {
     setRestoring(item.id);
-    const projectId = await restoreFromTrash(qc, item.id, item.name);
+    const projectId = await restoreFromTrash(qc, item.id, item.file_path ? (item.file_path.split("/").pop() ?? item.name) : item.name);
     setRestoring(null);
     if (projectId) navigate(`/projects/${projectId}`);
   };
@@ -54,7 +54,7 @@ export function AdminTrashPage() {
         title="Trash"
         subtitle={
           days > 0
-            ? `Deleted projects stay here for ${days} days · restoring brings back files, tags, collections and description`
+            ? `Deleted projects and files stay here for ${days} days · restoring a project brings back its tags, collections and description too`
             : "The trash is off (LIMA_TRASH_DAYS=0): deletes are final"
         }
       >
@@ -74,24 +74,26 @@ export function AdminTrashPage() {
         {trashQ.isSuccess && items.length === 0 ? (
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">The trash is empty</div>
-            <p className="mt-2 text-sm text-muted-foreground">Deleted projects show up here so you can bring them back.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Deleted projects and files show up here so you can bring them back.</p>
           </div>
         ) : null}
 
         {items.length > 0 ? (
-          <section aria-label="Trashed projects" className="overflow-hidden rounded-2xl border bg-card">
+          <section aria-label="Trashed items" className="overflow-hidden rounded-2xl border bg-card">
             <div className="flex items-center justify-between border-b px-4.5 py-3 font-mono text-xs text-muted-foreground">
               <span>
-                {items.length} project{items.length === 1 ? "" : "s"} · {formatBytes(totalBytes)}
+                {items.length} item{items.length === 1 ? "" : "s"} · {formatBytes(totalBytes)}
               </span>
             </div>
             <ul>
               {items.map((item) => (
                 <li key={item.id} className="flex flex-wrap items-center gap-3 border-b px-4.5 py-3 last:border-b-0">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{item.name}</div>
+                    <div className="truncate font-medium">{item.file_path ? item.file_path.split("/").pop() : item.name}</div>
                     <div className="truncate font-mono text-xs text-muted-foreground">
-                      {item.folder_path} · {item.file_count} file{item.file_count === 1 ? "" : "s"} · {formatBytes(item.size_bytes)}
+                      {item.file_path
+                        ? `file from ${item.name} · ${item.folder_path}/${item.file_path} · ${formatBytes(item.size_bytes)}`
+                        : `${item.folder_path} · ${item.file_count} file${item.file_count === 1 ? "" : "s"} · ${formatBytes(item.size_bytes)}`}
                     </div>
                     <div className="font-mono text-[11px] text-dim">
                       deleted {timeAgo(item.trashed_at)} · gone for good {untilLabel(item.expires_at)}
@@ -125,7 +127,7 @@ export function AdminTrashPage() {
             <DialogTitle>{confirm === "all" ? "Empty the trash?" : `Delete “${confirm?.name}” for good?`}</DialogTitle>
             <DialogDescription>
               {confirm === "all"
-                ? `${items.length} project${items.length === 1 ? "" : "s"} (${formatBytes(totalBytes)}) will be deleted from disk. This can’t be undone.`
+                ? `${items.length} item${items.length === 1 ? "" : "s"} (${formatBytes(totalBytes)}) will be deleted from disk. This can’t be undone.`
                 : "Its folder will be deleted from disk. This can’t be undone."}
             </DialogDescription>
           </DialogHeader>

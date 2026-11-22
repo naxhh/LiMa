@@ -1,4 +1,5 @@
 import * as React from "react";
+import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -86,6 +87,20 @@ export function ProjectsPage() {
   });
   const items = projectsQ.data?.pages.flatMap((p) => p.items) ?? [];
   const selection = useSelection(items.map((p) => p.id));
+
+  // "All" covers every match, not only the cards loaded so far.
+  const selectAllMatching = async () => {
+    if (!projectsQ.hasNextPage) return selection.selectAll();
+    try {
+      const usp = new URL(buildUrl({ limit: 1, query: debouncedQ, filters }), "http://x").searchParams;
+      usp.delete("limit");
+      const res = await apiGet<{ ids: string[]; truncated: boolean }>(`/projects/ids?${usp}`);
+      selection.selectIds(res.ids);
+      if (res.truncated) toast.info(`Selected the first ${res.ids.length.toLocaleString()} matches`, { description: "Bulk actions handle up to 2,000 projects at once." });
+    } catch (err) {
+      toast.error("Couldn't select every match", { description: err instanceof Error ? err.message : String(err) });
+    }
+  };
 
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = projectsQ;
@@ -234,7 +249,9 @@ export function ProjectsPage() {
           </div>
         ) : null}
       </PageBody>
-      <BulkBar selection={selection} total={items.length} />
+      <BulkBar
+        selection={selection}
+        total={!projectsQ.hasNextPage ? items.length : !searching && !filtered && stats ? stats.projects : null} onSelectAll={() => void selectAllMatching()} />
     </div>
   );
 }

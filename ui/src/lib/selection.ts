@@ -7,11 +7,14 @@ import * as React from "react";
 export function useSelection(ids: string[]) {
   const [active, setActive] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
+  // Set by selectIds: everything matching, including cards not loaded yet.
+  const [beyond, setBeyond] = React.useState(false);
   const anchor = React.useRef<string | null>(null);
 
   const exit = React.useCallback(() => {
     setActive(false);
     setSelected(new Set());
+    setBeyond(false);
     anchor.current = null;
   }, []);
 
@@ -43,8 +46,9 @@ export function useSelection(ids: string[]) {
     anchor.current = id;
   };
 
-  // Only ids still on screen count (deleted or filtered-out cards drop out).
-  const chosen = ids.filter((id) => selected.has(id));
+  // Only ids still on screen count (deleted or filtered-out cards drop out), unless every
+  // match was selected, cards not loaded yet included.
+  const chosen = beyond ? [...selected] : ids.filter((id) => selected.has(id));
 
   return {
     active,
@@ -52,8 +56,19 @@ export function useSelection(ids: string[]) {
     exit,
     toggle,
     isSelected: (id: string) => selected.has(id),
-    selectAll: () => setSelected(new Set(ids)),
-    clear: () => setSelected(new Set()),
+    selectAll: () => {
+      setBeyond(false);
+      setSelected(new Set(ids));
+    },
+    /** Selects these ids, loaded or not (from the server's list of every match). */
+    selectIds: (all: string[]) => {
+      setBeyond(true);
+      setSelected(new Set(all));
+    },
+    clear: () => {
+      setBeyond(false);
+      setSelected(new Set());
+    },
     ids: chosen,
   };
 }

@@ -923,6 +923,21 @@ export interface components {
             /** @description `favourites` for the built-in Favourites collection. */
             system_key?: string | null;
         };
+        BackupCollectionSource: {
+            /** @description Name of the LiMa collection it fills. */
+            collection: string;
+            items?: components["schemas"]["BackupSourceItem"][];
+            keep_in_sync?: boolean;
+            /** @description `printables`, `makerworld` or `thingiverse`. */
+            source: string;
+            source_id: string;
+            url: string;
+        };
+        /** @description A hidden duplicate group: projects by folder, or a shared file by hash. */
+        BackupDismissal: {
+            file_hash?: string | null;
+            project_folders?: string[];
+        };
         BackupFile: {
             /** @description When the file was written (RFC 3339). */
             created_at: string;
@@ -956,6 +971,17 @@ export interface components {
             author?: string | null;
             license?: string | null;
             url: string;
+        };
+        BackupSourceItem: {
+            /** @description Left out by the user; sync never imports it. */
+            excluded?: boolean;
+            /** @description The collection created that project (it's deleted if the model leaves the source). */
+            imported?: boolean;
+            model_id: string;
+            model_url: string;
+            name: string;
+            /** @description Folder of the project imported or linked for this model. */
+            project_folder?: string | null;
         };
         BackupTag: {
             color: string;
@@ -1208,6 +1234,10 @@ export interface components {
             /** @description Trimmed, 1 to 64 characters. Unique ignoring case. */
             name: string;
         };
+        DeleteAssetResponse: {
+            /** @description The trash item to restore the file from; none when the trash is off. */
+            trash_id?: string | null;
+        };
         DeleteProjectResponse: {
             /** @description The trash item to restore it from; null when nothing went to the trash. */
             trash_id?: string | null;
@@ -1449,7 +1479,11 @@ export interface components {
             tags: number;
         };
         MetadataBackup: {
+            /** @description Collections imported from a site, with what sync knows about each model. */
+            collection_sources?: components["schemas"]["BackupCollectionSource"][];
             collections?: components["schemas"]["BackupCollection"][];
+            /** @description Duplicate groups marked "not duplicates". */
+            duplicate_dismissals?: components["schemas"]["BackupDismissal"][];
             exported_at: string;
             /** @description Always `lima-metadata`. */
             format: string;
@@ -1571,9 +1605,13 @@ export interface components {
         /** @description What a restore did (or would do, for a dry run). */
         RestoreReport: {
             collection_links_added: number;
+            /** @description Imported collections whose source (and sync state) came back. */
+            collection_sources_added?: number;
             collections_created: number;
             covers_set: number;
             dry_run: boolean;
+            /** @description Duplicate groups hidden again. */
+            duplicate_dismissals_added?: number;
             /** @description Folders added to the ignore list. */
             ignored_folders_added: number;
             /** @description Restored onto a project whose folder was renamed, found by its file hashes. */
@@ -1780,6 +1818,8 @@ export interface components {
             expires_at: string;
             /** Format: int64 */
             file_count: number;
+            /** @description Set when this is one file (relative to `folder_path`) rather than a whole project. */
+            file_path?: string | null;
             /** @description Where the project was, relative to the library root. */
             folder_path: string;
             id: string;
@@ -3727,12 +3767,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Asset deleted successfully */
+            /** @description Deleted: moved to the trash when it's on (restore it with `trash_id`), else removed from disk */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DeleteAssetResponse"];
+                };
             };
             /** @description Asset not found in the specified project */
             404: {

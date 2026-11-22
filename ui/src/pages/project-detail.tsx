@@ -459,6 +459,7 @@ function FilesTable({
   onDelete: (assetId: string) => void;
 }) {
   const [confirm, setConfirm] = React.useState<ProjectAsset | null>(null);
+  const trashDays = useTrash().data?.retention_days ?? 0;
   const [opened, setOpened] = React.useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setOpened((s) => {
@@ -603,7 +604,11 @@ function FilesTable({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete {confirm ? fileName(confirm.file_path) : "file"}?</DialogTitle>
-            <DialogDescription>The file is removed from the project folder on disk.</DialogDescription>
+            <DialogDescription>
+              {trashDays > 0
+                ? `It moves to LiMa’s trash, where you can restore it for ${trashDays} days.`
+                : "The file is removed from the project folder on disk. This can’t be undone."}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirm(null)}>
