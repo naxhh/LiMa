@@ -11,6 +11,7 @@ use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
 pub mod bambu;
+pub mod collections;
 pub mod makerworld;
 pub mod printables;
 pub mod thingiverse;

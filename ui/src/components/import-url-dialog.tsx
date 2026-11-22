@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { BambuLogin } from "@/components/bambu-login";
 import { ZipExtractOptions } from "@/components/zip-extract-options";
+import { CollectionImport } from "@/components/collection-import";
 import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
 import { BAMBU_STATUS_KEY, apiErrorCode, apiErrorMessage, useBambuStatus } from "@/lib/bambu";
 
@@ -60,12 +61,14 @@ export function ImportUrlDialog() {
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [showLogin, setShowLogin] = React.useState(false);
   const [zipPrefs, setZipPrefs] = useZipPrefs();
+  const [collectionUrl, setCollectionUrl] = React.useState<string | null>(null);
 
   const reset = () => {
     setUrl("");
     setPreview(null);
     setJobId(null);
     setShowLogin(false);
+    setCollectionUrl(null);
     previewM.reset();
     startM.reset();
   };
@@ -80,6 +83,14 @@ export function ImportUrlDialog() {
       setIncludeImages(true);
       setSelected(defaultSelection(p));
       setShowLogin(false);
+      setCollectionUrl(null);
+    },
+    onError: (e, u) => {
+      // Collection links go to the collection import instead.
+      if (apiErrorCode(e) === "collection_url") {
+        setPreview(null);
+        setCollectionUrl(u.trim());
+      }
     },
   });
 
@@ -180,7 +191,7 @@ export function ImportUrlDialog() {
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="A Printables, MakerWorld or Thingiverse model link"
+            placeholder="A Printables, MakerWorld or Thingiverse model or collection link"
             autoFocus
             disabled={running}
           />
@@ -188,7 +199,23 @@ export function ImportUrlDialog() {
             {previewM.isPending ? "Reading…" : "Fetch"}
           </Button>
         </form>
-        {previewM.isError ? <div className="text-sm text-destructive">{apiErrorMessage(previewM.error)}</div> : null}
+        {previewM.isError && !collectionUrl ? <div className="text-sm text-destructive">{apiErrorMessage(previewM.error)}</div> : null}
+
+        {collectionUrl ? (
+          <CollectionImport
+            key={collectionUrl}
+            url={collectionUrl}
+            onClose={() => {
+              setOpen(false);
+              reset();
+            }}
+            onDone={(id) => {
+              setOpen(false);
+              reset();
+              navigate(`/collections/${id}`);
+            }}
+          />
+        ) : null}
 
         {preview ? (
           <div className="space-y-4">
@@ -266,6 +293,7 @@ export function ImportUrlDialog() {
           </div>
         ) : null}
 
+        {collectionUrl ? null : (
         <DialogFooter>
           {job?.status === "complete" ? (
             <Button
@@ -294,6 +322,7 @@ export function ImportUrlDialog() {
             </>
           )}
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

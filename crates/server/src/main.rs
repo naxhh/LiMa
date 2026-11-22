@@ -13,6 +13,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 mod backups;
 mod archive;
+mod collection_sync;
 mod trash;
 mod routes;
 mod state;
@@ -72,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let trash_days = trash::days_from_env();
+    let collection_sync_hours = collection_sync::hours_from_env();
     if trash_days > 0 {
         tracing::info!("Deleted projects stay in the trash for {trash_days} days");
     } else {
@@ -84,6 +86,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         paths: Arc::new(paths),
         http: lima_importers::client(),
         imports: Default::default(),
+        collection_jobs: Default::default(),
+        collection_sync_hours,
         auto_backup,
         backup_keep,
         trash_days,
@@ -91,6 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if trash_days > 0 {
         trash::spawn_auto_purge(state.clone(), trash_days);
+    }
+    if let Err(e) = lima_db::queries::collection_sources::fail_interrupted_runs(state.db.pool(), &crate::backups::now()).await {
+        tracing::warn!("Could not close interrupted collection syncs: {e}");
+    }
+    if collection_sync_hours > 0 {
+        collection_sync::spawn_scheduler(state.clone(), collection_sync_hours);
     }
 
     let api = Router::new()
@@ -141,6 +151,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/imports", post(routes::imports::start_import))
         .route("/imports/preview", post(routes::imports::import_preview))
         .route("/imports/{job_id}", get(routes::imports::import_status))
+        .route("/imports/collections", post(routes::collection_import::start_collection_import))
+        .route("/imports/collections/preview", post(routes::collection_import::collection_preview))
+        .route("/imports/collections/{job_id}", get(routes::collection_import::collection_job_status))
+        .route("/collections/{collection_id}/source", get(routes::collection_import::get_collection_source).patch(routes::collection_import::update_collection_source))
+        .route("/collections/{collection_id}/source/sync", post(routes::collection_import::sync_collection_now))
+        .route("/collection-syncs", get(routes::collection_syncs::list_collection_syncs))
+        .route("/collection-syncs/runs/{run_id}", get(routes::collection_syncs::get_collection_sync_run))
+        .route("/sync/history", get(routes::collection_syncs::sync_history))
         .route("/integrations/bambu/status", get(routes::bambu::bambu_status))
         .route("/integrations/bambu/login", post(routes::bambu::bambu_login))
         .route("/integrations/bambu/login/send-code", post(routes::bambu::bambu_send_code))
@@ -232,6 +250,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::imports::import_preview,
         routes::imports::start_import,
         routes::imports::import_status,
+        routes::collection_import::collection_preview,
+        routes::collection_import::start_collection_import,
+        routes::collection_import::collection_job_status,
+        routes::collection_import::get_collection_source,
+        routes::collection_import::update_collection_source,
+        routes::collection_import::sync_collection_now,
+        routes::collection_syncs::list_collection_syncs,
+        routes::collection_syncs::get_collection_sync_run,
+        routes::collection_syncs::sync_history,
         routes::bambu::bambu_status,
         routes::bambu::bambu_login,
         routes::bambu::bambu_send_code,
@@ -334,6 +361,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::imports::StartImportRequest,
         routes::imports::StartImportResponse,
         routes::imports::ImportJobResponse,
+        routes::collection_import::CollectionPreviewRequest,
+        routes::collection_import::CollectionPreviewResponse,
+        routes::collection_import::CollectionPreviewModel,
+        routes::collection_import::StartCollectionImportRequest,
+        routes::collection_import::StartCollectionImportResponse,
+        routes::collection_import::CollectionSourceResponse,
+        routes::collection_import::UpdateCollectionSourceRequest,
+        routes::collection_import::StartSyncResponse,
+        collection_sync::CollectionJob,
+        collection_sync::FailedModel,
+        routes::collection_syncs::CollectionSyncItem,
+        routes::collection_syncs::CollectionSyncsResponse,
+        routes::collection_syncs::CollectionSyncRun,
+        routes::collection_syncs::SyncHistoryItem,
+        routes::collection_syncs::SyncHistoryResponse,
         routes::bambu::BambuStatusResponse,
         routes::bambu::BambuLoginRequest,
         routes::bambu::BambuSendCodeRequest,

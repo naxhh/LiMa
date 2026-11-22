@@ -5,7 +5,6 @@ import { Toaster } from "@/components/toaster";
 import { ProjectsPage } from "@/pages/projects";
 import { ProjectDetailPage } from "@/pages/project-detail";
 import { AdminSyncPage } from "@/pages/admin-sync";
-import { AdminBackupPage } from "@/pages/admin-backup";
 import { AdminTrashPage } from "@/pages/admin-trash";
 import { AdminDuplicatesPage } from "@/pages/admin-duplicates";
 import { TagsPage } from "@/pages/tags";
@@ -24,7 +23,8 @@ function App() {
         <Route path="/collections/:collectionId" element={<CollectionDetailPage />} />
         <Route path="/admin/sync" element={<AdminSyncPage />} />
         <Route path="/admin/sync/:runId" element={<AdminSyncPage />} />
-        <Route path="/admin/backup" element={<AdminBackupPage />} />
+        <Route path="/admin/sync/collections/:runId" element={<AdminSyncPage />} />
+        <Route path="/admin/backup" element={<Navigate to="/admin/sync" replace />} />
         <Route path="/admin/trash" element={<AdminTrashPage />} />
         <Route path="/admin/duplicates" element={<AdminDuplicatesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Copy, EyeOff, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, EyeOff, Layers, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { components } from "@/gen/openapi";
@@ -11,10 +11,14 @@ import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/format";
 import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
+import { BackupsBox } from "@/components/backups-box";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
-type SyncRunsPage = components["schemas"]["ListSyncRunsResponse"];
+type SyncHistoryPage = components["schemas"]["SyncHistoryResponse"];
+type CollectionSyncs = components["schemas"]["CollectionSyncsResponse"];
+type CollectionSyncItem = components["schemas"]["CollectionSyncItem"];
+type CollectionSyncRun = components["schemas"]["CollectionSyncRun"];
 type SyncEvent = components["schemas"]["SyncEventRow"];
 type SyncEventsPage = components["schemas"]["ListSyncEventsResponse"];
 type WatcherStatus = components["schemas"]["WatcherStatus"];
@@ -93,8 +97,13 @@ function useNow(active: boolean) {
   return now;
 }
 
+const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld", thingiverse: "Thingiverse" };
+
 export function AdminSyncPage() {
-  const { runId } = useParams();
+  const { runId: routeRunId } = useParams();
+  const isCollectionRun = useLocation().pathname.startsWith("/admin/sync/collections/");
+  const runId = isCollectionRun ? undefined : routeRunId;
+  const collectionRunId = isCollectionRun ? routeRunId : undefined;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const statusQ = useSyncStatus();
@@ -112,7 +121,7 @@ export function AdminSyncPage() {
 
   const latestRunId = statusQ.data?.run?.id;
   React.useEffect(() => {
-    if (latestRunId) qc.invalidateQueries({ queryKey: ["sync", "runs"] });
+    if (latestRunId) qc.invalidateQueries({ queryKey: ["sync", "history"] });
   }, [latestRunId, qc]);
 
   const startM = useMutation({
@@ -128,31 +137,8 @@ export function AdminSyncPage() {
 
   return (
     <div>
-      <PageHero index="04" label="Sync" title="Library sync" subtitle="Reconciles the library folder with the database · files on disk are never modified">
+      <PageHero index="04" label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified">
         <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => startM.mutate("incremental")}
-            disabled={busy}
-            title="Index new and changed files. Only hashes files whose size or modified time changed."
-          >
-            {busy ? <Loader2 className="animate-spin" /> : <Play />}
-            {running ? "Sync running…" : "Run incremental"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => startM.mutate("full")}
-            disabled={busy}
-            title="Re-hash every file to detect content changed in place. Slower on large libraries."
-          >
-            <ShieldCheck />
-            Full sync &amp; verify
-          </Button>
-          <Button asChild variant="ghost">
-            <Link to="/admin/backup">
-              <Archive />
-              Backups
-            </Link>
-          </Button>
           <Button asChild variant="ghost">
             <Link to="/admin/trash">
               <Trash2 />
@@ -183,17 +169,29 @@ export function AdminSyncPage() {
         <div className="flex flex-wrap items-start gap-6">
           <div className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
             {selectedId ? (
-              <RunDetail runId={selectedId} isLatest={selectedId === statusQ.data?.run?.id} />
+              <RunDetail
+                runId={selectedId}
+                isLatest={selectedId === statusQ.data?.run?.id}
+                actions={<DataSyncButtons busy={busy} running={running} onStart={(mode) => startM.mutate(mode)} />}
+              />
             ) : statusQ.isLoading ? (
               <div className="bg-dots h-64 animate-pulse rounded-2xl border bg-card" />
             ) : (
-              <EmptyPanel>No sync has run yet. Start one to index the library folder.</EmptyPanel>
+              <section className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-display text-xl font-semibold">Sync data directories</h2>
+                  <DataSyncButtons busy={busy} running={running} onStart={(mode) => startM.mutate(mode)} />
+                </div>
+                <EmptyPanel>No sync has run yet. Start one to index the library folder.</EmptyPanel>
+                <IgnoredFolders />
+              </section>
             )}
+            <CollectionsSync selectedRunId={collectionRunId} />
+            <BackupsBox />
           </div>
           <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-5">
             {statusQ.data ? <WatcherCard watcher={statusQ.data.watcher} /> : null}
-            <RunsList selectedId={selectedId} live={running} />
-            <IgnoredFolders />
+            <RunsList selectedId={collectionRunId ?? runId} live={running} />
           </aside>
         </div>
       </PageBody>
@@ -349,15 +347,16 @@ function StatsGrid({ stats }: { stats: SyncStats }) {
 }
 
 function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) {
+  const collectionsLive = useCollectionSyncs().data?.items.some((c) => c.job_id) ?? false;
   const runsQ = useInfiniteQuery({
-    queryKey: ["sync", "runs"],
+    queryKey: ["sync", "history"],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
-      apiGet<SyncRunsPage>(`/sync/runs?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+      apiGet<SyncHistoryPage>(`/sync/history?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    refetchInterval: live ? RUNNING_POLL_MS * 2 : false,
+    refetchInterval: live || collectionsLive ? RUNNING_POLL_MS * 2 : false,
   });
-  const runs = runsQ.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = runsQ.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <section aria-labelledby="history-h" className="overflow-hidden rounded-2xl border bg-card">
@@ -374,55 +373,32 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
       {runsQ.isError ? (
         <div className="border-t px-4.5 py-3 text-sm text-destructive">Failed to load runs: {errorMessage(runsQ.error)}</div>
       ) : null}
-      {!runsQ.isLoading && runs.length === 0 ? (
+      {!runsQ.isLoading && items.length === 0 ? (
         <div className="border-t px-4.5 py-3 text-sm text-muted-foreground">No runs yet.</div>
       ) : null}
 
       <ul>
-        {runs.map((run) => {
-          const s = run.stats;
-          const changes = s.projects_added + s.projects_removed + s.assets_added + s.assets_updated + s.assets_removed;
-          const summary =
-            run.status === "failed"
-              ? `failed: ${run.error || "see events"}`
-              : run.status === "running"
-                ? "running…"
-                : [
-                    run.options?.folders ? `scope: ${scopeLabel(run)}` : null,
-                    changes === 0 ? "no changes" : `${changes} change${changes === 1 ? "" : "s"}`,
-                    s.errors > 0 ? `${s.errors} errors` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
+        {items.map((item) => {
+          const row = item.library ? libraryRow(item.library) : item.collection ? collectionRow(item.collection) : null;
+          if (!row) return null;
           return (
-            <li key={run.id}>
+            <li key={item.id}>
               <Link
-                to={`/admin/sync/${run.id}`}
-                aria-current={run.id === selectedId ? "true" : undefined}
-                className={cn(
-                  "flex items-center gap-3 border-t px-4.5 py-2.5 hover:bg-secondary/60",
-                  run.id === selectedId && "bg-secondary",
-                )}
+                to={row.to}
+                aria-current={item.id === selectedId ? "true" : undefined}
+                className={cn("flex items-center gap-3 border-t px-4.5 py-2.5 hover:bg-secondary/60", item.id === selectedId && "bg-secondary")}
               >
-                <span className={cn("size-2 shrink-0 rounded-full", statusDot[run.status] ?? "bg-dim")} />
+                <span className={cn("size-2 shrink-0 rounded-full", statusDot[row.status] ?? "bg-dim")} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-[13px] font-medium capitalize">
-                    {run.mode} · {run.reason}
-                  </span>
-                  <span
-                    className={cn(
-                      "truncate font-mono text-[11px]",
-                      run.status === "failed" ? "text-destructive" : "text-muted-foreground",
-                    )}
-                    title={summary}
-                  >
-                    {summary}
+                  <span className="truncate text-[13px] font-medium">{row.title}</span>
+                  <span className={cn("truncate font-mono text-[11px]", row.status === "failed" ? "text-destructive" : "text-muted-foreground")} title={row.summary}>
+                    {row.summary}
                   </span>
                 </span>
                 <span className="shrink-0 text-right font-mono text-[11px] text-dim">
-                  {run.started_at ? timeAgo(run.started_at) : "—"}
+                  {item.started_at ? timeAgo(item.started_at) : "—"}
                   <br />
-                  {formatDuration(run.started_at, run.finished_at)}
+                  {formatDuration(item.started_at, row.finishedAt)}
                 </span>
               </Link>
             </li>
@@ -441,7 +417,248 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
   );
 }
 
-function RunDetail({ runId, isLatest }: { runId: string; isLatest: boolean }) {
+type HistoryRow = { to: string; status: string; title: string; summary: string; finishedAt?: string | null };
+
+function libraryRow(run: SyncRun): HistoryRow {
+  const s = run.stats;
+  const changes = s.projects_added + s.projects_removed + s.assets_added + s.assets_updated + s.assets_removed;
+  const summary =
+    run.status === "failed"
+      ? `failed: ${run.error || "see events"}`
+      : run.status === "running"
+        ? "running…"
+        : [
+            run.options?.folders ? `scope: ${scopeLabel(run)}` : null,
+            changes === 0 ? "no changes" : `${changes} change${changes === 1 ? "" : "s"}`,
+            s.errors > 0 ? `${s.errors} errors` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+  return { to: `/admin/sync/${run.id}`, status: run.status, title: `Data sync · ${run.mode} · ${run.reason}`, summary, finishedAt: run.finished_at };
+}
+
+function collectionResult(run: CollectionSyncRun): string {
+  const parts = [
+    run.imported ? `${run.imported} imported` : "",
+    run.linked ? `${run.linked} linked` : "",
+    run.removed ? `${run.removed} removed` : "",
+    run.failed.length ? `${run.failed.length} failed` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "no changes";
+}
+
+function collectionRow(run: CollectionSyncRun): HistoryRow {
+  const summary =
+    run.status === "failed" ? `failed: ${run.error ?? "unknown error"}` : run.status === "running" ? "running…" : `${run.reason} · ${collectionResult(run)}`;
+  return {
+    to: `/admin/sync/collections/${run.id}`,
+    status: run.status,
+    title: `Collection sync · ${run.collection_name || "deleted collection"}`,
+    summary,
+    finishedAt: run.finished_at,
+  };
+}
+
+function useCollectionSyncs() {
+  return useQuery({
+    queryKey: ["sync", "collections"],
+    queryFn: () => apiGet<CollectionSyncs>("/collection-syncs"),
+    refetchInterval: (q) => (q.state.data?.items.some((c) => c.job_id) ? 2000 : 60_000),
+  });
+}
+
+/** "in 3 h", "due now", ... */
+function untilLabel(iso: string): string {
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (mins <= 0) return "due now";
+  if (mins < 60) return `in ${mins} min`;
+  const h = Math.round(mins / 60);
+  return h < 48 ? `in ${h} h` : `in ${Math.round(h / 24)} days`;
+}
+
+/** Imported collections, the next to sync first, each with a Sync button. */
+function CollectionsSync({ selectedRunId }: { selectedRunId?: string }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const q = useCollectionSyncs();
+  const items = q.data?.items ?? [];
+  const hours = q.data?.interval_hours ?? 0;
+
+  const syncM = useMutation({
+    mutationFn: (c: CollectionSyncItem) => apiJson<{ job_id: string }>("POST", `/collections/${encodeURIComponent(c.collection_id)}/source/sync`),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ["sync"] });
+      navigate(`/admin/sync/collections/${r.job_id}`);
+    },
+    onError: (err, c) => toast.error(`Couldn't sync ${c.name}`, { description: errorMessage(err) }),
+  });
+
+  // A finished run changes projects and collections.
+  const running = items.filter((c) => c.job_id).map((c) => c.job_id).join(",");
+  const prev = React.useRef(running);
+  React.useEffect(() => {
+    if (prev.current && prev.current !== running) {
+      void qc.invalidateQueries({ queryKey: ["sync", "history"] });
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+      void qc.invalidateQueries({ queryKey: ["collection"] });
+    }
+    prev.current = running;
+  }, [running, qc]);
+
+  return (
+    <section aria-labelledby="collections-sync-h" className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 id="collections-sync-h" className="font-display text-xl font-semibold">
+          Sync collections
+        </h2>
+        <span className="font-mono text-xs text-muted-foreground">{hours > 0 ? `automatic every ${hours} h` : "automatic syncs off (LIMA_COLLECTION_SYNC_HOURS=0)"}</span>
+      </div>
+
+      {selectedRunId ? <CollectionRunDetail runId={selectedRunId} /> : null}
+
+      {q.isError ? <div className="text-sm text-destructive">{errorMessage(q.error)}</div> : null}
+      {q.isSuccess && items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No imported collections. Paste a Printables, MakerWorld or Thingiverse collection link into Import URL to add one.
+        </p>
+      ) : null}
+      {items.length > 0 ? (
+        <ul className="-mx-2 flex flex-col">
+          {items.map((c) => (
+            <li key={c.collection_id} className="flex flex-wrap items-center gap-3 rounded-lg px-2 py-2 hover:bg-secondary/60">
+              <Layers className="size-4 shrink-0 text-dim" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Link to={`/collections/${c.collection_id}`} className="truncate font-medium hover:text-signal">
+                    {c.name}
+                  </Link>
+                  <a href={c.url} target="_blank" rel="noopener noreferrer" className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-dim hover:text-foreground">
+                    {SOURCE_LABEL[c.source] ?? c.source}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
+                <div className={cn("truncate font-mono text-[11px]", c.last_error ? "text-destructive" : "text-muted-foreground")} title={c.last_error ?? undefined}>
+                  {c.job_id
+                    ? "syncing…"
+                    : [
+                        c.next_sync_at ? `next ${untilLabel(c.next_sync_at)}` : c.keep_in_sync ? "by hand" : "not kept in sync",
+                        c.last_synced_at ? `last ${timeAgo(c.last_synced_at)}` : "never synced",
+                        c.last_error ? `failed: ${c.last_error}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!c.job_id || (syncM.isPending && syncM.variables?.collection_id === c.collection_id)}
+                onClick={() => (c.job_id ? navigate(`/admin/sync/collections/${c.job_id}`) : syncM.mutate(c))}
+              >
+                {c.job_id ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                Sync
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function CollectionRunDetail({ runId }: { runId: string }) {
+  const q = useQuery({
+    queryKey: ["sync", "collection-run", runId],
+    queryFn: () => apiGet<CollectionSyncRun>(`/collection-syncs/runs/${runId}`),
+    refetchInterval: (q) => (q.state.data?.status === "running" ? 1500 : false),
+  });
+  const run = q.data;
+  const now = useNow(run?.status === "running");
+  if (q.isLoading) return <div className="bg-dots h-28 animate-pulse rounded-xl border" />;
+  if (q.isError || !run) return <div className="text-sm text-destructive">Failed to load run: {errorMessage(q.error)}</div>;
+  const p = run.progress;
+  const pct = p && p.total > 0 ? Math.round((p.done / p.total) * 100) : run.status === "running" ? 0 : 100;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-secondary/30 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={cn("size-2.5 rounded-full", statusDot[run.status] ?? "bg-dim")} />
+          <Link to={`/collections/${run.collection_id}`} className="text-sm font-medium hover:text-signal">
+            {run.collection_name || "Deleted collection"}
+          </Link>
+          <span className="rounded-md border border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">{run.reason}</span>
+          <StatusBadge status={run.status} />
+        </div>
+        <span className="font-mono text-xs text-muted-foreground">
+          {formatDate(run.started_at)} · {formatDuration(run.started_at, run.finished_at, now)}
+        </span>
+      </div>
+      {run.status === "running" ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between gap-2 font-mono text-xs text-muted-foreground">
+            <span className="truncate">{p?.current ? `importing ${p.current}` : "reading the collection…"}</span>
+            <span>
+              {p?.done ?? 0}/{p?.total ?? "?"}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-[3px] bg-secondary">
+            <div className="h-full bg-scan transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      ) : null}
+      {run.error ? <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">{run.error}</div> : null}
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
+        {(
+          [
+            ["Imported", p?.imported ?? run.imported, "text-signal"],
+            ["Linked", p?.linked ?? run.linked, "text-info"],
+            ["Removed", p?.removed ?? run.removed, "text-warn"],
+            ["Failed", p?.failed.length ?? run.failed.length, "text-destructive"],
+          ] as [string, number, string][]
+        ).map(([label, value, color]) => (
+          <div key={label} className="bg-card px-3.5 py-2.5">
+            <dt>
+              <MicroLabel>{label}</MicroLabel>
+            </dt>
+            <dd className={cn("mt-1 font-mono text-lg tabular-nums", value > 0 && color)}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {(p?.failed ?? run.failed).length > 0 ? (
+        <ul className="list-disc pl-5 text-xs text-muted-foreground">
+          {(p?.failed ?? run.failed).map((f) => (
+            <li key={f.name}>
+              {f.name}: {f.error}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function DataSyncButtons({ busy, running, onStart }: { busy: boolean; running: boolean; onStart: (mode: "incremental" | "full") => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button onClick={() => onStart("incremental")} disabled={busy} title="Index new and changed files. Only hashes files whose size or modified time changed.">
+        {busy ? <Loader2 className="animate-spin" /> : <Play />}
+        {running ? "Sync running…" : "Run incremental"}
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => onStart("full")}
+        disabled={busy}
+        title="Re-hash every file to detect content changed in place. Slower on large libraries."
+      >
+        <ShieldCheck />
+        Full sync &amp; verify
+      </Button>
+    </div>
+  );
+}
+
+function RunDetail({ runId, isLatest, actions }: { runId: string; isLatest: boolean; actions?: React.ReactNode }) {
   const runQ = useQuery({
     queryKey: ["sync", "run", runId],
     queryFn: () => apiGet<SyncRun>(`/sync/runs/${runId}`),
@@ -471,9 +688,13 @@ function RunDetail({ runId, isLatest }: { runId: string; isLatest: boolean }) {
         className="bg-grid flex flex-col gap-5 rounded-2xl border border-line-strong bg-card p-5 [background-size:32px_32px] sm:p-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold">Sync data directories</h2>
+          {actions}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className={cn("size-2.5 rounded-full", statusDot[run.status] ?? "bg-dim")} />
-            <span className="font-display text-xl font-semibold">
+            <span className="text-sm font-medium">
               {live ? "Running" : isLatest ? "Last run" : "Run"} · {run.mode}
             </span>
             <span className="rounded-md border border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
@@ -512,9 +733,9 @@ function RunDetail({ runId, isLatest }: { runId: string; isLatest: boolean }) {
         ) : null}
 
         <StatsGrid stats={stats} />
+        <EventLog runId={run.id} live={live} />
+        <IgnoredFolders />
       </section>
-
-      <EventLog runId={run.id} live={live} />
     </>
   );
 }

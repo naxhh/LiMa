@@ -30,6 +30,7 @@ import { BulkBar } from "@/components/bulk-bar";
 import { useSelection } from "@/lib/selection";
 import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
+import { CollectionSourceBar } from "@/components/collection-source-bar";
 
 export function CollectionDetailPage() {
   const { collectionId } = useParams();
@@ -146,6 +147,7 @@ function CollectionDetailInner({ id }: { id: string }) {
                   {c.project_count} project{c.project_count === 1 ? "" : "s"} · {totalFiles} files · {formatBytes(totalBytes)}
                 </span>
               ) : null}
+              {c && !c.is_favourites ? <CollectionSourceBar collectionId={id} /> : null}
             </div>
             {c ? (
               <div className="flex gap-2">

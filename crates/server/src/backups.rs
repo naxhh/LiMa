@@ -10,7 +10,7 @@ use sqlx::{Pool, Sqlite};
 use utoipa::ToSchema;
 
 /// Backups kept by default; older automatic and manual ones are deleted.
-pub const DEFAULT_KEEP: usize = 14;
+pub const DEFAULT_KEEP: usize = 7;
 /// Hours between automatic backups by default.
 pub const DEFAULT_INTERVAL_HOURS: u64 = 24;
 
