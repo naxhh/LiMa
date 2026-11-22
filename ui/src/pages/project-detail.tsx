@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Star, Trash2, File as FileIcon } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -9,6 +9,8 @@ import { formatBytes, timeAgo } from "@/lib/format";
 import { libraryUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
 import { sliceable } from "@/lib/slicers";
 import { OpenFileInSlicer, OpenProjectInSlicer } from "@/components/open-in-slicer";
+import { ModelViewer } from "@/components/model-viewer";
+import { viewerFormat } from "@/lib/viewer";
 import { apiErrorMessage } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
@@ -108,11 +110,15 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
   const images = project.assets.filter((a) => a.kind === "image");
   const models = project.assets.filter((a) => a.kind === "model");
   const totalBytes = project.assets.reduce((n, a) => n + a.size_bytes, 0);
-  const current =
-    images.find((a) => a.id === selectedImage) ??
+  const viewable = models.filter((m) => viewerFormat(m.file_path));
+  // What the gallery shows: the picked image or model, else the cover, else the first model.
+  const shown =
+    [...images, ...viewable].find((a) => a.id === selectedImage) ??
     images.find((a) => a.id === project.main_image_id) ??
     images[0] ??
+    viewable[0] ??
     null;
+  const current = shown?.kind === "image" ? shown : null;
 
 
   return (
@@ -126,12 +132,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
       </nav>
 
       <div className="flex flex-wrap items-start gap-8">
-        <Gallery
-          project={project}
-          images={images}
-          current={current}
-          onSelect={setSelectedImage}
-        />
+        <Gallery project={project} images={images} models={viewable} current={shown} onSelect={setSelectedImage} />
 
         <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-5">
           <div className="flex flex-col gap-2.5">
@@ -223,6 +224,10 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
 
       <FilesTable
         project={project}
+        onView={(id) => {
+          setSelectedImage(id);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onSetCover={(id) => patchM.mutate({ main_image_id: id })}
         onDelete={(id) => deleteAssetM.mutate(id)}
       />
@@ -306,30 +311,43 @@ function Spec({ label, value, className }: { label: string; value: string; class
 function Gallery({
   project,
   images,
+  models,
   current,
   onSelect,
 }: {
   project: ProjectDetail;
   images: ProjectAsset[];
+  /** Models the 3D viewer can show. */
+  models: ProjectAsset[];
   current: ProjectAsset | null;
   onSelect: (id: string) => void;
 }) {
-  const index = current ? images.findIndex((a) => a.id === current.id) : -1;
+  const items = [...images, ...models];
+  const index = current ? items.findIndex((a) => a.id === current.id) : -1;
   const step = (d: number) => {
-    if (images.length < 2) return;
-    onSelect(images[(index + d + images.length) % images.length].id);
+    if (items.length < 2) return;
+    onSelect(items[(index + d + items.length) % items.length].id);
   };
+  const isModel = current?.kind === "model";
+  const format = current && isModel ? viewerFormat(current.file_path) : null;
+  const label = isModel
+    ? `3D ${models.indexOf(current!) + 1} / ${models.length}`
+    : `IMG ${images.indexOf(current!) + 1} / ${images.length}`;
 
   return (
-    <section aria-label="Images" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
+    <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
       <div
         className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-2xl border bg-card [--corner-inset:16px] [--corner-size:22px]"
         onKeyDown={(e) => {
+          // Arrow keys orbit the 3D view; only step through images.
+          if (isModel) return;
           if (e.key === "ArrowLeft") step(-1);
           if (e.key === "ArrowRight") step(1);
         }}
       >
-        {current ? (
+        {current && format ? (
+          <ModelViewer url={libraryUrl(project.folder_path, current.file_path)} format={format} sizeBytes={current.size_bytes} />
+        ) : current ? (
           <img
             key={current.id}
             src={libraryUrl(project.folder_path, current.file_path)}
@@ -341,18 +359,18 @@ function Gallery({
         )}
         {current ? (
           <span className="absolute top-4 left-12 z-[3] max-w-[70%] truncate rounded bg-black/60 px-2 py-0.5 font-mono text-[11px] text-white/85">
-            IMG {index + 1} / {images.length} · {fileName(current.file_path)}
+            {label} · {fileName(current.file_path)}
           </span>
         ) : null}
-        {images.length > 1 ? (
+        {items.length > 1 ? (
           <>
             <div className="absolute top-1/2 left-5 z-[3] -translate-y-1/2">
-              <GalleryButton label="Previous image" onClick={() => step(-1)}>
+              <GalleryButton label="Previous" onClick={() => step(-1)}>
                 <ChevronLeft />
               </GalleryButton>
             </div>
             <div className="absolute top-1/2 right-5 z-[3] -translate-y-1/2">
-              <GalleryButton label="Next image" onClick={() => step(1)}>
+              <GalleryButton label="Next" onClick={() => step(1)}>
                 <ChevronRight />
               </GalleryButton>
             </div>
@@ -360,7 +378,7 @@ function Gallery({
         ) : null}
       </div>
 
-      {images.length > 1 ? (
+      {items.length > 1 ? (
         <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
           {images.map((a, i) => (
             <button
@@ -380,6 +398,25 @@ function Gallery({
                   COVER
                 </span>
               ) : null}
+            </button>
+          ))}
+          {models.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => onSelect(a.id)}
+              aria-label={`3D preview: ${fileName(a.file_path)}`}
+              aria-pressed={a.id === current?.id}
+              title={fileName(a.file_path)}
+              className={cn(
+                "bg-dots relative grid aspect-square cursor-pointer place-items-center overflow-hidden rounded-[10px] border bg-thumb text-signal",
+                a.id === current?.id ? "border-2 border-signal" : "hover:border-line-strong",
+              )}
+            >
+              <Box className="size-6" />
+              <span className="absolute right-1.5 bottom-1.5 left-1.5 truncate rounded bg-black/60 px-1 py-px text-center font-mono text-[9px] text-white/85">
+                3D · {fileExt(a.file_path)}
+              </span>
             </button>
           ))}
         </div>
@@ -403,10 +440,12 @@ function GalleryButton({ label, onClick, children }: { label: string; onClick: (
 
 function FilesTable({
   project,
+  onView,
   onSetCover,
   onDelete,
 }: {
   project: ProjectDetail;
+  onView: (assetId: string) => void;
   onSetCover: (assetId: string) => void;
   onDelete: (assetId: string) => void;
 }) {
@@ -479,6 +518,11 @@ function FilesTable({
                     </td>
                     <td className="border-b px-3 py-1.5">
                       <div className="flex justify-end gap-1">
+                        {a.kind === "model" && viewerFormat(a.file_path) ? (
+                          <Button variant="outline" size="icon-sm" onClick={() => onView(a.id)} aria-label={`View ${a.file_path} in 3D`} title="View in 3D">
+                            <Rotate3d />
+                          </Button>
+                        ) : null}
                         {a.kind === "model" && sliceable(a.file_path) ? (
                           <OpenFileInSlicer file={{ url, name: fileName(a.file_path) }} />
                         ) : null}
