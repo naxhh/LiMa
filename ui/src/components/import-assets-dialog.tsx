@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Upload } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { apiMultipart, apiJsonNoResponse, ApiError } from "@/lib/api";
+import { apiMultipart, bundleForm, apiJsonNoResponse, ApiError } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,9 +48,7 @@ export function ImportAssetsDialog({
 
   const createBundleM = useMutation({
     mutationFn: async (currentFiles: File[]) => {
-      const form = new FormData();
-      for (const f of currentFiles) form.append("files[]", f, f.name);
-      return apiMultipart<CreateBundleResponse>("/bundles", form);
+      return apiMultipart<CreateBundleResponse>("/bundles", bundleForm(currentFiles));
     },
     onSuccess: (b) => {
       setBundleId(b.id);

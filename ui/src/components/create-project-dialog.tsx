@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiJson, apiMultipart, apiJsonNoResponse, ApiError } from "@/lib/api";
+import { apiJson, apiMultipart, bundleForm, apiJsonNoResponse, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -84,9 +84,7 @@ export function CreateProjectDialog() {
   // Create bundle immediately whenever files are added/changed
   const createBundleM = useMutation({
     mutationFn: async (currentFiles: File[]) => {
-      const form = new FormData();
-      for (const f of currentFiles) form.append("files[]", f, f.name);
-      return apiMultipart<CreateBundleResponse>("/bundles", form);
+      return apiMultipart<CreateBundleResponse>("/bundles", bundleForm(currentFiles));
     },
     onSuccess: (bundle) => {
       setBundleId(bundle.id);

@@ -3,13 +3,14 @@ use lima_domain::models::project::ProjectRow;
 
 /// Library list order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ProjectSort { #[default] Updated, Created, Name, Size, Files }
+pub enum ProjectSort { #[default] Updated, Created, Modified, Name, Size, Files }
 
 impl ProjectSort {
     pub fn as_str(&self) -> &'static str {
         match self {
             ProjectSort::Updated => "updated",
             ProjectSort::Created => "created",
+            ProjectSort::Modified => "modified",
             ProjectSort::Name => "name",
             ProjectSort::Size => "size",
             ProjectSort::Files => "files",
@@ -20,6 +21,7 @@ impl ProjectSort {
         match s {
             "updated" => Some(ProjectSort::Updated),
             "created" => Some(ProjectSort::Created),
+            "modified" => Some(ProjectSort::Modified),
             "name" => Some(ProjectSort::Name),
             "size" => Some(ProjectSort::Size),
             "files" => Some(ProjectSort::Files),
@@ -32,10 +34,13 @@ impl ProjectSort {
         matches!(self, ProjectSort::Size | ProjectSort::Files)
     }
 
-    fn sql_expr(&self) -> &'static str {
+    /// SQL for the sort value of a `projects p` row. Never NULL, so keyset comparisons work.
+    pub(crate) fn sql_expr(&self) -> &'static str {
         match self {
             ProjectSort::Updated => "p.updated_at",
             ProjectSort::Created => "p.created_at",
+            // Newest file date on disk; projects without files sort as oldest.
+            ProjectSort::Modified => "COALESCE((SELECT MAX(a.mtime) FROM assets a WHERE a.project_id = p.id), '')",
             ProjectSort::Name => "lower(p.name)",
             ProjectSort::Size => "(SELECT COALESCE(SUM(a.size_bytes), 0) FROM assets a WHERE a.project_id = p.id)",
             ProjectSort::Files => "(SELECT COUNT(*) FROM assets a WHERE a.project_id = p.id)",
@@ -264,11 +269,16 @@ mod tests {
         sized(pool, "charlie", 4, &[100, 200]).await;
         sized(pool, "Bravo", 5, &[5000]).await;
 
+        // File dates follow the created day; echo has no files.
+        sqlx::query("UPDATE assets SET mtime = (SELECT created_at FROM projects WHERE projects.id = assets.project_id)")
+            .execute(pool).await.unwrap();
+
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         use ProjectSort::*;
         assert_eq!(collect_all(pool, Name, false, 50).await, s(&["alpha", "Bravo", "charlie", "Delta", "echo"]), "case-insensitive");
         assert_eq!(collect_all(pool, Name, true, 50).await, s(&["echo", "Delta", "charlie", "Bravo", "alpha"]));
         assert_eq!(collect_all(pool, Created, false, 50).await, s(&["Delta", "alpha", "echo", "charlie", "Bravo"]));
+        assert_eq!(collect_all(pool, Modified, true, 50).await, s(&["Bravo", "charlie", "alpha", "Delta", "echo"]), "no files sorts as oldest");
         assert_eq!(collect_all(pool, Updated, true, 50).await, s(&["Delta", "alpha", "echo", "charlie", "Bravo"]));
         // Files: alpha 4, charlie 2, Delta 1, Bravo 1, echo 0.
         let by_files = collect_all(pool, Files, true, 50).await;
@@ -283,7 +293,7 @@ mod tests {
         assert_eq!(tie, s(&["Delta", "charlie"]));
 
         // Small pages return exactly the same sequence: no gaps or repeats at page edges.
-        for sort in [Updated, Created, Name, Size, Files] {
+        for sort in [Updated, Created, Modified, Name, Size, Files] {
             for desc in [false, true] {
                 let whole = collect_all(pool, sort, desc, 50).await;
                 assert_eq!(whole.len(), 5);

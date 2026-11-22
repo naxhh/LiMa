@@ -75,7 +75,7 @@ export function useCollectionMembership(projectId: string) {
       apply: (collectionId) => {
         patchProjects(qc, (p) => ({ ...p, collections: p.collections.filter((c) => c.id !== collectionId) }), projectId);
         // Drop the card from that collection's page right away.
-        qc.setQueryData<{ projects: { id: string }[]; project_count: number }>(["collection", collectionId], (d) =>
+        qc.setQueriesData<{ projects: { id: string }[]; project_count: number }>({ queryKey: ["collection", collectionId] }, (d) =>
           d ? { ...d, projects: d.projects.filter((p) => p.id !== projectId), project_count: Math.max(0, d.project_count - 1) } : d,
         );
         bumpCount(collectionId, -1);

@@ -101,17 +101,25 @@ pub async fn cover_images(
     Ok(out)
 }
 
-/// The collection's projects, most recently added first.
-pub async fn collection_projects(pool: &Pool<Sqlite>, collection_id: &str) -> Result<Vec<ProjectRow>, sqlx::Error> {
-    sqlx::query_as::<_, ProjectRow>(
+/// The collection's projects in `sort` order; `None` sorts by when they were added to the collection.
+pub async fn collection_projects(
+    pool: &Pool<Sqlite>,
+    collection_id: &str,
+    sort: Option<crate::queries::projects::ProjectSort>,
+    descending: bool,
+) -> Result<Vec<ProjectRow>, sqlx::Error> {
+    // Only fixed strings go into the SQL.
+    let expr = sort.map_or("cp.created_at", |s| s.sql_expr());
+    let dir = if descending { "DESC" } else { "ASC" };
+    sqlx::query_as::<_, ProjectRow>(&format!(
         r#"
         SELECT p.id, p.folder_path, p.name, p.description, p.main_image_id, p.created_at, p.updated_at, p.last_scanned_at
         FROM collection_projects cp
         JOIN projects p ON p.id = cp.project_id
         WHERE cp.collection_id = ?1
-        ORDER BY cp.created_at DESC, p.id
-        "#,
-    )
+        ORDER BY {expr} {dir}, p.id {dir}
+        "#
+    ))
     .bind(collection_id)
     .fetch_all(pool)
     .await
@@ -389,8 +397,17 @@ mod tests {
         let row = get_collection(pool, &c.id).await.unwrap().unwrap();
         assert_eq!(row.project_count, 2);
         assert_eq!(row.updated_at, "2026-01-03T00:00:00Z");
-        let names: Vec<_> = collection_projects(pool, &c.id).await.unwrap().into_iter().map(|p| p.name).collect();
+        let names: Vec<_> = collection_projects(pool, &c.id, None, true).await.unwrap().into_iter().map(|p| p.name).collect();
         assert_eq!(names, vec!["b", "a"], "newest first");
+        let cid = c.id.clone();
+        let sorted = |sort, desc| {
+            let cid = cid.clone();
+            async move { collection_projects(pool, &cid, sort, desc).await.unwrap().into_iter().map(|p| p.name).collect::<Vec<_>>() }
+        };
+        use crate::queries::projects::ProjectSort;
+        assert_eq!(sorted(None, false).await, vec!["a", "b"], "first added first");
+        assert_eq!(sorted(Some(ProjectSort::Name), false).await, vec!["a", "b"]);
+        assert_eq!(sorted(Some(ProjectSort::Name), true).await, vec!["b", "a"]);
 
         // Only projects with an image give covers.
         let covers = cover_images(pool, &[c.id.clone()], 4).await.unwrap();

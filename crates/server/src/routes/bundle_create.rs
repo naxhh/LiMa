@@ -41,6 +41,7 @@ pub async fn create_bundle(
     let bundle_folder = state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
     let mut failed_files: Vec<String> = Vec::new();
     let mut files_metadata: Vec<FileMeta> = Vec::new();
+    let mut next_mtime: Option<u64> = None;
 
     fs::create_dir_all(&bundle_folder).await.map_err(|e| {
         tracing::error!("Failed to create bundle directory: {}", e);
@@ -60,6 +61,12 @@ pub async fn create_bundle(
         ).with_cause(&e.to_string())
     })? {
         let field_name = field.name().unwrap_or("").to_string();
+        // Optional `mtime` field (ms since the epoch) right before a file: its original date.
+        if field_name == "mtime" {
+            next_mtime = field.text().await.ok().and_then(|t| t.trim().parse::<u64>().ok());
+            continue;
+        }
+        let original_mtime = next_mtime.take();
         if field_name != "files" && field_name != "files[]" {
             tracing::debug!("Skipping unexpected field: {}", field_name);
             continue;
@@ -103,7 +110,9 @@ pub async fn create_bundle(
                 }
                 Ok(None) => {
                     tracing::debug!("Uploaded file: {}, dst: {}, size: {}", file_name, file_destination.display(), size);
-
+                    if let Some(ms) = original_mtime {
+                        keep_original_date(&mut file, ms, &file_name).await;
+                    }
                     files_metadata.push(FileMeta {
                         name: file_name.clone(),
                         size,
@@ -202,6 +211,22 @@ pub(crate) fn guess_mime(path: &str) -> String {
     MimeGuess::from_path(path)
     .first_or_octet_stream()
     .to_string()
+}
+
+/// Sets an uploaded file's modification date to the one the browser reported.
+async fn keep_original_date(file: &mut fs::File, ms: u64, name: &str) {
+    let time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms);
+    // Pending writes would bump the date again.
+    let result = match file.flush().await {
+        Ok(()) => match file.try_clone().await {
+            Ok(f) => f.into_std().await.set_modified(time),
+            Err(e) => Err(e),
+        },
+        Err(e) => Err(e),
+    };
+    if let Err(e) = result {
+        tracing::debug!("Could not keep the original date of {name}: {e}");
+    }
 }
 
 pub(crate) async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
