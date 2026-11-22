@@ -963,6 +963,8 @@ export interface components {
             model_count: number;
             /** @description Upper-case extensions of the model files, e.g. `["3MF", "STL"]`. */
             model_formats: string[];
+            /** @description Asset whose thumbnail stands in for the cover when there's no image (a model preview). */
+            preview_id?: string | null;
             tags: components["schemas"]["ProjectTagResponse"][];
             /** Format: int64 */
             total_bytes: number;

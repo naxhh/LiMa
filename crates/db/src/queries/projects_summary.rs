@@ -17,6 +17,8 @@ pub struct ProjectSummary {
     /// The user's collections containing the project (built-in ones excluded).
     pub collections: Vec<SummaryCollection>,
     pub is_favourite: bool,
+    /// A model to show as the picture when the project has no image (3MF first, then STL, OBJ).
+    pub preview_model_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +46,7 @@ struct CountRow {
 #[derive(FromRow)]
 struct ModelPathRow {
     project_id: String,
+    id: String,
     file_path: String,
 }
 
@@ -94,18 +97,34 @@ pub async fn project_summaries(
 
     let models = sqlx::query_as::<_, ModelPathRow>(
         r#"
-        SELECT project_id, file_path
+        SELECT project_id, id, file_path
         FROM assets
         WHERE kind = 'model' AND project_id IN (SELECT value FROM json_each(?1))
+        ORDER BY file_path
         "#,
     )
     .bind(&ids_json)
     .fetch_all(pool)
     .await?;
     let mut formats: HashMap<String, BTreeSet<String>> = HashMap::new();
+    // Best previewable model per project: (rank, asset id).
+    let mut previews: HashMap<String, (usize, String)> = HashMap::new();
+    const PREVIEW_ORDER: [&str; 3] = ["3MF", "STL", "OBJ"];
     for m in models {
         if let Some(ext) = std::path::Path::new(&m.file_path).extension().and_then(|e| e.to_str()) {
-            formats.entry(m.project_id).or_default().insert(ext.to_ascii_uppercase());
+            let ext = ext.to_ascii_uppercase();
+            if let Some(rank) = PREVIEW_ORDER.iter().position(|e| *e == ext) {
+                let best = previews.entry(m.project_id.clone()).or_insert((rank, m.id.clone()));
+                if rank < best.0 {
+                    *best = (rank, m.id.clone());
+                }
+            }
+            formats.entry(m.project_id).or_default().insert(ext);
+        }
+    }
+    for (id, (_, asset)) in previews {
+        if let Some(s) = out.get_mut(&id) {
+            s.preview_model_id = Some(asset);
         }
     }
     for (id, set) in formats {

@@ -16,6 +16,7 @@ time = { version = "0.3.45", features = ["formatting"] }
 tokio = { version = "1.49.0", features = ["rt", "sync", "macros", "time"] }
 tracing = "0.1.44"
 uuid = { version = "1.19.0", features = ["v4"] }
+zip = { version = "9.8.1", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "time"] }

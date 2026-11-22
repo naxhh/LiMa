@@ -463,3 +463,68 @@ async fn skips_ignored_folders_until_unignored() {
     run_mode(&fx, &manager, SyncMode::Incremental).await;
     assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE folder_path = 'dragon'").await, 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn previews_models_once() {
+    let fx = Fixture::new().await;
+    // A one-triangle binary STL.
+    let mut stl = vec![0u8; 80];
+    stl.extend(1u32.to_le_bytes());
+    stl.extend([0u8; 12]);
+    for v in [[0f32, 0., 0.], [10., 0., 0.], [0., 10., 5.]] {
+        for c in v {
+            stl.extend(c.to_le_bytes());
+        }
+    }
+    stl.extend([0u8; 2]);
+    let path = fx.library().join("bracket/bracket.stl");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, stl).unwrap();
+    fx.write("bracket/broken.3mf", "not a zip");
+    fx.write("bracket/part.step", "ISO-10303-21;");
+
+    let manager = fx.manager().await;
+    let run = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(run.status, "complete", "error: {}", run.error);
+    assert_eq!(run.stats.thumbnails_generated, 1, "only the STL can be previewed");
+    assert_eq!(run.stats.errors, 0, "a model without a preview isn't an error");
+
+    let pool = fx.db.pool().clone();
+    let id = |name: &'static str| {
+        let pool = pool.clone();
+        async move { sqlx::query_scalar::<_, String>("SELECT id FROM assets WHERE file_path = ?1").bind(name).fetch_one(&pool).await.unwrap() }
+    };
+    let project: String = sqlx::query_scalar("SELECT id FROM projects").fetch_one(fx.db.pool()).await.unwrap();
+    let stl_thumb = crate::thumbnails::thumb_path(&fx.thumbs(), &project, &id("bracket.stl").await);
+    assert_eq!(image::open(&stl_thumb).unwrap().width(), 512);
+    let broken = crate::thumbnails::thumb_path(&fx.thumbs(), &project, &id("broken.3mf").await);
+    assert!(!broken.exists() && broken.with_extension("none").exists(), "failure is remembered");
+    let step = crate::thumbnails::thumb_path(&fx.thumbs(), &project, &id("part.step").await);
+    assert!(!step.exists() && !step.with_extension("none").exists(), "STEP isn't attempted");
+
+    // Nothing is retried on the next sync.
+    let again = run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(again.stats.thumbnails_generated, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn clears_a_cover_that_points_at_a_missing_file() {
+    let fx = Fixture::new().await;
+    fx.write("benchy/benchy.stl", "solid");
+    let manager = fx.manager().await;
+    run_full(&fx, &manager).await;
+    // A cover left over from an image deleted earlier.
+    sqlx::query("UPDATE projects SET main_image_id = 'gone'").execute(fx.db.pool()).await.unwrap();
+
+    run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(fx.count("SELECT COUNT(*) FROM projects WHERE main_image_id IS NULL").await, 1);
+
+    // With an image available, it becomes the cover instead.
+    sqlx::query("UPDATE projects SET main_image_id = 'gone'").execute(fx.db.pool()).await.unwrap();
+    fx.write_png("benchy/photo.png", 64, [1, 2, 3]);
+    run_mode(&fx, &manager, SyncMode::Incremental).await;
+    assert_eq!(
+        fx.count("SELECT COUNT(*) FROM projects p JOIN assets a ON a.id = p.main_image_id WHERE a.file_path = 'photo.png'").await,
+        1
+    );
+}

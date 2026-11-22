@@ -155,10 +155,11 @@ pub async fn remove_missing_asset(
     Ok(())
 }
 
+/// Sets (or with `None` clears) the project's cover image.
 pub async fn set_main_image(
     tx: &mut Transaction<'_, Sqlite>,
     project_id: &str,
-    asset_id: &str,
+    asset_id: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(r#"UPDATE projects SET main_image_id = ?1 WHERE id = ?2"#)
         .bind(asset_id)

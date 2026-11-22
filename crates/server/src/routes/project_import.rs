@@ -187,7 +187,7 @@ pub async fn project_import(
     Ok(StatusCode::OK)
 }
 
-/// Thumbnails for freshly imported images. Failures are only logged: the next
+/// Thumbnails for freshly imported images and models. Failures are only logged: the next
 /// sync retries any image without a thumbnail.
 pub(crate) async fn generate_thumbnails(
     state: &AppState,
@@ -197,7 +197,7 @@ pub(crate) async fn generate_thumbnails(
 ) {
     let jobs: Vec<(std::path::PathBuf, std::path::PathBuf)> = assets
         .iter()
-        .filter(|a| a.kind == "image")
+        .filter(|a| lima_indexer::thumbnails::has_thumbnail(std::path::Path::new(&a.file_path), &a.kind))
         .map(|a| {
             (
                 state.paths.project_dir(folder_path).join(&a.file_path),
@@ -211,7 +211,7 @@ pub(crate) async fn generate_thumbnails(
 
     let result = tokio::task::spawn_blocking(move || {
         for (source, dest) in jobs {
-            if let Err(e) = lima_indexer::thumbnails::generate(&source, &dest) {
+            if let Err(e) = lima_indexer::thumbnails::generate_any(&source, &dest) {
                 tracing::warn!("Thumbnail generation failed for {}: {e}", source.display());
             }
         }

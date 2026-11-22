@@ -42,6 +42,8 @@ export function ProjectCard({
 }) {
   const [picker, setPicker] = React.useState<"tags" | "collections" | null>(null);
   const extraTags = p.tags.length - MAX_TAGS;
+  // Projects without images show a preview of one of their models.
+  const cover = p.main_image_id ?? p.preview_id;
 
   return (
     <div className="group relative transition-transform hover:-translate-y-0.5">
@@ -50,9 +52,9 @@ export function ProjectCard({
         className="flex h-full flex-col overflow-hidden rounded-[14px] border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <div className="corners relative aspect-[4/3] overflow-hidden border-b bg-thumb">
-          {p.main_image_id ? (
+          {cover ? (
             <MediaImage
-              src={thumbUrl(p.id, p.main_image_id)}
+              src={thumbUrl(p.id, cover)}
               alt=""
               className="transition-transform duration-300 group-hover:scale-[1.03]"
             />
@@ -77,7 +79,7 @@ export function ProjectCard({
               !compact && "sm:inline",
             )}
           >
-            {p.image_count === 0 ? "no image" : `${p.image_count} image${p.image_count === 1 ? "" : "s"}`}
+            {p.image_count > 0 ? `${p.image_count} image${p.image_count === 1 ? "" : "s"}` : cover ? "model preview" : "no image"}
           </span>
         </div>
         <div className={cn("flex flex-1 flex-col", compact ? "gap-1.5 px-2.5 pt-2 pb-2.5 sm:px-3" : "gap-2.5 px-4 pt-3.5 pb-4")}>

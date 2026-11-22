@@ -100,6 +100,8 @@ pub struct ProjectListItem {
     /// The user's collections containing the project (Favourites is reported as `is_favourite`).
     pub collections: Vec<ProjectCollectionResponse>,
     pub is_favourite: bool,
+    /// Asset whose thumbnail stands in for the cover when there's no image (a model preview).
+    pub preview_id: Option<String>,
 }
 
 pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) -> Result<Vec<ProjectListItem>, ApiErrorResponse> {
@@ -121,6 +123,7 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
                 tags: s.tags.into_iter().map(|t| ProjectTagResponse { id: t.id, name: t.name, color: t.color }).collect(),
                 collections: s.collections.into_iter().map(|c| ProjectCollectionResponse { id: c.id, name: c.name }).collect(),
                 is_favourite: s.is_favourite,
+                preview_id: s.preview_model_id,
             }
         })
         .collect())
