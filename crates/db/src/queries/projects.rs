@@ -48,8 +48,9 @@ impl ProjectSort {
     }
 }
 
-/// Narrows project lists and searches. The default matches everything.
-#[derive(Debug, Clone, Default)]
+/// Narrows project lists and searches. The default matches everything. Names and text are
+/// compared in lower case (the search parser lowercases them).
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ProjectFilter {
     /// Projects must have every one of these tags.
     pub tag_ids: Vec<String>,
@@ -57,36 +58,70 @@ pub struct ProjectFilter {
     pub formats: Vec<String>,
     /// Only projects without any image.
     pub no_image: bool,
+    /// Tags by name (`#pla`): all must be on the project.
+    pub tag_names: Vec<String>,
+    /// Tags by name the project must not have (`-#gift`).
+    pub not_tag_names: Vec<String>,
+    /// Collections by name (`in:desk`; `favourites` matches the built-in one): all must hold it.
+    pub collections: Vec<String>,
+    pub not_collections: Vec<String>,
+    /// In Favourites (`is:fav`) or not (`-is:fav`).
+    pub favourite: Option<bool>,
+    /// Has a picture (`has:image`) or not (`no:image`).
+    pub has_image: Option<bool>,
+    /// Imported from one of these hosts (`from:printables`).
+    pub sources: Vec<String>,
+    /// The source author contains each of these (`by:prusa`).
+    pub authors: Vec<String>,
+    /// A file path contains each of these (`file:benchy`).
+    pub files: Vec<String>,
 }
 
 impl ProjectFilter {
-    pub fn is_empty(&self) -> bool {
-        self.tag_ids.is_empty() && self.formats.is_empty() && !self.no_image
-    }
-
-    /// The three bind values used by [`FILTER_SQL`]: tag ids JSON, formats JSON, no-image flag.
-    pub(crate) fn binds(&self) -> (String, String, bool) {
-        (
-            serde_json::to_string(&self.tag_ids).expect("serialize tags"),
-            serde_json::to_string(&self.formats).expect("serialize formats"),
-            self.no_image,
-        )
+    /// The single JSON bind value used by [`filter_sql`].
+    pub(crate) fn bind_json(&self) -> String {
+        serde_json::to_string(self).expect("serialize filter")
     }
 }
 
-/// `AND …` clause over a `projects p` row, using bind parameters `?{t}`, `?{f}`, `?{n}`.
-pub(crate) fn filter_sql(t: usize, f: usize, n: usize) -> String {
+/// `AND …` clause over a `projects p` row; every filter comes from one JSON bind parameter `?{j}`.
+pub(crate) fn filter_sql(j: usize) -> String {
     format!(
         r#"
-        AND (json_array_length(?{t}) = 0 OR (
+        AND (json_array_length(?{j}, '$.tag_ids') = 0 OR (
             SELECT COUNT(DISTINCT pt.tag_id) FROM project_tags pt
-            WHERE pt.project_id = p.id AND pt.tag_id IN (SELECT value FROM json_each(?{t}))
-        ) = json_array_length(?{t}))
-        AND (json_array_length(?{f}) = 0 OR EXISTS (
-            SELECT 1 FROM assets a, json_each(?{f}) fmt
+            WHERE pt.project_id = p.id AND pt.tag_id IN (SELECT value FROM json_each(?{j}, '$.tag_ids'))
+        ) = json_array_length(?{j}, '$.tag_ids'))
+        AND (json_array_length(?{j}, '$.formats') = 0 OR EXISTS (
+            SELECT 1 FROM assets a, json_each(?{j}, '$.formats') fmt
             WHERE a.project_id = p.id AND a.kind = 'model' AND a.file_path LIKE '%.' || fmt.value
         ))
-        AND (?{n} = 0 OR NOT EXISTS (SELECT 1 FROM assets a WHERE a.project_id = p.id AND a.kind = 'image'))
+        AND (json_extract(?{j}, '$.no_image') = 0 OR NOT EXISTS (SELECT 1 FROM assets a WHERE a.project_id = p.id AND a.kind = 'image'))
+        AND (json_extract(?{j}, '$.has_image') IS NULL
+             OR json_extract(?{j}, '$.has_image') = EXISTS (SELECT 1 FROM assets a WHERE a.project_id = p.id AND a.kind = 'image'))
+        AND NOT EXISTS (
+            SELECT 1 FROM json_each(?{j}, '$.tag_names') n WHERE NOT EXISTS (
+                SELECT 1 FROM project_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.project_id = p.id AND lower(t.name) = n.value))
+        AND NOT EXISTS (
+            SELECT 1 FROM project_tags pt JOIN tags t ON t.id = pt.tag_id, json_each(?{j}, '$.not_tag_names') n
+            WHERE pt.project_id = p.id AND lower(t.name) = n.value)
+        AND NOT EXISTS (
+            SELECT 1 FROM json_each(?{j}, '$.collections') n WHERE NOT EXISTS (
+                SELECT 1 FROM collection_projects cp JOIN collections c ON c.id = cp.collection_id
+                WHERE cp.project_id = p.id AND (lower(c.name) = n.value OR (c.system_key = 'favourites' AND n.value IN ('favourites', 'favorites')))))
+        AND NOT EXISTS (
+            SELECT 1 FROM collection_projects cp JOIN collections c ON c.id = cp.collection_id, json_each(?{j}, '$.not_collections') n
+            WHERE cp.project_id = p.id AND (lower(c.name) = n.value OR (c.system_key = 'favourites' AND n.value IN ('favourites', 'favorites'))))
+        AND (json_extract(?{j}, '$.favourite') IS NULL OR json_extract(?{j}, '$.favourite') = EXISTS (
+            SELECT 1 FROM collection_projects cp JOIN collections c ON c.id = cp.collection_id
+            WHERE cp.project_id = p.id AND c.system_key = 'favourites'))
+        AND (json_array_length(?{j}, '$.sources') = 0 OR EXISTS (
+            SELECT 1 FROM json_each(?{j}, '$.sources') s WHERE instr(lower(COALESCE(p.source_url, '')), s.value) > 0))
+        AND NOT EXISTS (
+            SELECT 1 FROM json_each(?{j}, '$.authors') n WHERE instr(lower(COALESCE(p.source_author, '')), n.value) = 0)
+        AND NOT EXISTS (
+            SELECT 1 FROM json_each(?{j}, '$.files') n WHERE NOT EXISTS (
+                SELECT 1 FROM assets a WHERE a.project_id = p.id AND instr(lower(a.file_path), n.value) > 0))
         "#
     )
 }
@@ -101,7 +136,7 @@ pub async fn list_projects(
     descending: bool,
     filter: &ProjectFilter,
 ) -> Result<Vec<(ProjectRow, serde_json::Value)>, sqlx::Error> {
-    let (tags, formats, no_image) = filter.binds();
+    let filter_json = filter.bind_json();
     // Only fixed strings go into the SQL; values are bound.
     let (cmp, dir) = if descending { ("<", "DESC") } else { (">", "ASC") };
     let sql = format!(
@@ -118,7 +153,7 @@ pub async fn list_projects(
         LIMIT ?3
         "#,
         expr = sort.sql_expr(),
-        filter = filter_sql(4, 5, 6),
+        filter = filter_sql(4),
     );
 
     let numeric = sort.is_numeric();
@@ -128,7 +163,7 @@ pub async fn list_projects(
         Some((value, id)) if numeric => query.bind(value.as_i64().ok_or_else(invalid_cursor)?).bind(id),
         Some((value, id)) => query.bind(value.as_str().ok_or_else(invalid_cursor)?).bind(id),
     };
-    let rows = query.bind(limit).bind(tags).bind(formats).bind(no_image).fetch_all(pool).await?;
+    let rows = query.bind(limit).bind(filter_json).fetch_all(pool).await?;
 
     rows.iter()
         .map(|row| {
@@ -224,6 +259,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
     
+    #[tokio::test]
+    async fn search_language_filters() {
+        let dir = std::env::temp_dir().join(format!("lima-db-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::connect(&format!("sqlite:{}?mode=rwc", dir.join("t.db").display())).await.unwrap();
+        db.migrate().await.unwrap();
+        let pool = db.pool();
+
+        let dragon = project(pool, "dragon", "2026-01-05T00:00:00Z", &[("parts/Dragon_Head.stl", "model"), ("p.jpg", "image")], &["Silk PLA", "gift"]).await;
+        let bins = project(pool, "bins", "2026-01-04T00:00:00Z", &[("bins.3mf", "model")], &["Silk PLA"]).await;
+        project(pool, "duct", "2026-01-03T00:00:00Z", &[("duct.step", "model")], &[]).await;
+        sqlx::query("UPDATE projects SET source_url = 'https://www.printables.com/model/1-dragon', source_author = 'Prusa Research' WHERE id = ?1")
+            .bind(&dragon).execute(pool).await.unwrap();
+        let desk = crate::queries::collections::create_collection(pool, "Living Room", "", T).await.unwrap();
+        crate::queries::collections::add_project(pool, &desk.id, &bins, T).await.unwrap();
+        let fav = crate::queries::collections::ensure_favourites(pool, T).await.unwrap();
+        crate::queries::collections::add_project(pool, &fav, &dragon, T).await.unwrap();
+
+        let q = |query: &'static str| async move {
+            let mut f = ProjectFilter::default();
+            let text = crate::queries::search_syntax::parse_into(query, &mut f).text;
+            assert!(text.is_empty(), "{query} left words: {text}");
+            names(list_projects(pool, 50, None, ProjectSort::Updated, true, &f).await.unwrap().into_iter().map(|(p, _)| p).collect())
+        };
+        assert_eq!(q(r##"#"silk pla""##).await, vec!["dragon", "bins"]);
+        assert_eq!(q(r##"#"silk pla" -#gift"##).await, vec!["bins"]);
+        assert_eq!(q(r#"in:"living room""#).await, vec!["bins"]);
+        assert_eq!(q(r#"-in:"living room""#).await, vec!["dragon", "duct"]);
+        assert_eq!(q("in:favourites").await, vec!["dragon"]);
+        assert_eq!(q("is:fav").await, vec!["dragon"]);
+        assert_eq!(q("-is:fav").await, vec!["bins", "duct"]);
+        assert_eq!(q("has:image").await, vec!["dragon"]);
+        assert_eq!(q("no:image").await, vec!["bins", "duct"]);
+        assert_eq!(q("from:printables").await, vec!["dragon"]);
+        assert_eq!(q("by:prusa").await, vec!["dragon"]);
+        assert_eq!(q("file:head").await, vec!["dragon"], "file paths, ignoring case");
+        assert_eq!(q("format:step").await, vec!["duct"]);
+        assert_eq!(q("#nope").await, Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// Inserts a project with its own created/updated dates and one asset per size.
     async fn sized(pool: &Pool<Sqlite>, name: &str, day: u32, sizes: &[i64]) {
         let id = Uuid::new_v4().to_string();

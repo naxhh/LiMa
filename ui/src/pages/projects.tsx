@@ -1,5 +1,6 @@
 import * as React from "react";
 import { toast } from "sonner";
+import { hasFreeWords } from "@/lib/search-syntax";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -36,8 +37,8 @@ function buildUrl(params: { limit: number; cursor?: string | null; query?: strin
   if (params.filters.tags.length) usp.set("tags", params.filters.tags.join(","));
   if (params.filters.formats.length) usp.set("formats", params.filters.formats.join(","));
   if (params.filters.noImage) usp.set("no_image", "true");
-  // Searches are ordered by relevance.
-  if (params.sort && !params.query?.trim()) {
+  // Searches with words are ordered by relevance (the server ignores the sort then).
+  if (params.sort) {
     usp.set("sort", params.sort.sort);
     usp.set("order", params.sort.order);
   }
@@ -74,7 +75,7 @@ export function ProjectsPage() {
   // Sort: from the URL, else the last choice, else the default.
   const view = useViewPrefs("lima.projects.view", LIBRARY_SORTS, searchParams);
   const sortOption = view.sort;
-  const searching = debouncedQ.trim().length > 0;
+  const searching = hasFreeWords(debouncedQ);
 
   const projectsQ = useInfiniteQuery({
     queryKey: ["projects", { limit: PAGE_SIZE, query: debouncedQ, filters, sort: searching ? null : sortOption.id }],
@@ -173,7 +174,7 @@ export function ProjectsPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={!!query} />
+            <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={hasFreeWords(query)} />
             <Button variant={selection.active ? "default" : "outline"} size="sm" className="h-8" onClick={selection.active ? selection.exit : selection.start}>
               <ListChecks />
               {selection.active ? "Done" : "Select"}

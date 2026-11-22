@@ -75,7 +75,7 @@ async fn search_projects_from_start(
     limit: i64,
     filter: &ProjectFilter,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
-    let (tags, formats, no_image) = filter.binds();
+    let filter_json = filter.bind_json();
     let sql = format!(
         r#"
         SELECT
@@ -95,14 +95,12 @@ async fn search_projects_from_start(
         ORDER BY rank ASC, p.updated_at DESC, p.id DESC
         LIMIT ?2
         "#,
-        filter = filter_sql(3, 4, 5)
+        filter = filter_sql(3)
     );
     let rows = sqlx::query_as::<_, SearchRow>(&sql)
     .bind(query)
     .bind(limit)
-    .bind(tags)
-    .bind(formats)
-    .bind(no_image)
+    .bind(&filter_json)
     .fetch_all(pool)
     .await?;
 
@@ -116,7 +114,7 @@ async fn search_projects_from_cursor(
     cursor: &Cursor,
     filter: &ProjectFilter,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
-    let (tags, formats, no_image) = filter.binds();
+    let filter_json = filter.bind_json();
     let sql = format!(
         r#"
         WITH ranked AS(
@@ -143,7 +141,7 @@ async fn search_projects_from_cursor(
         ORDER BY rank ASC, updated_at DESC, id DESC
         LIMIT ?5
         "#,
-        filter = filter_sql(6, 7, 8)
+        filter = filter_sql(6)
     );
     let rows = sqlx::query_as::<_, SearchRow>(&sql)
      .bind(query)
@@ -151,9 +149,7 @@ async fn search_projects_from_cursor(
      .bind(cursor.updated_at.clone())
     .bind(cursor.id.clone())
     .bind(limit)
-    .bind(tags)
-    .bind(formats)
-    .bind(no_image)
+    .bind(&filter_json)
     .fetch_all(pool)
     .await?;
 

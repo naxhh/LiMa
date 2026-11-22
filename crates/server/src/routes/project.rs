@@ -29,7 +29,9 @@ pub struct ListProjectsParams {
 }
 
 impl ListProjectsParams {
-    fn filter(&self) -> lima_db::queries::projects::ProjectFilter {
+    /// The filters (from the parameters and from filter words in `query`, like `#pla` or
+    /// `in:desk`) and the words left for the full-text search.
+    fn filter(&self) -> (lima_db::queries::projects::ProjectFilter, String) {
         let split = |v: &Option<String>| -> Vec<String> {
             v.as_deref()
                 .unwrap_or("")
@@ -47,7 +49,9 @@ impl ListProjectsParams {
         formats.dedup();
         let mut tag_ids = split(&self.tags);
         tag_ids.truncate(20);
-        lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false) }
+        let mut filter = lima_db::queries::projects::ProjectFilter { tag_ids, formats, no_image: self.no_image.unwrap_or(false), ..Default::default() };
+        let text = lima_db::queries::search_syntax::parse_into(self.query.as_deref().unwrap_or(""), &mut filter).text;
+        (filter, text)
     }
     
     fn sort(&self) -> Result<(ProjectSort, bool), ApiErrorResponse> {
@@ -153,9 +157,9 @@ pub struct ProjectIdsResponse {
     responses((status = 200, description = "Ids of every project matching the search and filters (up to 2,000), for \"select all\"", body = ProjectIdsResponse))
 )]
 pub async fn list_project_ids(State(state): State<AppState>, Query(params): Query<ListProjectsParams>) -> Result<Json<ProjectIdsResponse>, ApiErrorResponse> {
-    let filter = params.filter();
+    let (filter, text) = params.filter();
     let db = |e: sqlx::Error| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string());
-    let mut ids: Vec<String> = match params.query.as_deref().filter(|q| !q.trim().is_empty()) {
+    let mut ids: Vec<String> = match Some(text.as_str()).filter(|q| !q.trim().is_empty()) {
         Some(query) => lima_db::queries::projects_search::search_projects(state.db.pool(), query, MAX_IDS + 1, None, &filter)
             .await
             .map_err(db)?
@@ -180,7 +184,7 @@ pub async fn list_project_ids(State(state): State<AppState>, Query(params): Quer
     params(
         ("limit" = Option<i64>, Query, description = "Maximum number of projects to return (default: 50, max: 200)"),
         ("cursor" = Option<String>, Query, description = "Opaque pagination cursor"),
-        ("query" = Option<String>, Query, description = "Search query to filter projects"),
+        ("query" = Option<String>, Query, description = "Search: words, plus filters #tag, in:collection, is:fav, format:stl, file:name, has:image / no:image, from:printables, by:author; - negates, quotes keep spaces"),
         ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
         ("formats" = Option<String>, Query, description = "Comma-separated model extensions (STL,3MF,...); projects must have at least one"),
         ("no_image" = Option<bool>, Query, description = "Only projects without images"),
@@ -198,7 +202,7 @@ pub async fn list_projects(
     Query(params): Query<ListProjectsParams>,
 ) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
-    let filter = params.filter();
+    let (filter, text) = params.filter();
 
     let cursor = match params.cursor {
         Some(ref c) => Some(decode_cursor(c).map_err(|e| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(&e))?),
@@ -206,7 +210,7 @@ pub async fn list_projects(
     };
 
     // TODO: likely move this to its own method
-    if let Some(query) = params.query.as_deref().filter(|query| !query.trim().is_empty()) {
+    if let Some(query) = Some(text.as_str()).filter(|query| !query.trim().is_empty()) {
         if let Some(ref c) = cursor {
             if c.rank.is_none() {
                 return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause("Cursor is missing rank"));

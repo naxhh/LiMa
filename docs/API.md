@@ -64,6 +64,7 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 |--------|------|---------|
 | POST | `/projects` | Create project (metadata only) |
 | GET | `/projects` | List projects (cursor pagination + search). Each item includes file counts, total size, model formats, tags and `preview_id` (a model whose thumbnail stands in when there's no image). Search matches word prefixes. Filters: `tags` (comma-separated tag ids, all must match), `formats` (comma-separated model extensions, any matches), `no_image=true`. Order: `sort` = `updated` (default) / `created` / `modified` (newest file date) / `name` / `size` / `files`, `order` = `asc` / `desc`; ignored when searching |
+| | | **Search language** for `query` (both endpoints): words are matched by prefix; filters `#tag` / `tag:x`, `in:collection` / `collection:x` (`in:favourites`), `is:fav`, `format:stl`, `file:name`, `has:image` / `no:image`, `from:printables` (or makerworld, thingiverse, a domain), `by:author`. A leading `-` negates (`-#gift`, `-in:garage`, `-is:fav`); quotes keep spaces (`#"silk pla"`). With only filters, the `sort` order applies |
 | GET | `/projects/ids` | Ids of every project matching `query`/`tags`/`formats`/`no_image` (up to 2,000), for "select all" |
 | DELETE | `/projects/{project_id}` | Delete a project: it goes to the trash (`{trash_id}` in the response) unless the trash is off. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
 | GET | `/projects/{project_id}` | Get single project details |

@@ -27,3 +27,4 @@ pub mod trash;
 pub mod bulk;
 pub mod duplicates;
 pub mod collection_sources;
+pub mod search_syntax;
