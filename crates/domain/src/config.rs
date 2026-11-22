@@ -7,6 +7,7 @@
 //! | `LIMA_STATE_DIR`    | `$LIMA_DATA_DIR/state`           |
 //! | `LIMA_DATABASE_URL` | `sqlite:$LIMA_STATE_DIR/lima.db` |
 //! | `LIMA_UI_DIR`       | `ui/dist`                        |
+//! | `LIMA_BACKUP_DIR`   | `$LIMA_STATE_DIR/backups`        |
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,9 @@ pub struct Paths {
     /// Built SPA served at `/`.
     pub ui: PathBuf,
     pub database_url: String,
+    /// Automatic metadata backups. Point it at a different disk than the database
+    /// so losing one doesn't lose the other.
+    pub backups: PathBuf,
 }
 
 impl Paths {
@@ -38,10 +42,22 @@ impl Paths {
         let database_url = var("LIMA_DATABASE_URL")
             .unwrap_or_else(|| format!("sqlite:{}?mode=rwc", state.join("lima.db").display()));
 
-        Self { library, state, ui, database_url }
+        let backups = var("LIMA_BACKUP_DIR").map(PathBuf::from).unwrap_or_else(|| state.join("backups"));
+
+        Self { library, state, ui, database_url, backups }
     }
 
     /// Temporary upload staging area.
+    /// A stored backup file. `None` unless `name` is a plain `metadata-*.json` file name.
+    pub fn backup_file(&self, name: &str) -> Option<PathBuf> {
+        let valid = name.starts_with("metadata-")
+            && name.ends_with(".json")
+            && name.len() <= 100
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            && !name.contains("..");
+        valid.then(|| self.backups.join(name))
+    }
+
     pub fn bundles(&self) -> PathBuf {
         self.state.join("bundles")
     }
@@ -62,8 +78,8 @@ impl Paths {
     }
 
     /// Directories that must exist before the server starts.
-    pub fn required_dirs(&self) -> [&Path; 2] {
-        [&self.library, &self.state]
+    pub fn required_dirs(&self) -> [&Path; 3] {
+        [&self.library, &self.state, &self.backups]
     }
 }
 
@@ -87,6 +103,16 @@ mod tests {
         let id = "0b5e6a3c-1f2d-4c3b-9a8e-7d6c5b4a3f21";
         assert_eq!(p.bundle(id), Some(PathBuf::from(format!("data/state/bundles/{id}"))));
         assert_eq!(p.thumbnails(), PathBuf::from("data/state/thumbnails"));
+        assert_eq!(p.backups, PathBuf::from("data/state/backups"));
+    }
+
+    #[test]
+    fn backup_file_names_are_validated() {
+        let p = paths(&[("LIMA_BACKUP_DIR", "/backups")]);
+        assert_eq!(p.backup_file("metadata-2026-11-22T10-00-00Z.json"), Some(PathBuf::from("/backups/metadata-2026-11-22T10-00-00Z.json")));
+        for bad in ["../metadata-x.json", "metadata-x.json/..", "metadata-..json", "other.json", "metadata-x.txt", "metadata-a/b.json"] {
+            assert_eq!(p.backup_file(bad), None, "{bad}");
+        }
     }
 
     #[test]

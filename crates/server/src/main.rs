@@ -11,6 +11,7 @@ use tokio::net::TcpListener;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+mod backups;
 mod routes;
 mod state;
 mod models;
@@ -53,17 +54,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Library watcher disabled (LIMA_WATCHER)");
     }
 
+    let auto_backup = backups::AutoBackup::from_env();
+    let backup_keep = auto_backup.map(|a| a.keep).unwrap_or(backups::DEFAULT_KEEP);
+    match auto_backup {
+        Some(cfg) => {
+            tracing::info!(
+                "Metadata backups every {}h into {} (keeping {})",
+                cfg.interval.as_secs() / 3600,
+                paths.backups.display(),
+                cfg.keep
+            );
+            backups::spawn_auto_backup(db.pool().clone(), paths.backups.clone(), cfg);
+        }
+        None => tracing::info!("Automatic metadata backups disabled (LIMA_BACKUP_INTERVAL_HOURS=0)"),
+    }
+
     let state = state::AppState {
         db: Arc::new(db),
         sync,
         paths: Arc::new(paths),
         http: lima_importers::client(),
         imports: Default::default(),
+        auto_backup,
+        backup_keep,
     };
 
     let api = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/stats", get(routes::stats::library_stats))
+        .route("/metadata/export", get(routes::metadata::export_metadata))
+        .route(
+            "/metadata/restore",
+            post(routes::metadata::restore_upload).route_layer(DefaultBodyLimit::max(256 * 1024 * 1024)),
+        )
+        .route("/metadata/backups", get(routes::metadata::list_backups))
+        .route("/metadata/backups", post(routes::metadata::create_backup))
+        .route("/metadata/backups/{name}", get(routes::metadata::download_backup))
+        .route("/metadata/backups/{name}/restore", post(routes::metadata::restore_backup))
         .route("/projects", get(routes::project::list_projects))
         .route ("/projects", post(routes::project_create::create_project))
         .route("/projects/{project_id}", delete(routes::project_delete::project_delete))
@@ -138,6 +165,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     paths(
         routes::health::health_check,
         routes::stats::library_stats,
+        routes::metadata::export_metadata,
+        routes::metadata::restore_upload,
+        routes::metadata::list_backups,
+        routes::metadata::create_backup,
+        routes::metadata::download_backup,
+        routes::metadata::restore_backup,
         routes::project::list_projects,
         routes::project_create::create_project,
         routes::project_delete::project_delete,
@@ -190,6 +223,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         routes::project::ListProjectsResponse,
         routes::project::ProjectListItem,
         routes::stats::LibraryStatsResponse,
+        routes::metadata::ListBackupsResponse,
+        crate::backups::BackupFile,
+        lima_domain::models::metadata::MetadataBackup,
+        lima_domain::models::metadata::BackupTag,
+        lima_domain::models::metadata::BackupCollection,
+        lima_domain::models::metadata::BackupProject,
+        lima_domain::models::metadata::BackupMembership,
+        lima_domain::models::metadata::BackupSource,
+        lima_domain::models::metadata::RestoreReport,
+        lima_domain::models::metadata::RenamedMatch,
         routes::project::ListProjectsParams,
         routes::project_create::CreateProjectRequest,
         routes::project_create::CreateProjectResponse,

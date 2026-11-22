@@ -153,3 +153,18 @@ Each browser logs in on its own. Imported projects record `source_url`, `source_
 | GET | `/sync/runs` | List sync runs | ✅ Done |
 | GET | `/sync/runs/{run_id}` | Get sync run details | ✅ Done |
 | GET | `/sync/runs/{run_id}/events` | Sync event log | ✅ Done |
+
+### Metadata backup
+
+Backups are JSON (`format: "lima-metadata"`, `version: 1`) keyed by project folder, with file
+hashes so renamed folders can be matched. Restores replace names, descriptions, covers and
+sources, and add tags, collections and favourites (nothing is removed).
+
+| Method | Path | Purpose | Status |
+|------|------|---------|--------|
+| GET | `/metadata/export` | Download all metadata as JSON | ✅ Done |
+| POST | `/metadata/restore` | Restore from an uploaded backup (`?dry_run=true` previews) | ✅ Done |
+| GET | `/metadata/backups` | Stored backups, folder and schedule | ✅ Done |
+| POST | `/metadata/backups` | Write a backup now | ✅ Done |
+| GET | `/metadata/backups/{name}` | Download a stored backup | ✅ Done |
+| POST | `/metadata/backups/{name}/restore` | Restore a stored backup (`?dry_run=true` previews) | ✅ Done |

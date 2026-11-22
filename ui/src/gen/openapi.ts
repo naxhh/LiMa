@@ -276,6 +276,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/metadata/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_backups"];
+        put?: never;
+        post: operations["create_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_backup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/backups/{name}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restore_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["export_metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metadata/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restore_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -516,6 +596,51 @@ export interface components {
         ApiErrorBody: {
             error: components["schemas"]["ApiError"];
         };
+        BackupCollection: {
+            created_at: string;
+            description?: string;
+            name: string;
+            /** @description `favourites` for the built-in Favourites collection. */
+            system_key?: string | null;
+        };
+        BackupFile: {
+            /** @description When the file was written (RFC 3339). */
+            created_at: string;
+            name: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        BackupMembership: {
+            added_at: string;
+            /** @description Collection name, or `None` when `system_key` identifies it. */
+            name?: string | null;
+            system_key?: string | null;
+        };
+        BackupProject: {
+            /** @description Collection names (the built-in Favourites is listed by its key, see `BackupCollection`). */
+            collections?: components["schemas"]["BackupMembership"][];
+            created_at: string;
+            description?: string;
+            /** @description blake3 hashes of the project's files, sorted. Used to match renamed folders. */
+            file_hashes?: string[];
+            folder_path: string;
+            /** @description Cover image as a path relative to the project folder. */
+            main_image?: string | null;
+            /** @description Hash of the cover image, to find it again if it was renamed. */
+            main_image_hash?: string | null;
+            name: string;
+            source?: null | components["schemas"]["BackupSource"];
+            tags?: string[];
+        };
+        BackupSource: {
+            author?: string | null;
+            license?: string | null;
+            url: string;
+        };
+        BackupTag: {
+            color: string;
+            name: string;
+        };
         BambuCodeRequest: {
             account: string;
             /** @description Code Bambu emailed. */
@@ -667,6 +792,18 @@ export interface components {
             /** Format: int64 */
             total_bytes: number;
         };
+        ListBackupsResponse: {
+            /** @description Where backups are written (`LIMA_BACKUP_DIR`). */
+            directory: string;
+            /**
+             * Format: int64
+             * @description Hours between automatic backups; `null` when disabled.
+             */
+            interval_hours?: number | null;
+            items: components["schemas"]["BackupFile"][];
+            /** @description How many backups are kept. */
+            keep: number;
+        };
         ListCollectionsResponse: {
             items: components["schemas"]["Collection"][];
         };
@@ -714,6 +851,19 @@ export interface components {
         ListTagsResponse: {
             items: components["schemas"]["Tag"][];
             next_cursor?: string | null;
+        };
+        MetadataBackup: {
+            collections?: components["schemas"]["BackupCollection"][];
+            exported_at: string;
+            /** @description Always `lima-metadata`. */
+            format: string;
+            projects?: components["schemas"]["BackupProject"][];
+            tags?: components["schemas"]["BackupTag"][];
+            /**
+             * Format: int32
+             * @description Format version; readers reject versions newer than they know.
+             */
+            version: number;
         };
         PatchCollectionRequest: {
             description?: string | null;
@@ -794,6 +944,27 @@ export interface components {
             color: string;
             id: string;
             name: string;
+        };
+        RenamedMatch: {
+            backup_folder: string;
+            library_folder: string;
+        };
+        /** @description What a restore did (or would do, for a dry run). */
+        RestoreReport: {
+            collection_links_added: number;
+            collections_created: number;
+            covers_set: number;
+            dry_run: boolean;
+            /** @description Restored onto a project whose folder was renamed, found by its file hashes. */
+            matched_by_files: components["schemas"]["RenamedMatch"][];
+            /** @description Restored onto the project with the same folder. */
+            matched_by_folder: number;
+            projects_in_backup: number;
+            projects_updated: number;
+            tag_links_added: number;
+            tags_created: number;
+            /** @description Folders in the backup that aren't in the library (nothing to attach to). */
+            unmatched: string[];
         };
         StartImportRequest: {
             /** @description Defaults to the model description. */
@@ -1768,6 +1939,222 @@ export interface operations {
             };
             /** @description Bambu rejected the token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_backups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored backups, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBackupsResponse"];
+                };
+            };
+            /** @description Backup folder unreadable */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    create_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backup written */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupFile"];
+                };
+            };
+            /** @description Could not write the backup */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    download_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Backup file name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backup file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataBackup"];
+                };
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    restore_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Backup file name */
+                name: string;
+                /** @description Report what would change without writing anything. */
+                dry_run: boolean;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was restored (or would be, for a dry run) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreReport"];
+                };
+            };
+            /** @description Not a LiMa metadata backup, or from a newer version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    export_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every tag, collection and project's metadata as a JSON file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataBackup"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    restore_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Report what would change without writing anything. */
+                dry_run: boolean;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataBackup"];
+            };
+        };
+        responses: {
+            /** @description What was restored (or would be, for a dry run) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreReport"];
+                };
+            };
+            /** @description Not a LiMa metadata backup, or from a newer version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
