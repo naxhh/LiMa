@@ -21,3 +21,4 @@ pub mod bambu;
 pub mod imports;
 pub mod metadata;
 pub mod ignored_folders;
+pub mod trash;

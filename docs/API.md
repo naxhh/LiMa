@@ -64,7 +64,7 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 |--------|------|---------|
 | POST | `/projects` | Create project (metadata only) |
 | GET | `/projects` | List projects (cursor pagination + search). Each item includes file counts, total size, model formats, tags and `preview_id` (a model whose thumbnail stands in when there's no image). Search matches word prefixes. Filters: `tags` (comma-separated tag ids, all must match), `formats` (comma-separated model extensions, any matches), `no_image=true`. Order: `sort` = `updated` (default) / `created` / `modified` (newest file date) / `name` / `size` / `files`, `order` = `asc` / `desc`; ignored when searching |
-| DELETE | `/projects/{project_id}` | Delete project and its folder. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
+| DELETE | `/projects/{project_id}` | Delete a project: it goes to the trash (`{trash_id}` in the response) unless the trash is off. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
 | GET | `/projects/{project_id}` | Get single project details |
 | GET | `/projects/{project_id}/download` | All of the project's files as a streamed zip |
 | PUT | `/projects/{project_id}/favourite` | Add the project to Favourites |
@@ -132,6 +132,18 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 | GET | `/sync/runs/{run_id}/events` | Sync event log |
 | GET | `/ignored-folders` | Folders removed from LiMa with their files kept; sync skips them |
 | DELETE | `/ignored-folders?folder_path=…` | Un-ignore a folder and sync it right away |
+
+### Trash
+
+Deleted projects move to `<library>/.lima-trash/<id>/` with their metadata kept, and are purged after
+`LIMA_TRASH_DAYS` (default 30).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/trash` | Trashed projects (newest first) and the retention in days |
+| POST | `/trash/{trash_id}/restore` | Move the folder back, re-index it and reapply tags, collections, description and cover. A taken folder name comes back as `<name>-restored` |
+| DELETE | `/trash/{trash_id}` | Delete one item for good |
+| DELETE | `/trash` | Empty the trash |
 
 ### Metadata backup
 

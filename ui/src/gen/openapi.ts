@@ -596,6 +596,54 @@ export interface paths {
         patch: operations["update_tag"];
         trace?: never;
     };
+    "/api/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_trash"];
+        put?: never;
+        post?: never;
+        delete: operations["empty_trash"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trash/{trash_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_trash_item"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trash/{trash_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restore_trash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -745,6 +793,10 @@ export interface components {
             /** @description Trimmed, 1 to 64 characters. Unique ignoring case. */
             name: string;
         };
+        DeleteProjectResponse: {
+            /** @description The trash item to restore it from; null when nothing went to the trash. */
+            trash_id?: string | null;
+        };
         HealthResponse: {
             db: boolean;
         };
@@ -887,6 +939,14 @@ export interface components {
             items: components["schemas"]["Tag"][];
             next_cursor?: string | null;
         };
+        ListTrashResponse: {
+            items: components["schemas"]["TrashItem"][];
+            /**
+             * Format: int64
+             * @description Days items are kept; 0 means the trash is disabled and deletes are final.
+             */
+            retention_days: number;
+        };
         MetadataBackup: {
             collections?: components["schemas"]["BackupCollection"][];
             exported_at: string;
@@ -1008,6 +1068,10 @@ export interface components {
             tags_created: number;
             /** @description Folders in the backup that aren't in the library (nothing to attach to). */
             unmatched: string[];
+        };
+        RestoreTrashResponse: {
+            /** @description The restored project. */
+            project_id: string;
         };
         StartImportRequest: {
             /** @description Defaults to the model description. */
@@ -1141,6 +1205,19 @@ export interface components {
              */
             project_count: number;
             updated_at: string;
+        };
+        TrashItem: {
+            /** @description When it will be deleted for good (RFC 3339). */
+            expires_at: string;
+            /** Format: int64 */
+            file_count: number;
+            /** @description Where the project was, relative to the library root. */
+            folder_path: string;
+            id: string;
+            name: string;
+            /** Format: int64 */
+            size_bytes: number;
+            trashed_at: string;
         };
         /** @description State of the filesystem watcher that triggers syncs automatically. */
         WatcherStatus: {
@@ -2437,8 +2514,9 @@ export interface operations {
                 /** @description The ID of the project to delete */
                 project_id: string;
                 /**
-                 * @description `delete` (default) removes the folder from disk; `keep` only removes the project
-                 *     from LiMa, leaves the files and adds the folder to the ignore list.
+                 * @description `delete` (default) moves the folder to the trash (or deletes it for good when the trash
+                 *     is disabled); `keep` only removes the project from LiMa, leaves the files and adds the
+                 *     folder to the ignore list.
                  */
                 files: string | null;
             };
@@ -2446,12 +2524,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Project deleted successfully */
+            /** @description Project deleted (or moved to the trash) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DeleteProjectResponse"];
+                };
             };
             /** @description Unknown `files` mode */
             400: {
@@ -3200,6 +3280,124 @@ export interface operations {
             };
             /** @description Database failure */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    list_trash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trashed projects, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListTrashResponse"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    empty_trash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trash emptied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_trash_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Trash item id */
+                trash_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted for good */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in the trash */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    restore_trash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Trash item id */
+                trash_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restored with its tags, collections and description. If its folder name was taken, it comes back as `<name>-restored`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreTrashResponse"];
+                };
+            };
+            /** @description Not in the trash */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Moving the folder back failed */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

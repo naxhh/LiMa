@@ -4,6 +4,8 @@ import { apiJson, apiNoBody } from "@/lib/api";
 import { COLLECTIONS_QUERY_KEY, type Collection } from "@/lib/collections";
 import { TAGS_QUERY_KEY, type Tag } from "@/lib/tags";
 import { PROJECT_CACHE_KEYS, optimisticHandlers, patchProjects } from "@/lib/optimistic";
+import { TRASH_KEY, restoreFromTrash } from "@/lib/trash";
+import { toast } from "sonner";
 
 export type ProjectTag = { id: string; name: string; color: string };
 export type Membership = { id: string; name: string };
@@ -203,21 +205,32 @@ export function useDeleteAsset(projectId: string) {
 }
 
 /**
- * Deletes a project, or with `keepFiles` only removes it from LiMa (the folder stays on disk
- * and sync ignores it). Either way it vanishes from every list immediately.
+ * Deletes a project (to the trash, when it's enabled), or with `keepFiles` only removes it
+ * from LiMa (the folder stays on disk and sync ignores it). Either way it vanishes from every
+ * list immediately; a trashed project gets an Undo toast.
  */
 export function useDeleteProject(projectId: string, projectName: string) {
   const qc = useQueryClient();
   type Vars = { keepFiles: boolean };
   return useMutation({
-    mutationFn: ({ keepFiles }: Vars) => apiNoBody("DELETE", `/projects/${projectId}${keepFiles ? "?files=keep" : ""}`),
+    mutationFn: ({ keepFiles }: Vars) =>
+      apiJson<{ trash_id: string | null }>("DELETE", `/projects/${projectId}${keepFiles ? "?files=keep" : ""}`),
     ...optimisticHandlers<Vars>(qc, {
       mutationKey: projectMutationKey(projectId),
       keys: [...PROJECT_CACHE_KEYS, COLLECTIONS_QUERY_KEY],
       apply: () => patchProjects(qc, () => null, projectId),
       errorTitle: ({ keepFiles }) => (keepFiles ? `Couldn't remove “${projectName}”` : `Couldn't delete “${projectName}”`),
-      invalidate: [["projects"], ["collection"], COLLECTIONS_QUERY_KEY, ["ignored-folders"]],
+      invalidate: [["projects"], ["collection"], COLLECTIONS_QUERY_KEY, ["ignored-folders"], TRASH_KEY],
     }),
-    onSuccess: () => qc.removeQueries({ queryKey: ["project", projectId] }),
+    onSuccess: (res) => {
+      qc.removeQueries({ queryKey: ["project", projectId] });
+      if (res?.trash_id) {
+        const trashId = res.trash_id;
+        toast(`Moved “${projectName}” to the trash`, {
+          duration: 10000,
+          action: { label: "Undo", onClick: () => void restoreFromTrash(qc, trashId, projectName) },
+        });
+      }
+    },
   });
 }

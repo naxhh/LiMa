@@ -6,6 +6,7 @@ import { ProjectsPage } from "@/pages/projects";
 import { ProjectDetailPage } from "@/pages/project-detail";
 import { AdminSyncPage } from "@/pages/admin-sync";
 import { AdminBackupPage } from "@/pages/admin-backup";
+import { AdminTrashPage } from "@/pages/admin-trash";
 import { TagsPage } from "@/pages/tags";
 import { CollectionsPage } from "@/pages/collections";
 import { CollectionDetailPage } from "@/pages/collection-detail";
@@ -23,6 +24,7 @@ function App() {
         <Route path="/admin/sync" element={<AdminSyncPage />} />
         <Route path="/admin/sync/:runId" element={<AdminSyncPage />} />
         <Route path="/admin/backup" element={<AdminBackupPage />} />
+        <Route path="/admin/trash" element={<AdminTrashPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <MobileNav />
