@@ -11,8 +11,8 @@ import { useLibraryStats, useSyncStatus } from "@/lib/sync";
 import { cn } from "@/lib/utils";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
-import { ViewControls } from "@/components/view-controls";
-import { LIBRARY_SORTS, gridClass, useDensity, useViewPrefs, type SortOption } from "@/lib/view-prefs";
+import { SortSelect } from "@/components/sort-select";
+import { LIBRARY_SORTS, PAGE_SIZE, useViewPrefs, type SortOption } from "@/lib/view-prefs";
 
 type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
 
@@ -66,19 +66,17 @@ export function ProjectsPage() {
   );
   const filtered = filters.tags.length > 0 || filters.formats.length > 0 || filters.noImage;
 
-  // Sort and page size: from the URL, else the last choice, else the defaults.
+  // Sort: from the URL, else the last choice, else the default.
   const view = useViewPrefs("lima.projects.view", LIBRARY_SORTS, searchParams);
   const sortOption = view.sort;
-  const perPage = view.perPage;
-  const [density, setDensity] = useDensity();
   const searching = debouncedQ.trim().length > 0;
 
   const projectsQ = useInfiniteQuery({
-    queryKey: ["projects", { limit: perPage, query: debouncedQ, filters, sort: searching ? null : sortOption.id }],
+    queryKey: ["projects", { limit: PAGE_SIZE, query: debouncedQ, filters, sort: searching ? null : sortOption.id }],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       apiGet<ListProjectsResponse>(
-        buildUrl({ limit: perPage, cursor: pageParam, query: debouncedQ, filters, sort: searching ? undefined : sortOption }),
+        buildUrl({ limit: PAGE_SIZE, cursor: pageParam, query: debouncedQ, filters, sort: searching ? undefined : sortOption }),
       ),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
@@ -155,16 +153,7 @@ export function ProjectsPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <ViewControls
-              options={LIBRARY_SORTS}
-              sort={sortOption}
-              onSort={(id) => setParams(view.chooseSort(id))}
-              searching={!!query}
-              perPage={perPage}
-              onPerPage={(n) => setParams(view.choosePerPage(n))}
-              density={density}
-              onDensity={setDensity}
-            />
+            <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={!!query} />
             <span className="font-mono text-xs text-muted-foreground">
               {projectsQ.isLoading
                 ? "loading…"
@@ -215,14 +204,14 @@ export function ProjectsPage() {
           </div>
         ) : null}
 
-        <div className={gridClass(density)}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
           {projectsQ.isLoading
             ? Array.from({ length: 8 }, (_, i) => <ProjectCardSkeleton key={i} />)
-            : items.map((p) => <ProjectCard key={p.id} project={p} compact={density === "compact"} />)}
+            : items.map((p) => <ProjectCard key={p.id} project={p} />)}
         </div>
 
         <div ref={sentinelRef} className="h-8" />
-        {isFetchingNextPage || (!hasNextPage && items.length > perPage) ? (
+        {isFetchingNextPage || (!hasNextPage && items.length > PAGE_SIZE) ? (
           <div className="flex items-center justify-center gap-2.5 pt-4 font-mono text-xs text-dim">
             <span className="h-px w-10 bg-line-strong" />
             {isFetchingNextPage ? "loading more" : "end of library"}

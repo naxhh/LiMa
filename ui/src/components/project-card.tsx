@@ -32,13 +32,10 @@ export function ProjectCard({
   project: p,
   onRemove,
   removeLabel = "Remove",
-  compact = false,
 }: {
   project: ProjectListItem;
   onRemove?: () => void;
   removeLabel?: string;
-  /** Smaller card for dense grids: name and size only. */
-  compact?: boolean;
 }) {
   const [picker, setPicker] = React.useState<"tags" | "collections" | null>(null);
   const extraTags = p.tags.length - MAX_TAGS;
@@ -62,7 +59,7 @@ export function ProjectCard({
             <ModelPlaceholder />
           )}
           {p.model_formats.length > 0 ? (
-            <div className={cn("absolute top-3 right-3 z-[3] gap-1", compact ? "hidden sm:flex" : "flex")}>
+            <div className="absolute top-3 right-3 z-[3] flex gap-1">
               {p.model_formats.slice(0, 3).map((f) => (
                 <span
                   key={f}
@@ -73,25 +70,13 @@ export function ProjectCard({
               ))}
             </div>
           ) : null}
-          <span
-            className={cn(
-              "absolute bottom-2.5 left-3 z-[3] hidden rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white/80",
-              !compact && "sm:inline",
-            )}
-          >
+          <span className="absolute bottom-2.5 left-3 z-[3] hidden rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white/80 sm:inline">
             {p.image_count > 0 ? `${p.image_count} image${p.image_count === 1 ? "" : "s"}` : cover ? "model preview" : "no image"}
           </span>
         </div>
-        <div className={cn("flex flex-1 flex-col", compact ? "gap-1.5 px-2.5 pt-2 pb-2.5 sm:px-3" : "gap-2.5 px-4 pt-3.5 pb-4")}>
-          <h2
-            className={cn(
-              "font-display line-clamp-2 leading-tight font-semibold tracking-tight",
-              compact ? "text-[13px] sm:text-sm" : "text-[17px]",
-            )}
-          >
-            {p.name}
-          </h2>
-          {!compact && p.tags.length > 0 ? (
+        <div className="flex flex-1 flex-col gap-2.5 px-4 pt-3.5 pb-4">
+          <h2 className="font-display line-clamp-2 text-[17px] leading-tight font-semibold tracking-tight">{p.name}</h2>
+          {p.tags.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {p.tags.slice(0, MAX_TAGS).map((t) => (
                 <span
@@ -107,16 +92,12 @@ export function ProjectCard({
               ) : null}
             </div>
           ) : null}
-          {compact ? (
-            <div className="mt-auto truncate font-mono text-[10px] text-muted-foreground sm:text-[11px]">{formatBytes(p.total_bytes)}</div>
-          ) : (
-            <div className="mt-auto flex justify-between gap-2 border-t border-dashed border-line-strong pt-2.5 font-mono text-[11px] text-muted-foreground">
-              <span>
-                {p.asset_count} file{p.asset_count === 1 ? "" : "s"} · {formatBytes(p.total_bytes)}
-              </span>
-              <span>{timeAgo(p.updated_at)}</span>
-            </div>
-          )}
+          <div className="mt-auto flex justify-between gap-2 border-t border-dashed border-line-strong pt-2.5 font-mono text-[11px] text-muted-foreground">
+            <span>
+              {p.asset_count} file{p.asset_count === 1 ? "" : "s"} · {formatBytes(p.total_bytes)}
+            </span>
+            <span>{timeAgo(p.updated_at)}</span>
+          </div>
         </div>
       </Link>
 
@@ -125,13 +106,7 @@ export function ProjectCard({
         <div className={cn("pointer-events-auto absolute top-2.5 left-2.5 transition-opacity", !p.is_favourite && REVEAL)}>
           <FavouriteButton projectId={p.id} isFavourite={p.is_favourite} variant="overlay" />
         </div>
-        <div
-          className={cn(
-            "pointer-events-auto absolute right-2.5 bottom-2.5 gap-1.5 transition-opacity",
-            compact ? "hidden sm:flex" : "flex",
-            REVEAL,
-          )}
-        >
+        <div className={cn("pointer-events-auto absolute right-2.5 bottom-2.5 flex gap-1.5 transition-opacity", REVEAL)}>
           {onRemove ? (
             <button type="button" onClick={onRemove} className={overlayButton} aria-label={`${removeLabel}: ${p.name}`} title={removeLabel}>
               <X />
