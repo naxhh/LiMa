@@ -43,7 +43,7 @@ Environmentals:
 - **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable
 - **LIMA_BACKUP_DIR** automatic metadata backups. Defaults to `$LIMA_STATE_DIR/backups`; put it on a different disk than the database
 - **LIMA_BACKUP_INTERVAL_HOURS** hours between automatic backups (only written when something changed). Defaults to `24`; `0` disables
-- **LIMA_BACKUP_KEEP** how many backup files to keep. Defaults to `14`
+- **LIMA_BACKUP_KEEP** how many backup files to keep. Defaults to `7`
 - **LIMA_TRASH_DAYS** how long deleted projects stay in the trash (`<library>/.lima-trash/`) before they're deleted for good. Defaults to `30`; `0` turns the trash off so deletes are final
 - **LIMA_THINGIVERSE_TOKEN** Thingiverse app token, needed to import Thingiverse links. Create an app at https://www.thingiverse.com/apps/create (any name and URL work) and copy its **App Token**. It only reads public things. Keep it in your `env/` secrets (sops) like other credentials
 - **LIMA_COLLECTION_SYNC_HOURS** how long after its last check a collection imported with "keep in sync" is checked again for added and removed models. Defaults to `12`; `0` only syncs when you press Sync. Shown on the Sync page under Sync collections

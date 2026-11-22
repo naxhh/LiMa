@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Copy, ExternalLink, EyeOff, Layers, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, EyeOff, Layers, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { components } from "@/gen/openapi";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/format";
 import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
+import { BackupsBox } from "@/components/backups-box";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
@@ -139,12 +140,6 @@ export function AdminSyncPage() {
       <PageHero index="04" label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified">
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="ghost">
-            <Link to="/admin/backup">
-              <Archive />
-              Backups
-            </Link>
-          </Button>
-          <Button asChild variant="ghost">
             <Link to="/admin/trash">
               <Trash2 />
               Trash
@@ -188,14 +183,15 @@ export function AdminSyncPage() {
                   <DataSyncButtons busy={busy} running={running} onStart={(mode) => startM.mutate(mode)} />
                 </div>
                 <EmptyPanel>No sync has run yet. Start one to index the library folder.</EmptyPanel>
+                <IgnoredFolders />
               </section>
             )}
             <CollectionsSync selectedRunId={collectionRunId} />
+            <BackupsBox />
           </div>
           <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-5">
             {statusQ.data ? <WatcherCard watcher={statusQ.data.watcher} /> : null}
             <RunsList selectedId={collectionRunId ?? runId} live={running} />
-            <IgnoredFolders />
           </aside>
         </div>
       </PageBody>
@@ -738,6 +734,7 @@ function RunDetail({ runId, isLatest, actions }: { runId: string; isLatest: bool
 
         <StatsGrid stats={stats} />
         <EventLog runId={run.id} live={live} />
+        <IgnoredFolders />
       </section>
     </>
   );

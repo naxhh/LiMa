@@ -1,22 +1,14 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Archive, Download, FileUp, History, Loader2, RotateCcw } from "lucide-react";
+import { Archive, Download, FileUp, History, Loader2, RotateCcw } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { ApiError, apiGet, apiJson } from "@/lib/api";
 import { formatBytes, timeAgo } from "@/lib/format";
 import { apiErrorMessage } from "@/lib/tags";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { MicroLabel, PageBody, PageHero } from "@/components/layout";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MicroLabel } from "@/components/layout";
 
 type BackupsResponse = components["schemas"]["ListBackupsResponse"];
 type BackupFile = components["schemas"]["BackupFile"];
@@ -35,16 +27,15 @@ function runRestore(source: RestoreSource, dryRun: boolean) {
     : apiJson<RestoreReport>("POST", `/metadata/restore${q}`, source.backup);
 }
 
-export function AdminBackupPage() {
+/** Metadata backups as a job on the Sync page: back up now, the stored backups, export and restore. */
+export function BackupsBox() {
   const qc = useQueryClient();
   const backupsQ = useQuery({ queryKey: BACKUPS_KEY, queryFn: () => apiGet<BackupsResponse>("/metadata/backups") });
   const data = backupsQ.data;
-
   const createM = useMutation({
     mutationFn: () => apiJson<BackupFile>("POST", "/metadata/backups", {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: BACKUPS_KEY }),
   });
-
   const [restoring, setRestoring] = React.useState<RestoreSource | null>(null);
   const [fileError, setFileError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -63,17 +54,18 @@ export function AdminBackupPage() {
     }
   };
 
-  // Backups next to the database are lost together with it.
-  const sameDiskWarning = data && /(^|\/)state\/backups\/?$/.test(data.directory);
-
   return (
-    <div>
-      <PageHero
-        index="05"
-        label="Backup"
-        title="Metadata backup"
-        subtitle="Names, descriptions, covers, tags, collections and favourites · your files are never touched"
-      >
+    <section aria-labelledby="backups-h" className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id="backups-h" className="font-display text-xl font-semibold">
+            Backups
+          </h2>
+          <span className="font-mono text-xs text-muted-foreground">
+            names, descriptions, covers, tags, collections and favourites
+            {data ? ` · ${data.interval_hours ? `automatic every ${data.interval_hours} h` : "automatic backups off"} · keeping ${data.keep}` : ""}
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => createM.mutate()} disabled={createM.isPending}>
             {createM.isPending ? <Loader2 className="animate-spin" /> : <Archive />}
@@ -85,139 +77,67 @@ export function AdminBackupPage() {
               Download export
             </a>
           </Button>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="sr-only" id="backup-file" onChange={(e) => onFile(e.target.files?.[0])} />
+          <Button asChild variant="outline" title="Restore from an export or backup file. You’ll see what changes before anything is written.">
+            <label htmlFor="backup-file" className="cursor-pointer">
+              <FileUp />
+              Restore from file…
+            </label>
+          </Button>
         </div>
-      </PageHero>
+      </div>
 
-      <PageBody className="flex flex-col gap-6 pt-7 pb-16">
-        {createM.isError ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            Backup failed: {apiErrorMessage(createM.error)}
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-start gap-6">
-          <section aria-labelledby="stored-h" className="min-w-0 flex-[999_1_560px] overflow-hidden rounded-2xl border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4.5 pt-4 pb-3">
-              <h2 id="stored-h" className="font-display text-[17px] font-semibold">
-                Stored backups
-              </h2>
-              {data ? (
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {data.interval_hours ? `automatic every ${data.interval_hours} h` : "automatic backups off"} · keeping {data.keep}
-                </span>
-              ) : null}
-            </div>
-            {backupsQ.isLoading ? <div className="border-t px-4.5 py-3 text-sm text-muted-foreground">Loading…</div> : null}
-            {backupsQ.isError ? (
-              <div className="border-t px-4.5 py-3 text-sm text-destructive">{apiErrorMessage(backupsQ.error)}</div>
-            ) : null}
-            {data && data.items.length === 0 ? (
-              <div className="border-t px-4.5 py-6 text-sm text-muted-foreground">
-                No backups yet. The first automatic one is written a minute after the server starts, or use{" "}
-                <span className="text-foreground">Back up now</span>.
-              </div>
-            ) : null}
-            <ul>
-              {data?.items.map((b, i) => (
-                <li key={b.name} className="flex flex-wrap items-center gap-3 border-t px-4.5 py-2.5">
-                  <History className="size-4 shrink-0 text-dim" />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-[13px] font-medium">
-                      {new Date(b.created_at).toLocaleString()}
-                      {i === 0 ? <span className="ml-2 rounded bg-signal-soft px-1.5 py-px font-mono text-[10px] text-signal">LATEST</span> : null}
-                    </span>
-                    <span className="truncate font-mono text-[11px] text-muted-foreground">
-                      {b.name} · {formatBytes(b.size_bytes)} · {timeAgo(b.created_at)}
-                    </span>
-                  </span>
-                  <div className="flex gap-1.5">
-                    <Button asChild variant="ghost" size="icon-sm" className="text-muted-foreground">
-                      <a href={`/api/metadata/backups/${encodeURIComponent(b.name)}`} download aria-label={`Download ${b.name}`}>
-                        <Download />
-                      </a>
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setRestoring({ kind: "stored", name: b.name })}>
-                      <RotateCcw />
-                      Restore
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
-            <section aria-labelledby="upload-h" className="flex flex-col gap-3 rounded-2xl border bg-card p-4.5">
-              <h2 id="upload-h" className="font-display text-[17px] font-semibold">
-                Restore from a file
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Use an export or a backup file, for example after rebuilding the database from disk. You’ll see what
-                changes before anything is written.
-              </p>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="application/json,.json"
-                className="sr-only"
-                id="backup-file"
-                onChange={(e) => onFile(e.target.files?.[0])}
-              />
-              <Button asChild variant="outline" className="self-start">
-                <label htmlFor="backup-file" className="cursor-pointer">
-                  <FileUp />
-                  Choose backup file…
-                </label>
-              </Button>
-              {fileError ? <div className="text-sm text-destructive">{fileError}</div> : null}
-            </section>
-
-            <section aria-labelledby="where-h" className="flex flex-col gap-2.5 rounded-2xl border bg-card p-4.5">
-              <h2 id="where-h" className="font-display text-[17px] font-semibold">
-                Where backups go
-              </h2>
-              <code className="font-mono text-xs break-all text-muted-foreground">{data?.directory ?? "…"}</code>
-              {sameDiskWarning ? (
-                <p className="flex gap-2 text-sm text-warn">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <span>
-                    This is next to the database, so a lost disk takes both. Set <code className="font-mono">LIMA_BACKUP_DIR</code>{" "}
-                    to another disk, or download exports now and then.
-                  </span>
-                </p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                Configure with <code className="font-mono">LIMA_BACKUP_DIR</code>,{" "}
-                <code className="font-mono">LIMA_BACKUP_INTERVAL_HOURS</code> (0 turns it off) and{" "}
-                <code className="font-mono">LIMA_BACKUP_KEEP</code>.
-              </p>
-            </section>
-          </aside>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          Rebuilt the database or moved the library? Run a{" "}
-          <Link to="/admin/sync" className="text-signal underline-offset-4 hover:underline">
-            sync
-          </Link>{" "}
-          first so the projects exist, then restore.
+      {createM.isError ? <div className="text-sm text-destructive">Backup failed: {apiErrorMessage(createM.error)}</div> : null}
+      {fileError ? <div className="text-sm text-destructive">{fileError}</div> : null}
+      {backupsQ.isError ? <div className="text-sm text-destructive">{apiErrorMessage(backupsQ.error)}</div> : null}
+      {data && data.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No backups yet. The first automatic one is written a minute after the server starts, or use <span className="text-foreground">Back up now</span>.
         </p>
-      </PageBody>
+      ) : null}
+
+      {data && data.items.length > 0 ? (
+        <ul className="-mx-2 flex flex-col">
+          {data.items.map((b, i) => (
+            <li key={b.name} className="flex flex-wrap items-center gap-3 rounded-lg px-2 py-2 hover:bg-secondary/60">
+              <History className="size-4 shrink-0 text-dim" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[13px] font-medium">
+                  {new Date(b.created_at).toLocaleString()}
+                  {i === 0 ? <span className="ml-2 rounded bg-signal-soft px-1.5 py-px font-mono text-[10px] text-signal">LATEST</span> : null}
+                </span>
+                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  {formatBytes(b.size_bytes)} · {timeAgo(b.created_at)}
+                </span>
+              </span>
+              <div className="flex gap-1.5">
+                <Button asChild variant="ghost" size="icon-sm" className="text-muted-foreground">
+                  <a href={`/api/metadata/backups/${encodeURIComponent(b.name)}`} download aria-label={`Download ${b.name}`}>
+                    <Download />
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setRestoring({ kind: "stored", name: b.name })}>
+                  <RotateCcw />
+                  Restore
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground">Rebuilt the database or moved the library? Sync the data directories first so the projects exist, then restore.</p>
 
       {restoring ? (
         <RestoreDialog
           source={restoring}
           onClose={() => setRestoring(null)}
           onDone={() => {
-            qc.invalidateQueries({ queryKey: ["projects"] });
-            qc.invalidateQueries({ queryKey: ["project"] });
-            qc.invalidateQueries({ queryKey: ["tags"] });
-            qc.invalidateQueries({ queryKey: ["collections"] });
-            qc.invalidateQueries({ queryKey: ["collection"] });
+            for (const key of ["projects", "project", "tags", "collections", "collection"]) void qc.invalidateQueries({ queryKey: [key] });
           }}
         />
       ) : null}
-    </div>
+    </section>
   );
 }
 
