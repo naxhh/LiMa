@@ -39,7 +39,19 @@ Environmentals:
 - **LIMA_DATABASE_URL** defaults to `sqlite:$LIMA_STATE_DIR/lima.db?mode=rwc` (created if missing)
 - **LIMA_UI_DIR** built UI served at `/`. Defaults to `ui/dist`
 - **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable
+- **LIMA_BACKUP_DIR** automatic metadata backups. Defaults to `$LIMA_STATE_DIR/backups`; put it on a different disk than the database
+- **LIMA_BACKUP_INTERVAL_HOURS** hours between automatic backups (only written when something changed). Defaults to `24`; `0` disables
+- **LIMA_BACKUP_KEEP** how many backup files to keep. Defaults to `14`
 
 Missing library and state folders are created on start. For containers, mount the library
 (read/write: uploads and deletes write to it) and the state folder as volumes, e.g.
 `LIMA_LIBRARY_DIR=/library LIMA_STATE_DIR=/state`.
+
+### Metadata backup and restore
+
+Files on disk are the source of truth; names, descriptions, covers, tags, collections and
+favourites live only in the database. LiMa writes a JSON backup of them to `LIMA_BACKUP_DIR`
+every day, and the **Sync → Backups** page lets you back up now, download an export, and
+restore. To recover after losing the database: start LiMa, run a sync so the projects exist
+again, then restore the latest backup. Projects are matched by folder; a folder renamed since
+the backup is matched by its files' hashes.

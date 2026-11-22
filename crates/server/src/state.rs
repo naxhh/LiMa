@@ -11,4 +11,8 @@ pub struct AppState {
     /// Outgoing HTTP client for URL imports and the Bambu login.
     pub http: lima_importers::HttpClient,
     pub imports: crate::routes::imports::ImportJobs,
+    /// Automatic metadata backups; `None` when disabled.
+    pub auto_backup: Option<crate::backups::AutoBackup>,
+    /// How many backup files to keep.
+    pub backup_keep: usize,
 }

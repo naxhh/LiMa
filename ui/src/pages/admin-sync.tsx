@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { Archive, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { ApiError, apiGet, apiJson } from "@/lib/api";
@@ -144,6 +144,12 @@ export function AdminSyncPage() {
           >
             <ShieldCheck />
             Full sync &amp; verify
+          </Button>
+          <Button asChild variant="ghost">
+            <Link to="/admin/backup">
+              <Archive />
+              Backups
+            </Link>
           </Button>
         </div>
       </PageHero>
