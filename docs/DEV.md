@@ -1,5 +1,15 @@
 # LIMA: Dev notes
 
+## Run everything
+
+```bash
+./scripts/dev.sh
+```
+
+Starts the server (rebuilt on change via `cargo watch`, port 6767) and the Vite UI
+(hot reload, port 5173, bound to 0.0.0.0, proxies `/api` and `/media`).
+Running it again replaces a previous instance. Open `http://<host>:5173`.
+
 ## Server
 
 ```bash
