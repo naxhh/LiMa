@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(src.as_deref(), Some("https://example.com/m/1"));
 
         // Search sees the restored names and tags.
-        let hits = crate::queries::projects_search::search_projects(pool, "gift", 10, None).await.unwrap();
+        let hits = crate::queries::projects_search::search_projects(pool, "gift", 10, None, &Default::default()).await.unwrap();
         assert_eq!(hits.len(), 1);
 
         // Restoring twice changes nothing more.

@@ -809,9 +809,15 @@ export interface components {
         };
         ListProjectsParams: {
             cursor?: string | null;
+            /** @description Comma-separated model file extensions (`STL,3MF`); projects must have one of them. */
+            formats?: string | null;
             /** Format: int64 */
             limit?: number | null;
+            /** @description Only projects without images. */
+            no_image?: boolean | null;
             query?: string | null;
+            /** @description Comma-separated tag ids; projects must have all of them. */
+            tags?: string | null;
         };
         ListProjectsResponse: {
             items: components["schemas"]["ProjectListItem"][];
@@ -2173,6 +2179,12 @@ export interface operations {
                 cursor?: string;
                 /** @description Search query to filter projects */
                 query?: string;
+                /** @description Comma-separated tag ids; projects must have all of them */
+                tags?: string;
+                /** @description Comma-separated model extensions (STL,3MF,...); projects must have at least one */
+                formats?: string;
+                /** @description Only projects without images */
+                no_image?: boolean;
             };
             header?: never;
             path?: never;

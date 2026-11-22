@@ -1,6 +1,7 @@
 
 use lima_domain::models::project::ProjectRow;
 use lima_domain::pagination::Cursor;
+use crate::queries::projects::{ProjectFilter, filter_sql};
 use sqlx::{Pool, Sqlite, FromRow};
 
 #[derive(Debug)]
@@ -58,21 +59,24 @@ pub async fn search_projects(
     query: &str,
     limit: i64,
     cursor: Option<Cursor>,
+    filter: &ProjectFilter,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
     let Some(fts) = to_fts_query(query) else { return Ok(Vec::new()) };
     let query = fts.as_str();
     match cursor {
-        None => { search_projects_from_start(pool, query, limit).await }
-        Some(cursor) => { search_projects_from_cursor(pool, query, limit, &cursor).await }
+        None => { search_projects_from_start(pool, query, limit, filter).await }
+        Some(cursor) => { search_projects_from_cursor(pool, query, limit, &cursor, filter).await }
     }
 }
 
 async fn search_projects_from_start(
     pool: &Pool<Sqlite>,
     query: &str,
-    limit: i64
+    limit: i64,
+    filter: &ProjectFilter,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, SearchRow>(
+    let (tags, formats, no_image) = filter.binds();
+    let sql = format!(
         r#"
         SELECT
             COALESCE(bm25(projects_fts), 0.0) AS rank,
@@ -87,12 +91,18 @@ async fn search_projects_from_start(
         FROM projects_fts
         JOIN projects p ON projects_fts.project_id = p.id
         WHERE projects_fts MATCH ?1
+        {filter}
         ORDER BY rank ASC, p.updated_at DESC, p.id DESC
         LIMIT ?2
         "#,
-    )
+        filter = filter_sql(3, 4, 5)
+    );
+    let rows = sqlx::query_as::<_, SearchRow>(&sql)
     .bind(query)
     .bind(limit)
+    .bind(tags)
+    .bind(formats)
+    .bind(no_image)
     .fetch_all(pool)
     .await?;
 
@@ -103,9 +113,11 @@ async fn search_projects_from_cursor(
     pool: &Pool<Sqlite>,
     query: &str,
     limit: i64,
-    cursor: &Cursor
+    cursor: &Cursor,
+    filter: &ProjectFilter,
 ) -> Result<Vec<SearchProjectRow>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, SearchRow>(
+    let (tags, formats, no_image) = filter.binds();
+    let sql = format!(
         r#"
         WITH ranked AS(
             SELECT
@@ -121,6 +133,7 @@ async fn search_projects_from_cursor(
             FROM projects_fts
             JOIN projects p ON projects_fts.project_id = p.id
             WHERE projects_fts MATCH ?1
+            {filter}
         )
         SELECT *
         FROM ranked
@@ -130,12 +143,17 @@ async fn search_projects_from_cursor(
         ORDER BY rank ASC, updated_at DESC, id DESC
         LIMIT ?5
         "#,
-    )
+        filter = filter_sql(6, 7, 8)
+    );
+    let rows = sqlx::query_as::<_, SearchRow>(&sql)
      .bind(query)
      .bind(cursor.rank)
      .bind(cursor.updated_at.clone())
     .bind(cursor.id.clone())
     .bind(limit)
+    .bind(tags)
+    .bind(formats)
+    .bind(no_image)
     .fetch_all(pool)
     .await?;
 

@@ -58,7 +58,16 @@ function HeaderSearch() {
     setValue(next);
     if (onLibrary) {
       const trimmed = next.trim();
-      setParams(trimmed ? { query: trimmed } : {}, { replace: true });
+      // Keep the other library filters (tags, formats) while typing.
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (trimmed) next.set("query", trimmed);
+          else next.delete("query");
+          return next;
+        },
+        { replace: true },
+      );
     }
   };
 
