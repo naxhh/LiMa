@@ -516,6 +516,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/assets/{asset_id}/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["zip_contents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/assets/{asset_id}/zip/entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["zip_entry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/download": {
         parameters: {
             query?: never;
@@ -985,6 +1017,14 @@ export interface components {
              */
             unhashed_files: number;
         };
+        ExtractSummary: {
+            /** @description Zip files that were extracted. */
+            archives: number;
+            /** @description Files taken out of them. */
+            files: number;
+            /** @description Entries left out (password protected or unsupported compression), as `archive.zip/path`. */
+            skipped: string[];
+        };
         HealthResponse: {
             db: boolean;
         };
@@ -1044,7 +1084,17 @@ export interface components {
         };
         ImportProjectRequest: {
             bundle_id: string;
+            /** @description Extract zip files into the project, keeping their folders. Default false. */
+            extract_zips?: boolean;
+            /** @description With `extract_zips`, also keep the original archives. Default false. */
+            keep_zips?: boolean;
             new_main_image?: string | null;
+        };
+        ImportProjectResponse: {
+            /** @description What extracting zips did (all zero when `extract_zips` was off or there were none). */
+            extracted: components["schemas"]["ExtractSummary"];
+            /** @description Files added to the project. */
+            imported: number;
         };
         LibraryStatsResponse: {
             /** Format: int64 */
@@ -1312,10 +1362,14 @@ export interface components {
         StartImportRequest: {
             /** @description Defaults to the model description. */
             description?: string | null;
+            /** @description Extract downloaded zip files, keeping their folders (default false). */
+            extract_zips?: boolean;
             /** @description Ids from the preview's `files` to download. */
             file_ids?: string[];
             /** @description Download the model images too (default true). */
             include_images?: boolean | null;
+            /** @description With `extract_zips`, also keep the original archives (default false). */
+            keep_zips?: boolean;
             /** @description Project name; defaults to the model name. */
             name?: string | null;
             /** @description Defaults to the model tags. */
@@ -1469,6 +1523,30 @@ export interface components {
             last_triggered_at?: string | null;
             /** @description Project folders with changes waiting for the next watcher run. */
             pending_folders: string[];
+        };
+        ZipContentsResponse: {
+            entries: components["schemas"]["ZipEntry"][];
+            /**
+             * Format: int64
+             * @description Uncompressed size of all listed files.
+             */
+            total_size: number;
+            /** @description The archive has more files than were listed (5,000). */
+            truncated: boolean;
+        };
+        ZipEntry: {
+            /** Format: int64 */
+            compressed_size: number;
+            /** @description Password protected: listed, but can't be opened. */
+            encrypted: boolean;
+            /** @description `model`, `image` or `other`, like assets. */
+            kind: string;
+            /** @description Path inside the archive, `/`-separated. */
+            path: string;
+            /** Format: int64 */
+            size: number;
+            /** @description Whether it can be opened (not encrypted, supported compression). */
+            supported: boolean;
         };
     };
     responses: never;
@@ -3113,6 +3191,99 @@ export interface operations {
             };
         };
     };
+    zip_contents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Files inside the zip (folders, links and OS clutter left out) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZipContentsResponse"];
+                };
+            };
+            /** @description Not a zip file */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Asset not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not a readable zip */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    zip_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+                /** @description Path inside the archive, as listed. */
+                path: string;
+                /** @description Send as a download instead of inline. */
+                download: boolean;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file, streamed out of the zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Asset or file not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Password protected or unsupported compression */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     project_download: {
         parameters: {
             query?: never;
@@ -3248,12 +3419,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Project imported successfully */
+            /** @description Files imported */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ImportProjectResponse"];
+                };
             };
             /** @description Bad request */
             400: {
@@ -3284,6 +3457,15 @@ export interface operations {
             };
             /** @description Precondition failed */
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description A zip is too large to extract (limits: 10,000 files, 8 GiB) */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

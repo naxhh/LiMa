@@ -72,13 +72,15 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 | PUT | `/projects/{project_id}/favourite` | Add the project to Favourites |
 | DELETE | `/projects/{project_id}/favourite` | Remove the project from Favourites |
 | PATCH | `/projects/{project_id}` | Update project metadata (name, description, main image) |
-| POST | `/projects/{project_id}/import` | Import bundle into project (move files, create assets, set main image) |
+| POST | `/projects/{project_id}/import` | Import bundle into project (move files, create assets, set main image). `extract_zips: true` extracts zip files first, keeping their folders (`keep_zips` keeps the archives too); limits 10,000 files and 8 GiB, `../` paths and links rejected |
 
 ### Assets
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | DELETE | `/projects/{project_id}/assets/{asset_id}` | Remove asset |
+| GET | `/projects/{project_id}/assets/{asset_id}/zip` | Files inside a zip asset, read in place (nothing is extracted) |
+| GET | `/projects/{project_id}/assets/{asset_id}/zip/entry?path=` | Stream one file out of a zip asset (`download=true` for an attachment) |
 
 ### Tags
 

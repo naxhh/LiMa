@@ -13,6 +13,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FileDropzone } from "@/components/file-dropzone";
+import { ZipExtractOptions } from "@/components/zip-extract-options";
+import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
 
 type CreateBundleResponse = {
   id: string;
@@ -23,6 +25,8 @@ type CreateBundleResponse = {
 type ImportProjectRequest = {
   bundle_id: string;
   new_main_image?: string | null; // filename
+  extract_zips?: boolean;
+  keep_zips?: boolean;
 };
 
 function getApiErrorMessage(e: unknown): string {
@@ -45,6 +49,8 @@ export function ImportAssetsDialog({
   const [files, setFiles] = React.useState<File[]>([]);
   const [bundleId, setBundleId] = React.useState<string | null>(null);
   const [mainImageName, setMainImageName] = React.useState<string>("");
+  const [zipPrefs, setZipPrefs] = useZipPrefs();
+  const zipCount = files.filter((f) => f.name.toLowerCase().endsWith(".zip")).length;
 
   const createBundleM = useMutation({
     mutationFn: async (currentFiles: File[]) => {
@@ -64,6 +70,7 @@ export function ImportAssetsDialog({
       const payload: ImportProjectRequest = {
         bundle_id: bundleId,
         new_main_image: mainImageName.trim() ? mainImageName.trim() : undefined,
+        ...zipFields(zipPrefs, files.map((f) => f.name)),
       };
       await apiJsonNoResponse("POST", `/projects/${projectId}/import`, payload);
     },
@@ -120,6 +127,8 @@ export function ImportAssetsDialog({
                   ? "Bundle not ready yet."
                   : "Add files to create a bundle."}
           </div>
+
+          <ZipExtractOptions count={zipCount} value={zipPrefs} onChange={setZipPrefs} />
 
           {imageFiles.length > 0 ? (
             <div className="space-y-1">

@@ -18,3 +18,10 @@ export function libraryUrl(projectFolderPath: string, filePath: string) {
 export function projectDownloadUrl(projectId: string) {
   return `/api/projects/${encodeURIComponent(projectId)}/download`;
 }
+
+/** A file inside a zip asset, streamed out of the archive. */
+export function zipEntryUrl(projectId: string, assetId: string, path: string, download = false) {
+  const q = new URLSearchParams({ path });
+  if (download) q.set("download", "true");
+  return `/api/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/zip/entry?${q}`;
+}

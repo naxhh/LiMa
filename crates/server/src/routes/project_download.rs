@@ -192,7 +192,7 @@ fn archive_name(folder_path: &str) -> String {
 }
 
 /// `attachment` with an ASCII fallback plus the exact UTF-8 name (RFC 6266 / 5987).
-fn content_disposition(name: &str) -> HeaderValue {
+pub(crate) fn content_disposition(name: &str) -> HeaderValue {
     let ascii: String =
         name.chars().map(|c| if c.is_ascii_graphic() && c != '"' && c != '\\' || c == ' ' { c } else { '_' }).collect();
     let encoded: String = name
