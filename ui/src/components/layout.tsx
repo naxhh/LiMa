@@ -272,9 +272,9 @@ export function PageHero({
             // {index} — {label.toUpperCase()}
           </span>
           <h1 className="font-display text-4xl leading-none font-semibold tracking-[-0.03em] sm:text-[52px]">{title}</h1>
-          <div className="font-mono text-[13px] text-muted-foreground line-clamp-2 sm:truncate">{subtitle ?? "\u00A0"}</div>
+          <div className="min-h-[2lh] font-mono text-[13px] text-muted-foreground line-clamp-2 sm:min-h-0 sm:truncate">{subtitle ?? "\u00A0"}</div>
         </div>
-        {children}
+        {children ? <div className="hidden shrink-0 sm:flex">{children}</div> : null}
       </div>
     </section>
   );
