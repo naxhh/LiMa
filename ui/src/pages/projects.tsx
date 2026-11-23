@@ -17,6 +17,8 @@ import { SortSelect } from "@/components/sort-select";
 import { BulkBar } from "@/components/bulk-bar";
 import { Button } from "@/components/ui/button";
 import { useSelection } from "@/lib/selection";
+import { useGridKeys } from "@/lib/grid-keys";
+import { GridKeyDialogs } from "@/components/grid-key-dialogs";
 import { ListChecks } from "lucide-react";
 import { LIBRARY_SORTS, PAGE_SIZE, useViewPrefs, type SortOption } from "@/lib/view-prefs";
 
@@ -120,7 +122,17 @@ export function ProjectsPage() {
   };
 
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+  const gridRef = React.useRef<HTMLDivElement | null>(null);
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = projectsQ;
+  const grid = useGridKeys({
+    items,
+    listKey: `${debouncedQ}|${searching ? "" : sortOption.id}`,
+    gridRef,
+    selection,
+    onSelectAll: () => void selectAllMatching(),
+    hasNextPage,
+    fetchNextPage: () => !isFetchingNextPage && fetchNextPage(),
+  });
   React.useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -223,7 +235,7 @@ export function ProjectsPage() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
+        <div ref={gridRef} className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
           {projectsQ.isLoading
             ? Array.from({ length: 8 }, (_, i) => <ProjectCardSkeleton key={i} />)
             : items.map((p) => (
@@ -231,6 +243,8 @@ export function ProjectsPage() {
                   key={p.id}
                   project={p}
                   selection={selection.active ? { selected: selection.isSelected(p.id), onToggle: (range) => selection.toggle(p.id, range) } : undefined}
+                  focused={grid.focusedId === p.id}
+                  onOpen={grid.remember}
                 />
               ))}
         </div>
@@ -247,6 +261,7 @@ export function ProjectsPage() {
       <BulkBar
         selection={selection}
         total={!projectsQ.hasNextPage ? items.length : !searching && stats ? stats.projects : null} onSelectAll={() => void selectAllMatching()} />
+      <GridKeyDialogs grid={grid} />
     </div>
   );
 }

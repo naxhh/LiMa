@@ -91,9 +91,9 @@ export function BulkBar({ selection, total, onSelectAll }: { selection: Selectio
   );
 }
 
-type DialogProps = { open: boolean; count: number; onClose: () => void; onRun: (a: BulkAction) => void };
+export type BulkDialogProps = { open: boolean; count: number; onClose: () => void; onRun: (a: BulkAction) => void };
 
-function BulkTagsDialog({ open, count, onClose, onRun }: DialogProps) {
+export function BulkTagsDialog({ open, count, onClose, onRun }: BulkDialogProps) {
   const [text, setText] = React.useState("");
   const tags = useAllTags().data ?? [];
   React.useEffect(() => {
@@ -143,7 +143,7 @@ function BulkTagsDialog({ open, count, onClose, onRun }: DialogProps) {
   );
 }
 
-function BulkCollectionsDialog({ open, count, onClose, onRun }: DialogProps) {
+export function BulkCollectionsDialog({ open, count, onClose, onRun }: BulkDialogProps) {
   const all = useCollections().data ?? [];
   const favourites = all.find((c) => c.is_favourites);
   const collections = all.filter((c) => !c.is_favourites);
@@ -191,7 +191,7 @@ function BulkCollectionsDialog({ open, count, onClose, onRun }: DialogProps) {
   );
 }
 
-function BulkDeleteDialog({ open, count, onClose, onRun }: DialogProps) {
+export function BulkDeleteDialog({ open, count, onClose, onRun }: BulkDialogProps) {
   const days = useTrash().data?.retention_days ?? 0;
   const choice = "group rounded-xl border p-3.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
   return (

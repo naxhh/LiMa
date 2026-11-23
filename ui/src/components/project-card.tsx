@@ -34,11 +34,17 @@ export function ProjectCard({
   onRemove,
   removeLabel = "Remove",
   selection,
+  focused = false,
+  onOpen,
 }: {
   project: ProjectListItem;
   onRemove?: () => void;
   removeLabel?: string;
   selection?: { selected: boolean; onToggle: (range: boolean) => void };
+  /** The keyboard cursor is on this card. */
+  focused?: boolean;
+  /** Called when a click opens the project (not while selecting). */
+  onOpen?: () => void;
 }) {
   const [picker, setPicker] = React.useState<"tags" | "collections" | null>(null);
   const extraTags = p.tags.length - MAX_TAGS;
@@ -46,11 +52,11 @@ export function ProjectCard({
   const cover = p.main_image_id ?? p.preview_id;
 
   return (
-    <div className="group relative transition-transform hover:-translate-y-0.5">
+    <div className="group relative scroll-mt-24 scroll-mb-28 transition-transform hover:-translate-y-0.5">
       <Link
         to={`/projects/${p.id}`}
         onClick={(e) => {
-          if (!selection) return;
+          if (!selection) return onOpen?.();
           e.preventDefault();
           selection.onToggle(e.shiftKey);
         }}
@@ -59,6 +65,7 @@ export function ProjectCard({
           "flex h-full flex-col overflow-hidden rounded-[14px] border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           selection?.selected && "border-signal ring-2 ring-signal group-hover:border-signal",
           selection && "select-none",
+          focused && "ring-2 ring-signal ring-offset-2 ring-offset-background",
         )}
       >
         <div className="corners relative aspect-[4/3] overflow-hidden border-b bg-thumb">

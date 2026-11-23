@@ -28,6 +28,8 @@ import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
 import { SortSelect } from "@/components/sort-select";
 import { BulkBar } from "@/components/bulk-bar";
 import { useSelection } from "@/lib/selection";
+import { useGridKeys } from "@/lib/grid-keys";
+import { GridKeyDialogs } from "@/components/grid-key-dialogs";
 import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
 import { CollectionSourceBar } from "@/components/collection-source-bar";
@@ -47,6 +49,8 @@ function CollectionDetailInner({ id }: { id: string }) {
   const collectionQ = useCollection(id, view.sort.id === COLLECTION_SORTS[0].id ? undefined : view.sort);
   const c = collectionQ.data;
   const selection = useSelection(c?.projects.map((p) => p.id) ?? []);
+  const gridRef = React.useRef<HTMLDivElement | null>(null);
+  const grid = useGridKeys({ items: c?.projects ?? [], listKey: `${id}|${view.sort.id}`, gridRef, selection });
   const setParams = (changes: Record<string, string | null>) =>
     setSearchParams(
       (prev) => {
@@ -206,7 +210,7 @@ function CollectionDetailInner({ id }: { id: string }) {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
+        <div ref={gridRef} className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))] sm:gap-5">
           {!c
             ? Array.from({ length: 4 }, (_, i) => <ProjectCardSkeleton key={i} />)
             : c.projects.map((p) => (
@@ -216,11 +220,14 @@ function CollectionDetailInner({ id }: { id: string }) {
                   onRemove={() => removeM.mutate(p.id)}
                   removeLabel={c.is_favourites ? "Remove from favourites" : "Remove from this collection"}
                   selection={selection.active ? { selected: selection.isSelected(p.id), onToggle: (range) => selection.toggle(p.id, range) } : undefined}
+                  focused={grid.focusedId === p.id}
+                  onOpen={grid.remember}
                 />
               ))}
         </div>
       </PageBody>
       <BulkBar selection={selection} total={c?.projects.length ?? 0} />
+      <GridKeyDialogs grid={grid} />
 
       {c ? <CollectionFormDialog collection={c} open={editing} onOpenChange={setEditing} /> : null}
 
