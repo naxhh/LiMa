@@ -14,11 +14,70 @@ import type { ViewerFormat } from "@/lib/viewer";
 
 type Stats = { size: [number, number, number]; triangles: number };
 
-const MODEL_COLOR = 0x9fb4c7;
+/** Neutral body colour the accent is mixed into (see `--signal` in index.css). */
+const NEUTRAL = new THREE.Color(0x9fb4c7);
 
-async function loadObject(url: string, format: ViewerFormat, onProgress: (p: number) => void): Promise<THREE.Object3D> {
+type Tint = "neutral" | "mist" | "tint" | "glow";
+type TintParams = { color: THREE.Color; emissive: THREE.Color; emissiveIntensity: number };
+
+const TINTS: { id: Tint; label: string }[] = [
+  { id: "neutral", label: "Neutral" },
+  { id: "mist", label: "Mist" },
+  { id: "tint", label: "Tint" },
+  { id: "glow", label: "Glow" },
+];
+
+/** How much of the accent colour goes into the body, per tint. */
+const TINT_MIX: Record<Tint, number> = { neutral: 0, mist: 0.18, tint: 0.35, glow: 0.18 };
+
+/** The body colour for a tint: the neutral colour lerped toward the accent. */
+function tintBody(signal: string, tint: Tint): THREE.Color {
+  return NEUTRAL.clone().lerp(new THREE.Color(signal), TINT_MIX[tint]);
+}
+
+function tintParams(signal: string, tint: Tint): TintParams {
+  const accent = new THREE.Color(signal);
+  return {
+    color: tintBody(signal, tint),
+    emissive: tint === "glow" ? accent : new THREE.Color(0x000000),
+    emissiveIntensity: tint === "glow" ? 0.08 : 0,
+  };
+}
+
+/** The body material, tagged so the tint only recolours the parts we painted (not 3MF colours). */
+function bodyMaterial(): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({ color: NEUTRAL, roughness: 0.6, metalness: 0.08, flatShading: false });
+  material.userData.limaBody = true;
+  return material;
+}
+
+const TINT_KEY = "lima.viewer.tint";
+
+function readTint(): Tint {
+  try {
+    const saved = localStorage.getItem(TINT_KEY);
+    if (saved === "neutral" || saved === "mist" || saved === "tint" || saved === "glow") return saved;
+  } catch {
+    // localStorage unavailable; fall through to the default.
+  }
+  return "mist";
+}
+
+function writeTint(tint: Tint) {
+  try {
+    localStorage.setItem(TINT_KEY, tint);
+  } catch {
+    // localStorage unavailable.
+  }
+}
+
+/** The accent colour the current theme exposes (see `--signal`). */
+function readSignal(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue("--signal").trim() || "#0e9f83";
+}
+
+async function loadObject(url: string, format: ViewerFormat, onProgress: (p: number) => void, material: () => THREE.MeshStandardMaterial): Promise<THREE.Object3D> {
   const progress = (e: ProgressEvent) => e.total && onProgress(e.loaded / e.total);
-  const material = () => new THREE.MeshStandardMaterial({ color: MODEL_COLOR, roughness: 0.6, metalness: 0.08, flatShading: false });
   if (format === "stl") {
     const geometry = await new STLLoader().loadAsync(url, progress);
     if (!geometry.attributes.normal) geometry.computeVertexNormals();
@@ -61,12 +120,16 @@ function disposeObject(obj: THREE.Object3D) {
 
 export default function ModelViewerCanvas({ url, format }: { url: string; format: ViewerFormat }) {
   const mountRef = React.useRef<HTMLDivElement | null>(null);
-  const api = React.useRef<{ reset: () => void; wireframe: (on: boolean) => void } | null>(null);
+  const api = React.useRef<{ reset: () => void; wireframe: (on: boolean) => void; tint: (params: TintParams) => void } | null>(null);
   const [progress, setProgress] = React.useState(0);
   const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [wire, setWire] = React.useState(false);
+  const [tint, setTint] = React.useState<Tint>(readTint);
+  const [signal, setSignal] = React.useState(readSignal);
+  const tintRef = React.useRef(tint);
+  const signalRef = React.useRef(signal);
 
   React.useEffect(() => {
     const mount = mountRef.current;
@@ -112,7 +175,7 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
     let object: THREE.Object3D | null = null;
     let grid: THREE.GridHelper | null = null;
 
-    loadObject(url, format, setProgress)
+    loadObject(url, format, setProgress, bodyMaterial)
       .then((obj) => {
         if (disposed) return disposeObject(obj);
         object = obj;
@@ -154,7 +217,21 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
             obj.traverse((o) => {
               if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.wireframe = on;
             }),
+          tint: (params) =>
+            obj.traverse((o) => {
+              if (o instanceof THREE.Mesh) {
+                for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+                  if (m instanceof THREE.MeshStandardMaterial && m.userData.limaBody) {
+                    m.color.copy(params.color);
+                    m.emissive.copy(params.emissive);
+                    m.emissiveIntensity = params.emissiveIntensity;
+                  }
+                }
+              }
+            }),
         };
+        // Paint with the current tint/theme before showing (loading may have overlapped a change).
+        api.current.tint(tintParams(signalRef.current, tintRef.current));
         setLoaded(true);
       })
       .catch((e: unknown) => {
@@ -173,6 +250,26 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
       api.current = null;
     };
   }, [url, format]);
+
+  // Persist the choice and repaint the loaded model when it changes.
+  React.useEffect(() => {
+    tintRef.current = tint;
+    writeTint(tint);
+    api.current?.tint(tintParams(signalRef.current, tint));
+  }, [tint]);
+
+  // Repaint when the theme flips and `--signal` changes.
+  React.useEffect(() => {
+    signalRef.current = signal;
+    api.current?.tint(tintParams(signal, tintRef.current));
+  }, [signal]);
+
+  // The theme toggles a class on <html>; re-read `--signal` and recolor live.
+  React.useEffect(() => {
+    const observer = new MutationObserver(() => setSignal(readSignal()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="absolute inset-0">
@@ -202,7 +299,23 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
 
       {loaded ? (
         <>
-          <div className="absolute right-4 bottom-4 z-[3] flex gap-1.5">
+          <div className="absolute right-4 bottom-4 z-[3] flex items-center gap-1.5">
+            <div className="flex items-center gap-1 rounded-full border border-white/15 bg-black/55 p-1 backdrop-blur">
+              {TINTS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTint(t.id)}
+                  aria-label={`Model colour: ${t.label}`}
+                  title={`Model colour: ${t.label}`}
+                  className={cn(
+                    "size-3.5 rounded-full border border-white/20",
+                    tint === t.id && "ring-2 ring-signal ring-offset-1 ring-offset-black/40",
+                  )}
+                  style={{ background: `#${tintBody(signal, t.id).getHexString()}` }}
+                />
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => {
