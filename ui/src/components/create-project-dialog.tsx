@@ -45,7 +45,7 @@ type ImportProjectRequest = {
 
 function getApiErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    const body = e.body as any;
+    const body = e.body as { error?: { message?: string }; message?: string } | null;
     const msg = body?.error?.message || body?.message;
     return msg ? `${msg}` : `Request failed (${e.status})`;
   }
@@ -69,11 +69,24 @@ function parseTags(input: string): string[] {
   return out;
 }
 
-export function CreateProjectDialog() {
+export function CreateProjectDialog({
+  open,
+  onOpenChange,
+  showTrigger = false,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
+}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const isOpen = open ?? uncontrolledOpen;
+  const setOpen = (v: boolean) => {
+    setUncontrolledOpen(v);
+    onOpenChange?.(v);
+  };
 
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -150,7 +163,7 @@ export function CreateProjectDialog() {
 
   return (
     <Dialog
-      open={open}
+      open={isOpen}
       onOpenChange={(v) => {
         setOpen(v);
         if (!v) {
@@ -160,12 +173,14 @@ export function CreateProjectDialog() {
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button aria-label="New project">
-          <Plus strokeWidth={2.4} />
-          <span className="hidden sm:inline">New project</span>
-        </Button>
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button aria-label="New project">
+            <Plus strokeWidth={2.4} />
+            <span className="hidden sm:inline">New project</span>
+          </Button>
+        </DialogTrigger>
+      ) : null}
 
       <DialogContent>
         <DialogHeader>

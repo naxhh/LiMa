@@ -46,10 +46,23 @@ function groupFiles(files: PreviewFile[]): [string, PreviewFile[]][] {
   return [...groups.entries()];
 }
 
-export function ImportUrlDialog() {
+export function ImportUrlDialog({
+  open,
+  onOpenChange,
+  showTrigger = false,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
+}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const isOpen = open ?? uncontrolledOpen;
+  const setOpen = (v: boolean) => {
+    setUncontrolledOpen(v);
+    onOpenChange?.(v);
+  };
 
   const [url, setUrl] = React.useState("");
   const [preview, setPreview] = React.useState<Preview | null>(null);
@@ -95,7 +108,7 @@ export function ImportUrlDialog() {
   });
 
   const needsLogin = !!preview?.login_required && selected.size > 0;
-  const bambuQ = useBambuStatus(open && needsLogin);
+  const bambuQ = useBambuStatus(isOpen && needsLogin);
   const loggedIn = bambuQ.data?.logged_in ?? false;
 
   const selectedNames = (preview?.files ?? []).filter((f) => selected.has(f.id)).map((f) => f.name);
@@ -162,19 +175,21 @@ export function ImportUrlDialog() {
 
   return (
     <Dialog
-      open={open}
+      open={isOpen}
       onOpenChange={(v) => {
         if (running) return;
         setOpen(v);
         if (!v) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="outline" aria-label="Import from URL">
-          <Link2 strokeWidth={2.4} />
-          <span className="hidden lg:inline">Import URL</span>
-        </Button>
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button variant="outline" aria-label="Import from URL">
+            <Link2 strokeWidth={2.4} />
+            <span className="hidden lg:inline">Import URL</span>
+          </Button>
+        </DialogTrigger>
+      ) : null}
 
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>

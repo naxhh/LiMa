@@ -1,12 +1,24 @@
 import * as React from "react";
-import { Link, NavLink, useLocation, useSearchParams } from "react-router-dom";
-import { Layers, LayoutGrid, Search, Settings2, Tag as TagIcon } from "lucide-react";
+import { Link, NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { FolderPlus, Layers, LayoutGrid, Link as LinkIcon, Plus, Search, Settings2, Tag as TagIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CreateActionsContext, useCreateActions, type CreateActions } from "@/lib/create-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { ImportUrlDialog } from "@/components/import-url-dialog";
+import { CollectionFormDialog } from "@/components/collection-form-dialog";
+import { TagFormDialog } from "@/components/tag-form-dialog";
 import { SearchPalette } from "@/components/search-palette";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type NavItem = {
   to: string;
@@ -88,6 +100,54 @@ function HeaderSearch() {
   );
 }
 
+type CreateKey = "project" | "import" | "collection" | "tag";
+
+const CREATE_ITEMS: { key: CreateKey; label: string; icon: React.ComponentType<{ className?: string }>; hint: string; action: keyof CreateActions }[] = [
+  { key: "project", label: "New project", icon: FolderPlus, hint: "p", action: "openProject" },
+  { key: "import", label: "Import from URL", icon: LinkIcon, hint: "i", action: "openImport" },
+  { key: "collection", label: "New collection", icon: Layers, hint: "c", action: "openCollection" },
+  { key: "tag", label: "New tag", icon: TagIcon, hint: "t", action: "openTag" },
+];
+
+/** The page decides the order: collections lead with New collection, tags pages with New tag. */
+function createOrder(pathname: string): CreateKey[] {
+  if (pathname.startsWith("/collections")) return ["collection", "project", "import", "tag"];
+  if (pathname === "/tags" || pathname.startsWith("/admin/tags")) return ["tag", "project", "import", "collection"];
+  return ["project", "import", "collection", "tag"];
+}
+
+/** One primary `+` button that opens the create menu. */
+function NewButton() {
+  const location = useLocation();
+  const actions = useCreateActions();
+  const order = createOrder(location.pathname);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label="Create">
+          <Plus strokeWidth={2.4} />
+          <span className="hidden sm:inline">New</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {order.map((key) => {
+          const item = CREATE_ITEMS.find((x) => x.key === key)!;
+          return (
+            <React.Fragment key={key}>
+              <DropdownMenuItem onSelect={() => actions[item.action]()}>
+                <item.icon />
+                {item.label}
+                <DropdownMenuShortcut className="font-mono text-[10px] text-dim">{item.hint}</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              {key === "import" ? <DropdownMenuSeparator /> : null}
+            </React.Fragment>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function AppHeader() {
   const location = useLocation();
   return (
@@ -117,8 +177,7 @@ export function AppHeader() {
           <HeaderSearch />
         </div>
         <div className="ml-auto flex items-center gap-2 md:ml-0">
-          <ImportUrlDialog />
-          <CreateProjectDialog />
+          <NewButton />
           <ThemeToggle />
         </div>
       </div>
@@ -154,6 +213,40 @@ export function MobileNav() {
         );
       })}
     </nav>
+  );
+}
+
+type CreateDialog = "project" | "import" | "collection" | "tag" | null;
+
+/** Owns the create dialogs so the header's `+` menu (and later keyboard shortcuts) can open them. */
+export function CreateActionsProvider({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const [dialog, setDialog] = React.useState<CreateDialog>(null);
+
+  const actions = React.useMemo<CreateActions>(
+    () => ({
+      openProject: () => setDialog("project"),
+      openImport: () => setDialog("import"),
+      openCollection: () => setDialog("collection"),
+      openTag: () => setDialog("tag"),
+    }),
+    [],
+  );
+
+  const openFor = (id: Exclude<CreateDialog, null>) => (open: boolean) => setDialog(open ? id : null);
+
+  return (
+    <CreateActionsContext.Provider value={actions}>
+      {children}
+      <CreateProjectDialog open={dialog === "project"} onOpenChange={openFor("project")} />
+      <ImportUrlDialog open={dialog === "import"} onOpenChange={openFor("import")} />
+      <CollectionFormDialog
+        open={dialog === "collection"}
+        onOpenChange={openFor("collection")}
+        onSaved={(c) => navigate(`/collections/${c.id}`)}
+      />
+      <TagFormDialog open={dialog === "tag"} onOpenChange={openFor("tag")} />
+    </CreateActionsContext.Provider>
   );
 }
 

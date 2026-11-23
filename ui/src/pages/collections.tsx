@@ -23,12 +23,7 @@ export function CollectionsPage() {
         label="Collections"
         title="Collections"
         subtitle={`${collections.length} collection${collections.length === 1 ? "" : "s"} · hand-picked groups of projects`}
-      >
-        <Button onClick={() => setCreating(true)}>
-          <Plus strokeWidth={2.4} />
-          New collection
-        </Button>
-      </PageHero>
+      />
 
       <PageBody className="pt-7 pb-16">
         {collectionsQ.isError ? (
