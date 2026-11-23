@@ -61,9 +61,9 @@ export function AdminTrashPage() {
 
   const renderRow = (item: TrashItem, goneSoon: boolean) => (
     <li key={item.id} className="flex flex-wrap items-center gap-3 border-b px-4.5 py-3 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{item.file_path ? item.file_path.split("/").pop() : item.name}</div>
-        <div className="truncate font-mono text-xs text-muted-foreground">
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+        <div className="min-w-0 truncate font-medium">{item.file_path ? item.file_path.split("/").pop() : item.name}</div>
+        <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
           {item.file_path
             ? `file from ${item.name} · ${item.folder_path}/${item.file_path} · ${formatBytes(item.size_bytes)}`
             : `${item.folder_path} · ${item.file_count} file${item.file_count === 1 ? "" : "s"} · ${formatBytes(item.size_bytes)}`}
@@ -75,7 +75,7 @@ export function AdminTrashPage() {
           <div className="font-mono text-[11px] text-dim">gone for good {untilLabel(item.expires_at)}</div>
         )}
       </div>
-      <div className="flex gap-2">
+      <div className="ml-auto flex gap-2">
         <Button variant="outline" size="sm" disabled={restoring !== null} onClick={() => void restore(item)}>
           {restoring === item.id ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           Restore
