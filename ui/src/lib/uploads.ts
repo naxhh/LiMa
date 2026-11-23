@@ -31,10 +31,12 @@ function uploadFile(bundleId: string, file: File, onProgress: (sent: number) => 
       onSuccess: () => resolve(),
     });
 
-    // After a reload the fingerprint remembers the partial upload: continue it.
+    // Continue a partial upload of this file, but only into this bundle: a leftover from an
+    // earlier attempt would finish in that attempt's bundle and be missing from this one.
     void upload.findPreviousUploads().then(
       (previous) => {
-        if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
+        const same = previous.find((p) => p.metadata?.bundle_id === bundleId);
+        if (same) upload.resumeFromPreviousUpload(same);
         upload.start();
       },
       (error: unknown) => reject(error),
