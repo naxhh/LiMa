@@ -45,19 +45,20 @@ export function AdminDuplicatesPage() {
             ? `${formatCount(groups.length, "group")} · ${formatCount(copies, "extra copy", "extra copies")} · ${formatBytes(d.reclaimable_bytes)} reclaimable`
             : "Projects with the same files · keep one and its copies' tags, collections and description move onto it"
         }
-      >
-        <div className="flex flex-wrap gap-2">
-          {d && d.dismissed > 0 ? (
-            <Button variant="outline" disabled={clear.isPending} onClick={() => clear.mutate()}>
-              <EyeOff />
-              Show {formatCount(d.dismissed, "hidden group")}
-            </Button>
-          ) : null}
-        </div>
-      </PageHero>
+      />
 
       <PageBody className="flex flex-col gap-6 pt-7 pb-16">
-        <AdminNav duplicatesCount={groups.length} />
+        <AdminNav
+          duplicatesCount={groups.length}
+          actions={
+            d && d.dismissed > 0 ? (
+              <Button variant="outline" size="sm" disabled={clear.isPending} onClick={() => clear.mutate()}>
+                <EyeOff />
+                Show {formatCount(d.dismissed, "hidden group")}
+              </Button>
+            ) : null
+          }
+        />
         {q.isError ? <div className="text-sm text-destructive">{apiErrorMessage(q.error)}</div> : null}
         {q.isPending ? (
           <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">

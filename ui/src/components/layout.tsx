@@ -173,13 +173,13 @@ export function PageHero({
 }) {
   return (
     <section className="bg-grid border-b">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-end justify-between gap-6 px-4 pt-10 pb-8 sm:px-8 sm:pt-12">
+      <div className="mx-auto flex min-h-[164px] max-w-[1440px] flex-wrap items-end justify-between gap-6 px-4 pt-10 pb-8 sm:min-h-[188px] sm:px-8 sm:pt-12">
         <div className="flex min-w-0 flex-col gap-2.5">
           <span className="font-mono text-xs tracking-[0.12em] text-signal">
             // {index} — {label.toUpperCase()}
           </span>
           <h1 className="font-display text-4xl leading-none font-semibold tracking-[-0.03em] sm:text-[52px]">{title}</h1>
-          {subtitle ? <div className="font-mono text-[13px] text-muted-foreground">{subtitle}</div> : null}
+          <div className="font-mono text-[13px] text-muted-foreground line-clamp-2 sm:truncate">{subtitle ?? "\u00A0"}</div>
         </div>
         {children}
       </div>
