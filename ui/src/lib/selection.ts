@@ -2,7 +2,7 @@ import * as React from "react";
 
 /**
  * Multi-select over an ordered list of ids: click toggles, shift-click selects the range from the
- * last clicked card, Escape leaves selection mode.
+ * last clicked card. Escape (see useGridKeys) leaves selection mode.
  */
 export function useSelection(ids: string[]) {
   const [active, setActive] = React.useState(false);
@@ -17,15 +17,6 @@ export function useSelection(ids: string[]) {
     setBeyond(false);
     anchor.current = null;
   }, []);
-
-  React.useEffect(() => {
-    if (!active) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("[role=dialog]")) exit();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [active, exit]);
 
   const toggle = (id: string, range: boolean) => {
     // Read the anchor now: the state updater runs later, after it has moved.

@@ -35,7 +35,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ImportAssetsDialog } from "@/components/import-assets-dialog";
-import { useDeleteAsset, useDeleteProject, usePatchProject } from "@/lib/project-mutations";
+import { useDeleteAsset, useDeleteProject, useFavourite, usePatchProject } from "@/lib/project-mutations";
+import { lastList } from "@/lib/list-nav";
+import { downloadUrl, useShortcuts } from "@/lib/shortcuts";
+import { toast } from "sonner";
 import { FavouriteButton } from "@/components/favourite-button";
 import { ProjectTagsEditor } from "@/components/project-tags-editor";
 import { ProjectCollectionsEditor } from "@/components/project-collections-editor";
@@ -66,7 +69,8 @@ function fileName(path: string) {
 export function ProjectDetailPage() {
   const { projectId } = useParams();
   if (!projectId) return <PageBody className="py-10">Missing project id</PageBody>;
-  return <ProjectDetailInner projectId={projectId} />;
+  // Keyed so j / k to another project start fresh (gallery, dialogs).
+  return <ProjectDetailInner key={projectId} projectId={projectId} />;
 }
 
 function ProjectDetailInner({ projectId }: { projectId: string }) {
@@ -95,6 +99,36 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+  const [picker, setPicker] = React.useState<"tags" | "collections" | "files" | null>(null);
+  const pickerProps = (kind: NonNullable<typeof picker>) => ({
+    open: picker === kind,
+    onOpenChange: (open: boolean) => setPicker(open ? kind : null),
+  });
+  const favourite = useFavourite(projectId, project?.is_favourite ?? false);
+
+  // Steps through the list the project was opened from.
+  const stepProject = (d: 1 | -1) => {
+    const list = lastList();
+    const i = list ? list.ids.indexOf(projectId) : -1;
+    if (!list || i < 0) return;
+    const next = list.ids[i + d];
+    if (next) navigate(`/projects/${next}`);
+    else toast(d > 0 ? "Last project" : "First project");
+  };
+  const ready = (fn: (p: ProjectDetail) => void) => () => (project ? fn(project) : false);
+  useShortcuts({
+    u: () => void navigate(lastList()?.url ?? "/"),
+    j: () => stepProject(1),
+    k: () => stepProject(-1),
+    f: ready(() => favourite.toggle()),
+    d: ready((p) => (p.assets.length ? downloadUrl(projectDownloadUrl(p.id)) : void toast("Nothing to download"))),
+    t: ready(() => setPicker("tags")),
+    a: ready(() => setPicker("collections")),
+    "#": ready(() => setConfirmDelete(true)),
+    Delete: ready(() => setConfirmDelete(true)),
+    e: ready(() => setEditing(true)),
+    i: ready(() => setPicker("files")),
+  });
 
   if (projectQ.isLoading) {
     return (
@@ -165,7 +199,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
               .filter((m) => sliceable(m.file_path))
               .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
           />
-          <ImportAssetsDialog projectId={project.id} onImported={refresh} />
+          <ImportAssetsDialog projectId={project.id} onImported={refresh} {...pickerProps("files")} />
           <Button variant="outline" onClick={() => setEditing(true)}>
             <Pencil />
             Edit
@@ -202,8 +236,19 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <ProjectTagsEditor projectId={project.id} tags={project.tags} />
-        <ProjectCollectionsEditor projectId={project.id} collections={project.collections} isFavourite={project.is_favourite} />
+        <ProjectTagsEditor
+          projectId={project.id}
+          tags={project.tags}
+          pickerOpen={picker === "tags"}
+          onPickerOpenChange={pickerProps("tags").onOpenChange}
+        />
+        <ProjectCollectionsEditor
+          projectId={project.id}
+          collections={project.collections}
+          isFavourite={project.is_favourite}
+          pickerOpen={picker === "collections"}
+          onPickerOpenChange={pickerProps("collections").onOpenChange}
+        />
       </div>
 
       <div className="flex flex-wrap items-start gap-8">
@@ -422,11 +467,16 @@ function Gallery({
 }) {
   const [filter, setFilter] = React.useState<string | null>(null);
   const items = [...images, ...models];
-  const index = current ? items.findIndex((a) => a.id === current.id) : -1;
+  const visibleImages = filter === null || filter === "image" ? images : [];
+  const visibleModels = filter === null ? models : filter === "image" ? [] : models.filter((m) => fileExt(m.file_path) === filter);
+  // Previous / next stay within the active filter.
+  const visible = [...visibleImages, ...visibleModels];
+  const index = current ? visible.findIndex((a) => a.id === current.id) : -1;
   const step = (d: number) => {
-    if (items.length < 2) return;
-    onSelect(items[(index + d + items.length) % items.length].id);
+    if (visible.length === 0 || (visible.length === 1 && index === 0)) return false;
+    onSelect(visible[(index + d + visible.length) % visible.length].id);
   };
+  useShortcuts({ ArrowLeft: () => step(-1), ArrowRight: () => step(1) });
   const isModel = current?.kind === "model";
   const format = current && isModel ? viewerFormat(current.file_path) : null;
   const label = isModel
@@ -443,9 +493,6 @@ function Gallery({
   if (images.length) chips.push({ key: "image", label: `Images ${images.length}` });
   for (const [ext, n] of extCounts) chips.push({ key: ext, label: `${ext} ${n}` });
 
-  const visibleImages = filter === null || filter === "image" ? images : [];
-  const visibleModels = filter === null ? models : filter === "image" ? [] : models.filter((m) => fileExt(m.file_path) === filter);
-
   const selectFilter = (next: string | null) => {
     setFilter(next);
     const nextList = next === null ? items : next === "image" ? images : models.filter((m) => fileExt(m.file_path) === next);
@@ -456,15 +503,7 @@ function Gallery({
 
   return (
     <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
-      <div
-        className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-2xl border bg-card [--corner-inset:16px] [--corner-size:22px]"
-        onKeyDown={(e) => {
-          // Arrow keys orbit the 3D view; only step through images.
-          if (isModel) return;
-          if (e.key === "ArrowLeft") step(-1);
-          if (e.key === "ArrowRight") step(1);
-        }}
-      >
+      <div className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-2xl border bg-card [--corner-inset:16px] [--corner-size:22px]">
         {current && format ? (
           <ModelViewer url={libraryUrl(project.folder_path, current.file_path)} format={format} sizeBytes={current.size_bytes} />
         ) : current ? (
