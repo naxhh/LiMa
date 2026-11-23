@@ -230,7 +230,7 @@ function ResolveDialog({ open, keep, others, onClose }: { open: boolean; keep: D
               {days > 0 ? "Move to trash" : "Delete files"}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {days > 0 ? `Their folders go to LiMa’s trash. Restore them from Sync → Trash for ${days} days.` : "Their folders are deleted from disk. This can’t be undone."}
+              {days > 0 ? `Their folders go to LiMa’s trash. Restore them from Admin → Trash for ${days} days.` : "Their folders are deleted from disk. This can’t be undone."}
             </p>
           </button>
           <button type="button" className={`${choice} hover:border-line-strong hover:bg-secondary/60`} onClick={() => run("keep_files")}>
