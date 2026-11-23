@@ -43,7 +43,7 @@ import { MediaImage } from "@/components/media-image";
 import { ZipContentsPanel } from "@/components/zip-contents";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
-import { Markdown } from "@/components/markdown";
+import { Markdown, type LocalImage } from "@/components/markdown";
 import { PromptBreadcrumb } from "@/components/prompt-breadcrumb";
 
 type ProjectDetail = components["schemas"]["ProjectDetailResponse"];
@@ -120,6 +120,11 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
   const models = project.assets.filter((a) => a.kind === "model");
   const totalBytes = project.assets.reduce((n, a) => n + a.size_bytes, 0);
   const viewable = models.filter((m) => viewerFormat(m.file_path));
+  // Local copies of the project's images, matched to README images by file name.
+  const localImages: LocalImage[] = images.map((a) => ({
+    name: fileName(a.file_path),
+    url: libraryUrl(project.folder_path, a.file_path),
+  }));
   // What the gallery shows: the picked image or model, else the cover, else the first model.
   const shown =
     [...images, ...viewable].find((a) => a.id === selectedImage) ??
@@ -214,7 +219,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         </aside>
       </div>
 
-      <Readme description={project.description} onAdd={() => setEditing(true)} />
+      <Readme description={project.description} localImages={localImages} onAdd={() => setEditing(true)} />
 
       <FilesTable
         project={project}
@@ -231,6 +236,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         onOpenChange={setEditing}
         project={project}
         images={images}
+        localImages={localImages}
         onSave={(payload) => {
           patchM.mutate(payload);
           setEditing(false);
@@ -308,7 +314,15 @@ function Spec({ label, value, className }: { label: string; value: string; class
 const README_CLIP_PX = 480;
 
 /** The project description rendered as a collapsible, signal-tinted terminal box. */
-function Readme({ description, onAdd }: { description: string; onAdd: () => void }) {
+function Readme({
+  description,
+  localImages,
+  onAdd,
+}: {
+  description: string;
+  localImages: LocalImage[];
+  onAdd: () => void;
+}) {
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
     try {
       return localStorage.getItem("lima.readme.collapsed") === "1";
@@ -370,7 +384,7 @@ function Readme({ description, onAdd }: { description: string; onAdd: () => void
       {collapsed ? null : (
         <div>
           <div ref={bodyRef} className={cn("px-5 py-4", clipped && "max-h-[480px] overflow-hidden")}>
-            <Markdown>{description}</Markdown>
+            <Markdown localImages={localImages}>{description}</Markdown>
           </div>
           {clipped ? (
             <div className="relative">
@@ -784,12 +798,14 @@ function EditProjectDialog({
   onOpenChange,
   project,
   images,
+  localImages,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: ProjectDetail;
   images: ProjectAsset[];
+  localImages: LocalImage[];
   onSave: (payload: PatchProjectRequest) => void;
 }) {
   const [name, setName] = React.useState(project.name);
@@ -860,7 +876,7 @@ function EditProjectDialog({
                 />
               ) : (
                 <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
-                  {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+                  {description.trim() ? <Markdown localImages={localImages}>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
                 </div>
               )}
             </div>
