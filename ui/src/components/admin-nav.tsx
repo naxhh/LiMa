@@ -1,21 +1,7 @@
-import type { ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { Copy, RefreshCw, Trash2 } from "lucide-react";
 
+import { ADMIN_SECTIONS } from "@/lib/admin";
 import { cn } from "@/lib/utils";
-
-export type AdminSection = { to: string; label: string; icon: ComponentType<{ className?: string }>; index: string };
-
-/** The admin sub-pages, in order, with their `// 04v…` section numbers. */
-export const ADMIN_SECTIONS: AdminSection[] = [
-  { to: "/admin/sync", label: "Sync", icon: RefreshCw, index: "04v1" },
-  { to: "/admin/trash", label: "Trash", icon: Trash2, index: "04v2" },
-  { to: "/admin/duplicates", label: "Duplicates", icon: Copy, index: "04v3" },
-];
-
-export function adminIndex(to: string): string {
-  return ADMIN_SECTIONS.find((s) => s.to === to)?.index ?? "04";
-}
 
 /** The shared admin sub-menu: a tab strip rendered under the PageHero on every admin page. */
 export function AdminNav({ trashCount, duplicatesCount }: { trashCount?: number; duplicatesCount?: number }) {

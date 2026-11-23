@@ -10,14 +10,20 @@ import { apiErrorMessage } from "@/lib/tags";
 import { refreshAfterTrash, restoreFromTrash, useTrash, type TrashItem } from "@/lib/trash";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PageBody, PageHero } from "@/components/layout";
-import { AdminNav, adminIndex } from "@/components/admin-nav";
+import { PageBody, PageHero, MicroLabel } from "@/components/layout";
+import { AdminNav } from "@/components/admin-nav";
+import { adminIndex } from "@/lib/admin";
 
 /** "in 12 days", "today", ... */
 function untilLabel(iso: string): string {
   const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
   if (days <= 0) return "today";
   return days === 1 ? "in 1 day" : `in ${days} days`;
+}
+
+/** Whole days until `iso` is deleted for good (negative once it's due). */
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
 }
 
 export function AdminTrashPage() {
@@ -46,6 +52,46 @@ export function AdminTrashPage() {
   };
 
   const totalBytes = items.reduce((n, i) => n + i.size_bytes, 0);
+
+  const purgeAt = (item: TrashItem) => new Date(item.expires_at).getTime();
+  const goneSoon = items.filter((i) => daysUntil(i.expires_at) <= 7).sort((a, b) => purgeAt(a) - purgeAt(b));
+  const later = items
+    .filter((i) => daysUntil(i.expires_at) > 7)
+    .sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
+
+  const renderRow = (item: TrashItem, goneSoon: boolean) => (
+    <li key={item.id} className="flex flex-wrap items-center gap-3 border-b px-4.5 py-3 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{item.file_path ? item.file_path.split("/").pop() : item.name}</div>
+        <div className="truncate font-mono text-xs text-muted-foreground">
+          {item.file_path
+            ? `file from ${item.name} · ${item.folder_path}/${item.file_path} · ${formatBytes(item.size_bytes)}`
+            : `${item.folder_path} · ${item.file_count} file${item.file_count === 1 ? "" : "s"} · ${formatBytes(item.size_bytes)}`}
+        </div>
+        <div className="font-mono text-[11px] text-dim">deleted {timeAgo(item.trashed_at)}</div>
+        {goneSoon ? (
+          <div className="font-mono text-xs text-warn">gone {untilLabel(item.expires_at)}</div>
+        ) : (
+          <div className="font-mono text-[11px] text-dim">gone for good {untilLabel(item.expires_at)}</div>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={restoring !== null} onClick={() => void restore(item)}>
+          {restoring === item.id ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+          Restore
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          disabled={purgeM.isPending}
+          onClick={() => setConfirm(item)}
+        >
+          Delete forever
+        </Button>
+      </div>
+    </li>
+  );
 
   return (
     <div>
@@ -78,45 +124,28 @@ export function AdminTrashPage() {
         ) : null}
 
         {items.length > 0 ? (
-          <section aria-label="Trashed items" className="overflow-hidden rounded-2xl border bg-card">
-            <div className="flex items-center justify-between border-b px-4.5 py-3 font-mono text-xs text-muted-foreground">
-              <span>
-                {items.length} item{items.length === 1 ? "" : "s"} · {formatBytes(totalBytes)}
-              </span>
+          <>
+            <div className="font-mono text-xs text-muted-foreground">
+              {items.length} item{items.length === 1 ? "" : "s"} · {formatBytes(totalBytes)}
             </div>
-            <ul>
-              {items.map((item) => (
-                <li key={item.id} className="flex flex-wrap items-center gap-3 border-b px-4.5 py-3 last:border-b-0">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{item.file_path ? item.file_path.split("/").pop() : item.name}</div>
-                    <div className="truncate font-mono text-xs text-muted-foreground">
-                      {item.file_path
-                        ? `file from ${item.name} · ${item.folder_path}/${item.file_path} · ${formatBytes(item.size_bytes)}`
-                        : `${item.folder_path} · ${item.file_count} file${item.file_count === 1 ? "" : "s"} · ${formatBytes(item.size_bytes)}`}
-                    </div>
-                    <div className="font-mono text-[11px] text-dim">
-                      deleted {timeAgo(item.trashed_at)} · gone for good {untilLabel(item.expires_at)}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={restoring !== null} onClick={() => void restore(item)}>
-                      {restoring === item.id ? <Loader2 className="animate-spin" /> : <RotateCcw />}
-                      Restore
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={purgeM.isPending}
-                      onClick={() => setConfirm(item)}
-                    >
-                      Delete forever
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+            {goneSoon.length > 0 ? (
+              <section aria-label="Gone soon" className="overflow-hidden rounded-2xl border bg-card">
+                <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-4.5 py-3">
+                  <MicroLabel className="text-warn">Gone soon</MicroLabel>
+                  <span className="font-mono text-[11px] text-dim">deleted for good within 7 days</span>
+                </header>
+                <ul>{goneSoon.map((item) => renderRow(item, true))}</ul>
+              </section>
+            ) : null}
+            {later.length > 0 ? (
+              <section aria-label="Later" className="overflow-hidden rounded-2xl border bg-card">
+                <header className="border-b px-4.5 py-3">
+                  <MicroLabel>Later</MicroLabel>
+                </header>
+                <ul>{later.map((item) => renderRow(item, false))}</ul>
+              </section>
+            ) : null}
+          </>
         ) : null}
       </PageBody>
 

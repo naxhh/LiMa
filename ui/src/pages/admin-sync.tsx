@@ -12,7 +12,8 @@ import { timeAgo } from "@/lib/format";
 import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { BackupsBox } from "@/components/backups-box";
-import { AdminNav, adminIndex } from "@/components/admin-nav";
+import { AdminNav } from "@/components/admin-nav";
+import { adminIndex } from "@/lib/admin";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
