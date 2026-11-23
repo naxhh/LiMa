@@ -5,6 +5,7 @@ mod library;
 mod projects;
 mod search;
 mod sync;
+mod tags;
 mod uploads;
 
 use std::path::{Path, PathBuf};

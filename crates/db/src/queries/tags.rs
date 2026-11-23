@@ -181,6 +181,96 @@ pub async fn delete_tag(pool: &Pool<Sqlite>, id: &str) -> Result<bool, sqlx::Err
     Ok(res.rows_affected() > 0)
 }
 
+/// Deletes several tags and their project links. Returns how many tags were deleted.
+pub async fn delete_tags(pool: &Pool<Sqlite>, ids: &[String]) -> Result<i64, sqlx::Error> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let ids_json = serde_json::to_string(ids).expect("serialize ids");
+    let mut tx = pool.begin().await?;
+    // Remove links explicitly so the delete trigger rebuilds the FTS rows of affected projects.
+    sqlx::query(r#"DELETE FROM project_tags WHERE tag_id IN (SELECT value FROM json_each(?1))"#)
+        .bind(&ids_json)
+        .execute(&mut *tx)
+        .await?;
+    let res = sqlx::query(r#"DELETE FROM tags WHERE id IN (SELECT value FROM json_each(?1))"#)
+        .bind(&ids_json)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(res.rows_affected() as i64)
+}
+
+#[derive(Debug)]
+pub enum MergeTagError {
+    NotFound,
+    /// `from_id` and `into_id` are the same tag.
+    SameTag,
+    Db(sqlx::Error),
+}
+
+impl From<sqlx::Error> for MergeTagError {
+    fn from(e: sqlx::Error) -> Self {
+        MergeTagError::Db(e)
+    }
+}
+
+/// Folds tag `from_id` into `into_id`: every project with `from_id` also gets
+/// `into_id` (no duplicates), then `from_id` is deleted. The project_tags
+/// insert/delete triggers keep the projects FTS index in sync, so `into_id`'s
+/// projects become searchable and `from_id`'s no longer are. Returns the number
+/// of projects that gained `into_id`.
+pub async fn merge_tag(
+    pool: &Pool<Sqlite>,
+    from_id: &str,
+    into_id: &str,
+) -> Result<i64, MergeTagError> {
+    if from_id == into_id {
+        return Err(MergeTagError::SameTag);
+    }
+
+    let mut tx = pool.begin().await?;
+
+    let ids: Vec<String> =
+        sqlx::query_scalar(r#"SELECT id FROM tags WHERE id IN (?1, ?2)"#)
+            .bind(from_id)
+            .bind(into_id)
+            .fetch_all(&mut *tx)
+            .await?;
+    if !ids.iter().any(|id| id == from_id) || !ids.iter().any(|id| id == into_id) {
+        return Err(MergeTagError::NotFound);
+    }
+
+    let affected: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM project_tags WHERE tag_id = ?1"#)
+        .bind(from_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    // Add the target tag to every project that has the source tag (duplicates ignored).
+    sqlx::query(
+        r#"INSERT OR IGNORE INTO project_tags (project_id, tag_id)
+           SELECT project_id, ?1 FROM project_tags WHERE tag_id = ?2"#,
+    )
+    .bind(into_id)
+    .bind(from_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // Remove the source tag's links explicitly so the delete trigger rebuilds FTS.
+    sqlx::query(r#"DELETE FROM project_tags WHERE tag_id = ?1"#)
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(r#"DELETE FROM tags WHERE id = ?1"#)
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(affected)
+}
+
 // dont love this name. maybe get_tags_or_create or something?
 pub async fn ensure_tags(
     tx: &mut Transaction<'_, Sqlite>,
@@ -320,6 +410,87 @@ mod tests {
         assert_eq!(search(pool, "pla").await, ["benchy"], "other tags stay searchable");
         let links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_tags").fetch_one(pool).await.unwrap();
         assert_eq!(links, 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn merge_moves_projects_and_search() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        project(pool, "benchy", &["boats"]).await;
+        project(pool, "dragon", &["boats", "pla"]).await;
+        project(pool, "unrelated", &["other"]).await;
+        let boats = find_tag_id_by_name(pool, "boats").await.unwrap().unwrap();
+        let ships = create_tag(pool, "ships", None, NOW).await.unwrap().id;
+
+        assert_eq!(search(pool, "boats").await, ["benchy", "dragon"]);
+
+        let affected = merge_tag(pool, &boats, &ships).await.unwrap();
+        assert_eq!(affected, 2);
+        // The source tag is gone; its projects moved over.
+        assert!(find_tag_id_by_name(pool, "boats").await.unwrap().is_none());
+        assert_eq!(search(pool, "boats").await, Vec::<String>::new());
+        assert_eq!(search(pool, "ships").await, ["benchy", "dragon"]);
+        assert_eq!(search(pool, "pla").await, ["dragon"], "untouched tag stays searchable");
+        // No duplicate links for the project that already had both.
+        let links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_tags WHERE project_id = (SELECT id FROM projects WHERE name = 'dragon')")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        assert_eq!(links, 2, "ships + pla");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn merge_into_tag_project_already_has() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        project(pool, "benchy", &["boats", "ships"]).await;
+        let boats = find_tag_id_by_name(pool, "boats").await.unwrap().unwrap();
+        let ships = find_tag_id_by_name(pool, "ships").await.unwrap().unwrap();
+
+        let affected = merge_tag(pool, &boats, &ships).await.unwrap();
+        assert_eq!(affected, 1, "the project gained nothing new but still counts");
+        assert!(find_tag_id_by_name(pool, "boats").await.unwrap().is_none());
+        assert_eq!(search(pool, "ships").await, ["benchy"]);
+        assert!(search(pool, "boats").await.is_empty());
+        let links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_tags").fetch_one(pool).await.unwrap();
+        assert_eq!(links, 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn merge_errors() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        project(pool, "benchy", &["boats"]).await;
+        let boats = find_tag_id_by_name(pool, "boats").await.unwrap().unwrap();
+
+        assert!(matches!(merge_tag(pool, "missing", &boats).await, Err(MergeTagError::NotFound)));
+        assert!(matches!(merge_tag(pool, &boats, "missing").await, Err(MergeTagError::NotFound)));
+        assert!(matches!(merge_tag(pool, &boats, &boats).await, Err(MergeTagError::SameTag)));
+        // The failed merges left the tag alone.
+        assert_eq!(search(pool, "boats").await, ["benchy"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_removes_links_and_search() {
+        let (db, dir) = db().await;
+        let pool = db.pool();
+        project(pool, "benchy", &["boats", "pla"]).await;
+        project(pool, "dragon", &["pla"]).await;
+        let boats = find_tag_id_by_name(pool, "boats").await.unwrap().unwrap();
+        let pla = find_tag_id_by_name(pool, "pla").await.unwrap().unwrap();
+
+        let deleted = delete_tags(pool, &[boats.clone(), pla.clone(), "missing".to_string()]).await.unwrap();
+        assert_eq!(deleted, 2, "only real tags count");
+        assert!(search(pool, "boats").await.is_empty());
+        assert!(search(pool, "pla").await.is_empty());
+        let links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_tags").fetch_one(pool).await.unwrap();
+        assert_eq!(links, 0);
+        // Deleting nothing deletes nothing.
+        assert_eq!(delete_tags(pool, &[]).await.unwrap(), 0);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

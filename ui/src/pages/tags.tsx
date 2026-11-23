@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Tag as TagIcon, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Sparkles, Tag as TagIcon, Trash2 } from "lucide-react";
 
 import { apiJson, apiNoBody } from "@/lib/api";
 import { PROJECT_CACHE_KEYS, optimisticHandlers, patchProjects } from "@/lib/optimistic";
@@ -57,6 +57,12 @@ export function TagsPage() {
           <Button onClick={() => setCreating(true)}>
             <Plus strokeWidth={2.4} />
             New tag
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/admin/tags">
+              <Sparkles />
+              Clean up
+            </Link>
           </Button>
         </div>
       </PageHero>

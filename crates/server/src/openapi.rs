@@ -34,6 +34,8 @@ use crate::{archive, collection_sync, routes};
         routes::tags::create::create_tag,
         routes::tags::update::update_tag,
         routes::tags::delete::delete_tag,
+        routes::tags::delete_many::delete_tags,
+        routes::tags::merge::merge_tag,
 
         routes::collections::list::list_collections,
         routes::collections::create::create_collection,
@@ -144,6 +146,10 @@ use crate::{archive, collection_sync, routes};
 
         routes::tags::create::CreateTagRequest,
         routes::tags::update::PatchTagRequest,
+        routes::tags::delete_many::DeleteTagsRequest,
+        routes::tags::delete_many::DeleteTagsResponse,
+        routes::tags::merge::MergeTagRequest,
+        routes::tags::merge::MergeTagResponse,
         
         routes::collections::Collection,
         routes::collections::CollectionCover,

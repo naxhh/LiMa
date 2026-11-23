@@ -50,8 +50,10 @@ pub fn router(state: AppState) -> Router {
         
         .route("/tags", get(routes::tags::list::list_tags))
         .route("/tags", post(routes::tags::create::create_tag))
+        .route("/tags/delete", post(routes::tags::delete_many::delete_tags))
         .route("/tags/{tag_id}", patch(routes::tags::update::update_tag))
         .route("/tags/{tag_id}", delete(routes::tags::delete::delete_tag))
+        .route("/tags/{tag_id}/merge", post(routes::tags::merge::merge_tag))
         
         .route("/collections", get(routes::collections::list::list_collections))
         .route("/collections", post(routes::collections::create::create_collection))
