@@ -13,6 +13,7 @@ import { ModelViewer } from "@/components/model-viewer";
 import { viewerFormat } from "@/lib/viewer";
 import { useTrash } from "@/lib/trash";
 import { apiErrorMessage } from "@/lib/tags";
+import { MANY } from "@/lib/thresholds";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -405,6 +406,7 @@ function Gallery({
   current: ProjectAsset | null;
   onSelect: (id: string) => void;
 }) {
+  const [filter, setFilter] = React.useState<string | null>(null);
   const items = [...images, ...models];
   const index = current ? items.findIndex((a) => a.id === current.id) : -1;
   const step = (d: number) => {
@@ -416,6 +418,27 @@ function Gallery({
   const label = isModel
     ? `3D ${models.indexOf(current!) + 1} / ${models.length}`
     : `IMG ${images.indexOf(current!) + 1} / ${images.length}`;
+
+  const extCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of models) counts.set(fileExt(m.file_path), (counts.get(fileExt(m.file_path)) ?? 0) + 1);
+    return counts;
+  }, [models]);
+
+  const chips: { key: string | null; label: string }[] = [{ key: null, label: `All ${items.length}` }];
+  if (images.length) chips.push({ key: "image", label: `Images ${images.length}` });
+  for (const [ext, n] of extCounts) chips.push({ key: ext, label: `${ext} ${n}` });
+
+  const visibleImages = filter === null || filter === "image" ? images : [];
+  const visibleModels = filter === null ? models : filter === "image" ? [] : models.filter((m) => fileExt(m.file_path) === filter);
+
+  const selectFilter = (next: string | null) => {
+    setFilter(next);
+    const nextList = next === null ? items : next === "image" ? images : models.filter((m) => fileExt(m.file_path) === next);
+    if (current && nextList.length > 0 && !nextList.some((a) => a.id === current.id)) {
+      onSelect(nextList[0].id);
+    }
+  };
 
   return (
     <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
@@ -461,9 +484,28 @@ function Gallery({
         ) : null}
       </div>
 
+      {items.length > MANY ? (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((c) => (
+            <button
+              key={c.key ?? "all"}
+              type="button"
+              onClick={() => selectFilter(c.key)}
+              aria-pressed={filter === c.key}
+              className={cn(
+                "h-7 cursor-pointer rounded-full border px-3 font-mono text-xs transition-colors",
+                filter === c.key ? "border-signal bg-signal/10 text-foreground" : "border-input text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {items.length > 1 ? (
         <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
-          {images.map((a, i) => (
+          {visibleImages.map((a, i) => (
             <button
               key={a.id}
               type="button"
@@ -483,7 +525,7 @@ function Gallery({
               ) : null}
             </button>
           ))}
-          {models.map((a) => (
+          {visibleModels.map((a) => (
             <button
               key={a.id}
               type="button"
