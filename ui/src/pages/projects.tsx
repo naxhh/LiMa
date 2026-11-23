@@ -26,9 +26,6 @@ const TAG_CHIPS = 10;
 
 type Filters = { tags: string[]; formats: string[]; noImage: boolean };
 
-/** Model formats offered as quick filters. */
-const FORMAT_CHIPS = ["STL", "3MF", "STEP", "OBJ"];
-
 function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters; sort?: SortOption }) {
   const usp = new URLSearchParams();
   usp.set("limit", String(params.limit));
@@ -156,21 +153,7 @@ export function ProjectsPage() {
 
       <PageBody className="pt-5">
         <TagChips selected={filters.tags} onToggle={(id) => toggleIn("tags", filters.tags, id)} />
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b pt-3.5 pb-4">
-          <div role="group" aria-label="File type" className="flex flex-wrap gap-1 rounded-[10px] border border-input bg-card p-[3px]">
-            <FilterToggle on={filters.formats.length === 0 && !filters.noImage} onClick={() => setParams({ formats: null, no_image: null })}>
-              All
-            </FilterToggle>
-            {FORMAT_CHIPS.map((f) => (
-              <FilterToggle key={f} mono on={filters.formats.includes(f)} onClick={() => toggleIn("formats", filters.formats, f)}>
-                {f}
-              </FilterToggle>
-            ))}
-            <FilterToggle mono on={filters.noImage} onClick={() => setParam("no_image", filters.noImage ? null : "true")}>
-              NO IMAGE
-            </FilterToggle>
-          </div>
-          
+        <div className="flex flex-wrap items-center justify-end gap-3 border-b pt-3.5 pb-4">
           <div className="flex flex-wrap items-center gap-3">
             <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={hasFreeWords(query)} />
             <Button variant={selection.active ? "default" : "outline"} size="sm" className="h-8" onClick={selection.active ? selection.exit : selection.start}>
@@ -294,33 +277,6 @@ function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (id: s
         All tags →
       </Link>
     </div>
-  );
-}
-
-function FilterToggle({
-  on,
-  mono,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  mono?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "h-[30px] cursor-pointer rounded-[7px] px-3 transition-colors",
-        mono ? "font-mono text-xs" : "text-[13px]",
-        on ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
