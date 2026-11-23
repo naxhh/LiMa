@@ -43,6 +43,7 @@ import { ZipContentsPanel } from "@/components/zip-contents";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
 import { Markdown } from "@/components/markdown";
+import { PromptBreadcrumb } from "@/components/prompt-breadcrumb";
 
 type ProjectDetail = components["schemas"]["ProjectDetailResponse"];
 type ProjectAsset = components["schemas"]["ProjectAssetResponse"];
@@ -130,13 +131,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
 
   return (
     <PageBody className="flex flex-col gap-5 pt-5 pb-16">
-      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
-        <Link to="/" className="hover:text-signal">
-          library
-        </Link>
-        <span className="text-dim">/</span>
-        <span className="truncate text-foreground">{project.folder_path}</span>
-      </nav>
+      <PromptBreadcrumb segments={[{ label: "~/library", to: "/" }, { label: project.folder_path }]} />
 
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div className="flex min-w-0 flex-col gap-2.5">

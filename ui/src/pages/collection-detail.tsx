@@ -31,6 +31,7 @@ import { useSelection } from "@/lib/selection";
 import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
 import { CollectionSourceBar } from "@/components/collection-source-bar";
+import { PromptBreadcrumb } from "@/components/prompt-breadcrumb";
 
 export function CollectionDetailPage() {
   const { collectionId } = useParams();
@@ -118,13 +119,7 @@ function CollectionDetailInner({ id }: { id: string }) {
     <div>
       <section className="bg-grid border-b">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-4 pt-5 pb-8 sm:px-8">
-          <nav aria-label="Breadcrumb" className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-            <Link to="/collections" className="hover:text-signal">
-              collections
-            </Link>
-            <span className="text-dim">/</span>
-            <span className="truncate text-foreground">{c?.name ?? "…"}</span>
-          </nav>
+          <PromptBreadcrumb segments={[{ label: "~/collections", to: "/collections" }, { label: c?.name ?? "…" }]} />
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="flex min-w-0 max-w-3xl flex-col gap-2.5">
               <span className="flex items-center gap-1.5 font-mono text-xs tracking-[0.12em] text-signal">
