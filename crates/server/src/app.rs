@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::DefaultBodyLimit,
     http::StatusCode,
-    routing::{delete, get, get_service, patch, post, put},
+    routing::{delete, get, get_service, head, options, patch, post, put},
 };
 use tower::ServiceBuilder;
 use tower_http::{catch_panic::CatchPanicLayer, services::{ServeDir, ServeFile}};
@@ -66,7 +66,16 @@ pub fn router(state: AppState) -> Router {
         .route("/bundles", post(routes::bundle_create::create_bundle)
             .route_layer(DefaultBodyLimit::disable()),
         )
+        .route("/bundles/new", post(routes::bundle_create::create_empty_bundle))
         .route("/bundles/{bundle_id}", delete(routes::bundle_delete::bundle_delete))
+
+        .route("/uploads", options(routes::uploads::upload_capabilities))
+        .route("/uploads", post(routes::uploads::create_upload))
+        .route("/uploads/{upload_id}", head(routes::uploads::upload_status))
+        .route("/uploads/{upload_id}", patch(routes::uploads::upload_patch)
+            .route_layer(DefaultBodyLimit::disable()),
+        )
+        .route("/uploads/{upload_id}", delete(routes::uploads::upload_terminate))
 
         .route("/imports", post(routes::imports::start_import))
         .route("/imports/preview", post(routes::imports::import_preview))

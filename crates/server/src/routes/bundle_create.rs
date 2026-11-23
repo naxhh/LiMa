@@ -12,6 +12,26 @@ pub struct CreateBundleResponse {
     pub failed_files: Vec<String>,
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct NewBundleResponse {
+    pub id: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/bundles/new",
+    responses(
+        (status = 201, description = "Empty bundle created. Files arrive through resumable uploads", body = NewBundleResponse),
+        (status = 500, description = "Failed creating the bundle folder", body = ApiErrorBody),
+    )
+)]
+pub async fn create_empty_bundle(State(state): State<AppState>) -> Result<(StatusCode, Json<NewBundleResponse>), ApiErrorResponse> {
+    let id = crate::bundles::NewBundle::create_empty(&state.paths).await.map_err(|e| {
+        ApiErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "dir_creation_failed", "Failed to create bundle directory").with_cause(&e.to_string())
+    })?;
+    Ok((StatusCode::CREATED, Json(NewBundleResponse { id })))
+}
+
 #[utoipa::path(
     post,
     path = "/api/bundles",

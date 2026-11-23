@@ -6,6 +6,7 @@ mod projects;
 mod search;
 mod sync;
 mod tags;
+mod tus;
 mod uploads;
 
 use std::path::{Path, PathBuf};
@@ -46,7 +47,8 @@ impl TestApp {
         let db = lima_db::Db::connect(&paths.database_url).await.unwrap();
         db.migrate().await.unwrap();
         lima_db::queries::collections::ensure_favourites(db.pool(), &crate::backups::now()).await.unwrap();
-        let settings = Settings { trash_days: 30, collection_sync_hours: 0, auto_backup: None, backup_keep: 7, thingiverse_token: None, watcher: false };
+        let settings = Settings { trash_days: 30, collection_sync_hours: 0, auto_backup: None, backup_keep: 7, thingiverse_token: None, watcher: false, upload_max_bytes: crate::uploads::DEFAULT_MAX_BYTES };
+
         let state = AppState::new(db, paths, &settings).await.unwrap();
         Self { router: crate::app::router(state.clone()), state, dir, keep_dir: false }
     }
@@ -91,6 +93,15 @@ impl TestApp {
         let status = res.status();
         let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
         (status, bytes.to_vec())
+    }
+
+    /// Status, headers and body: for responses that speak through their headers (tus).
+    pub async fn send_response(&self, req: Request<Body>) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+        let res = self.router.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        (status, headers, bytes.to_vec())
     }
 
     pub async fn get(&self, uri: &str) -> Value {

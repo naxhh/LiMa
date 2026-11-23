@@ -1562,6 +1562,8 @@ name = "lima-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
+ "futures-util",
  "lima-db",
  "lima-domain",
  "lima-importers",

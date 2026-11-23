@@ -47,7 +47,6 @@ impl Paths {
         Self { library, state, ui, database_url, backups }
     }
 
-    /// Temporary upload staging area.
     /// A stored backup file. `None` unless `name` is a plain `metadata-*.json` file name.
     pub fn backup_file(&self, name: &str) -> Option<PathBuf> {
         let valid = name.starts_with("metadata-")
@@ -60,6 +59,11 @@ impl Paths {
 
     pub fn bundles(&self) -> PathBuf {
         self.state.join("bundles")
+    }
+
+    /// Temporary upload staging area: files being uploaded, before they join a bundle.
+    pub fn uploads(&self) -> PathBuf {
+        self.state.join("uploads")
     }
 
     /// Folder of a staged bundle. `None` unless `bundle_id` looks like a UUID,
@@ -103,6 +107,7 @@ mod tests {
         let id = "0b5e6a3c-1f2d-4c3b-9a8e-7d6c5b4a3f21";
         assert_eq!(p.bundle(id), Some(PathBuf::from(format!("data/state/bundles/{id}"))));
         assert_eq!(p.thumbnails(), PathBuf::from("data/state/thumbnails"));
+        assert_eq!(p.uploads(), PathBuf::from("data/state/uploads"));
         assert_eq!(p.backups, PathBuf::from("data/state/backups"));
     }
 

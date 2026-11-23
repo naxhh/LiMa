@@ -11,6 +11,7 @@ pub mod tags;
 
 pub mod bundle_create;
 pub mod bundle_delete;
+pub mod uploads;
 
 pub mod sync;
 pub mod stats;
