@@ -1,11 +1,12 @@
 import * as React from "react";
-import { Link, NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { Layers, LayoutGrid, RefreshCw, Search, Tag as TagIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { ImportUrlDialog } from "@/components/import-url-dialog";
+import { SearchPalette } from "@/components/search-palette";
 
 type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean };
 
@@ -44,78 +45,40 @@ export function Logo() {
   );
 }
 
-/** Search box bound to `?query=` on the library page; elsewhere Enter jumps to the library. */
+/** The header search: shows the library query and opens the search palette (also ⌘K / Ctrl+K, or /). */
 function HeaderSearch() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const onLibrary = location.pathname === "/";
-  const urlQuery = onLibrary ? params.get("query") ?? "" : "";
-  const [value, setValue] = React.useState(urlQuery);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  // Follow navigation (e.g. a tag link) but not our own keystrokes.
-  React.useEffect(() => {
-    setValue((cur) => (cur.trim() === urlQuery ? cur : urlQuery));
-  }, [urlQuery]);
+  const [params] = useSearchParams();
+  const query = location.pathname === "/" ? (params.get("query") ?? "") : "";
+  const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+      if (((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") || (e.key === "/" && !typing)) {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        setOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const update = (next: string) => {
-    setValue(next);
-    if (onLibrary) {
-      const trimmed = next.trim();
-      // Keep the other library filters (tags, formats) while typing.
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (trimmed) next.set("query", trimmed);
-          else next.delete("query");
-          return next;
-        },
-        { replace: true },
-      );
-    }
-  };
-
   return (
-    <form
-      role="search"
-      className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-input bg-card px-3 focus-within:border-ring"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const trimmed = value.trim();
-        navigate(trimmed ? `/?query=${encodeURIComponent(trimmed)}` : "/");
-      }}
-    >
-      <Search className="size-4 shrink-0 text-dim" aria-hidden />
-      <label htmlFor="global-search" className="sr-only">
-        Search projects
-      </label>
-      <input
-        id="global-search"
-        ref={inputRef}
-        type="search"
-        value={value}
-        onChange={(e) => update(e.target.value)}
-        placeholder="Search projects, files, tags…"
-        autoComplete="off"
-        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-dim"
-      />
-      <kbd className="hidden rounded border border-input px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">
-        ⌘K
-      </kbd>
-    </form>
+    <>
+      <button
+        type="button"
+        role="search"
+        aria-label="Search projects"
+        onClick={() => setOpen(true)}
+        className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-input bg-card px-3 text-left text-sm hover:border-line-strong focus-visible:border-ring focus-visible:outline-none"
+      >
+        <Search className="size-4 shrink-0 text-dim" aria-hidden />
+        <span className={cn("min-w-0 flex-1 truncate", query ? "text-foreground" : "text-dim")}>{query || "Search projects, #tags, in:collections…"}</span>
+        <kbd className="hidden rounded border border-input px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">⌘K</kbd>
+      </button>
+      <SearchPalette open={open} onOpenChange={setOpen} initial={query} />
+    </>
   );
 }
 
