@@ -273,7 +273,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 The files stay on disk and sync stops picking the folder up. Its tags, collections and description are
-                dropped. Un-ignore it from Sync → Ignored folders to index it again.
+                dropped. Un-ignore it from Admin → Sync → Ignored folders to index it again.
               </p>
             </button>
             <button
@@ -290,7 +290,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {trashDays > 0
-                  ? `The folder and its ${project.assets.length} file${project.assets.length === 1 ? "" : "s"} go to LiMa’s trash. Restore them, with tags and collections, from Sync → Trash for ${trashDays} days.`
+                  ? `The folder and its ${project.assets.length} file${project.assets.length === 1 ? "" : "s"} go to LiMa’s trash. Restore them, with tags and collections, from Admin → Trash for ${trashDays} days.`
                   : `Removes the folder and its ${project.assets.length} file${project.assets.length === 1 ? "" : "s"} from disk. It can’t be undone.`}
               </p>
             </button>

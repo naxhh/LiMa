@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, NavLink, useLocation, useSearchParams } from "react-router-dom";
-import { Layers, LayoutGrid, RefreshCw, Search, Tag as TagIcon } from "lucide-react";
+import { Layers, LayoutGrid, Search, Settings2, Tag as TagIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -8,13 +8,19 @@ import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { ImportUrlDialog } from "@/components/import-url-dialog";
 import { SearchPalette } from "@/components/search-palette";
 
-type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+  isActive?: (pathname: string) => boolean;
+};
 
 const NAV: NavItem[] = [
   { to: "/", label: "Library", icon: LayoutGrid, end: true },
   { to: "/tags", label: "Tags", icon: TagIcon },
   { to: "/collections", label: "Collections", icon: Layers },
-  { to: "/admin/sync", label: "Sync", icon: RefreshCw },
+  { to: "/admin/sync", label: "Admin", icon: Settings2, isActive: (pathname) => pathname.startsWith("/admin") },
 ];
 
 /** The LiMa mark: a lime slice drawn as a circuit trace. Uses the theme's accent colors. */
@@ -83,6 +89,7 @@ function HeaderSearch() {
 }
 
 export function AppHeader() {
+  const location = useLocation();
   return (
     <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8">
@@ -96,7 +103,9 @@ export function AppHeader() {
               className={({ isActive }) =>
                 cn(
                   "rounded-lg px-3 py-2 text-sm transition-colors",
-                  isActive ? "bg-secondary font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+                  (item.isActive ? item.isActive(location.pathname) : isActive)
+                    ? "bg-secondary font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )
               }
             >
@@ -119,6 +128,7 @@ export function AppHeader() {
 
 /** Bottom tab bar on small screens. */
 export function MobileNav() {
+  const location = useLocation();
   return (
     <nav
       aria-label="Main"
@@ -134,7 +144,7 @@ export function MobileNav() {
             className={({ isActive }) =>
               cn(
                 "flex h-13 flex-col items-center justify-center gap-1 text-[11px]",
-                isActive ? "font-medium text-signal" : "text-muted-foreground",
+                (item.isActive ? item.isActive(location.pathname) : isActive) ? "font-medium text-signal" : "text-muted-foreground",
               )
             }
           >

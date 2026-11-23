@@ -21,6 +21,7 @@ function App() {
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/collections" element={<CollectionsPage />} />
         <Route path="/collections/:collectionId" element={<CollectionDetailPage />} />
+        <Route path="/admin" element={<Navigate to="/admin/sync" replace />} />
         <Route path="/admin/sync" element={<AdminSyncPage />} />
         <Route path="/admin/sync/:runId" element={<AdminSyncPage />} />
         <Route path="/admin/sync/collections/:runId" element={<AdminSyncPage />} />

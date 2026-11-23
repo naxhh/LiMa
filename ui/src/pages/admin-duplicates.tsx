@@ -5,6 +5,8 @@ import { Box, Check, Copy, EyeOff, FileBox, Image as ImageIcon, Loader2, Star, T
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageBody, PageHero } from "@/components/layout";
+import { AdminNav } from "@/components/admin-nav";
+import { adminIndex } from "@/lib/admin";
 import {
   useClearDismissed,
   useDismissDuplicates,
@@ -35,7 +37,7 @@ export function AdminDuplicatesPage() {
   return (
     <div>
       <PageHero
-        index="07"
+        index={adminIndex("/admin/duplicates")}
         label="Duplicates"
         title="Duplicates"
         subtitle={
@@ -51,13 +53,11 @@ export function AdminDuplicatesPage() {
               Show {formatCount(d.dismissed, "hidden group")}
             </Button>
           ) : null}
-          <Button asChild variant="outline">
-            <Link to="/admin/sync">Sync</Link>
-          </Button>
         </div>
       </PageHero>
 
       <PageBody className="flex flex-col gap-6 pt-7 pb-16">
+        <AdminNav duplicatesCount={groups.length} />
         {q.isError ? <div className="text-sm text-destructive">{apiErrorMessage(q.error)}</div> : null}
         {q.isPending ? (
           <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
@@ -230,7 +230,7 @@ function ResolveDialog({ open, keep, others, onClose }: { open: boolean; keep: D
               {days > 0 ? "Move to trash" : "Delete files"}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {days > 0 ? `Their folders go to LiMa’s trash. Restore them from Sync → Trash for ${days} days.` : "Their folders are deleted from disk. This can’t be undone."}
+              {days > 0 ? `Their folders go to LiMa’s trash. Restore them from Admin → Trash for ${days} days.` : "Their folders are deleted from disk. This can’t be undone."}
             </p>
           </button>
           <button type="button" className={`${choice} hover:border-line-strong hover:bg-secondary/60`} onClick={() => run("keep_files")}>

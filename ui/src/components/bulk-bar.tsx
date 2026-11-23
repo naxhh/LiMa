@@ -201,7 +201,7 @@ function BulkDeleteDialog({ open, count, onClose, onRun }: DialogProps) {
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {days > 0
-                ? `The folders go to LiMa’s trash. Restore them, with tags and collections, from Sync → Trash for ${days} days.`
+                ? `The folders go to LiMa’s trash. Restore them, with tags and collections, from Admin → Trash for ${days} days.`
                 : "The folders are deleted from disk. This can’t be undone."}
             </p>
           </button>
