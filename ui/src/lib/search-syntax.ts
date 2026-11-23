@@ -72,3 +72,49 @@ export function hasFreeWords(query: string): boolean {
   const tokens = query.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
   return tokens.some((t) => !FILTER_TOKEN.test(t));
 }
+
+/**
+ * Splits the query into tokens the same way the server does (`search_syntax.rs::tokens`):
+ * whitespace separates, and quotes keep the space inside a token (quotes stay in the raw
+ * token here, so they can be rebuilt verbatim).
+ */
+function tokenize(query: string): string[] {
+  const out: string[] = [];
+  let raw = "";
+  let quoted = false;
+  for (const c of query) {
+    if (c === '"') {
+      quoted = !quoted;
+      raw += c;
+    } else if (/\s/.test(c) && !quoted) {
+      if (raw) {
+        out.push(raw);
+        raw = "";
+      }
+    } else {
+      raw += c;
+    }
+  }
+  if (raw) out.push(raw);
+  return out;
+}
+
+/** Quotes removed and lower-cased, so a token matches whatever case the user typed. */
+const tokenKey = (raw: string) => raw.replace(/"/g, "").toLowerCase();
+
+/** Whether `query` contains `token` as a whole token, un-negated and case-insensitively. */
+export function hasToken(query: string, token: string): boolean {
+  const target = tokenKey(token);
+  if (!target) return false;
+  return tokenize(query).some((raw) => !raw.startsWith("-") && tokenKey(raw) === target);
+}
+
+/** Adds `token` to `query` if absent, removes it if present; whitespace stays tidy. */
+export function toggleToken(query: string, token: string): string {
+  const tokens = tokenize(query);
+  const target = tokenKey(token);
+  const idx = tokens.findIndex((raw) => !raw.startsWith("-") && tokenKey(raw) === target);
+  if (idx >= 0) tokens.splice(idx, 1);
+  else tokens.push(token);
+  return tokens.join(" ");
+}
