@@ -7,9 +7,23 @@ import { useCollectionMembership, type Membership } from "@/lib/project-mutation
 
 const VISIBLE = 12;
 
-/** The project's collections as chips, plus a picker to add it to more (or a new one). */
-export function ProjectCollectionsEditor({ projectId, collections, isFavourite }: { projectId: string; collections: Membership[]; isFavourite: boolean }) {
-  const [open, setOpen] = React.useState(false);
+/** The project's collections as chips, plus a picker to add it to more (or a new one). Pass `pickerOpen` to control the picker. */
+export function ProjectCollectionsEditor({
+  projectId,
+  collections,
+  isFavourite,
+  pickerOpen,
+  onPickerOpenChange,
+}: {
+  projectId: string;
+  collections: Membership[];
+  isFavourite: boolean;
+  pickerOpen?: boolean;
+  onPickerOpenChange?: (open: boolean) => void;
+}) {
+  const [ownOpen, setOwnOpen] = React.useState(false);
+  const open = pickerOpen ?? ownOpen;
+  const setOpen = onPickerOpenChange ?? setOwnOpen;
   const [expanded, setExpanded] = React.useState(false);
   const { remove } = useCollectionMembership(projectId);
 

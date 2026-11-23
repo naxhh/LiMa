@@ -31,7 +31,7 @@ type ImportProjectRequest = {
 
 function getApiErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    const body = e.body as any;
+    const body = e.body as { error?: { message?: string }; message?: string } | undefined;
     const msg = body?.error?.message || body?.message;
     return msg ? `${msg}` : `Request failed (${e.status})`;
   }
@@ -41,11 +41,18 @@ function getApiErrorMessage(e: unknown): string {
 export function ImportAssetsDialog({
   projectId,
   onImported,
+  open: openProp,
+  onOpenChange,
 }: {
   projectId: string;
   onImported: () => void;
+  /** Controls the dialog from outside (e.g. the `i` key). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [ownOpen, setOwnOpen] = React.useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [files, setFiles] = React.useState<File[]>([]);
   const [bundleId, setBundleId] = React.useState<string | null>(null);
   const [mainImageName, setMainImageName] = React.useState<string>("");

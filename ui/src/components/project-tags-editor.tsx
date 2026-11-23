@@ -7,9 +7,21 @@ import { useSaveProjectTags, type ProjectTag } from "@/lib/project-mutations";
 
 const VISIBLE = 12;
 
-/** Shows a project's tags with remove buttons and a picker to add, remove or create tags. */
-export function ProjectTagsEditor({ projectId, tags }: { projectId: string; tags: ProjectTag[] }) {
-  const [open, setOpen] = React.useState(false);
+/** Shows a project's tags with remove buttons and a picker to add, remove or create tags. Pass `pickerOpen` to control the picker. */
+export function ProjectTagsEditor({
+  projectId,
+  tags,
+  pickerOpen,
+  onPickerOpenChange,
+}: {
+  projectId: string;
+  tags: ProjectTag[];
+  pickerOpen?: boolean;
+  onPickerOpenChange?: (open: boolean) => void;
+}) {
+  const [ownOpen, setOwnOpen] = React.useState(false);
+  const open = pickerOpen ?? ownOpen;
+  const setOpen = onPickerOpenChange ?? setOwnOpen;
   const [expanded, setExpanded] = React.useState(false);
   const saveM = useSaveProjectTags(projectId);
   const remove = (name: string) => saveM.mutate(tags.map((t) => t.name).filter((n) => n !== name));
