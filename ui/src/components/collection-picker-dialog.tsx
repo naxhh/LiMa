@@ -1,8 +1,8 @@
 import * as React from "react";
-import { Check, Layers, Plus } from "lucide-react";
+import { Check, Layers, Plus, Star } from "lucide-react";
 
 import { useCollections } from "@/lib/collections";
-import { useCollectionMembership, type Membership } from "@/lib/project-mutations";
+import { useCollectionMembership, useFavourite, type Membership } from "@/lib/project-mutations";
 import {
   CommandDialog,
   CommandEmpty,
@@ -15,26 +15,30 @@ import {
 /**
  * Searchable list of the user's collections; picking one toggles the project in it.
  * Typing a new name offers to create the collection with the project in it.
- * Favourites is left out: the star handles it.
+ * Favourites is shown first and toggles the star.
  */
 export function CollectionPickerDialog({
   projectId,
   collections,
+  isFavourite,
   open,
   onOpenChange,
 }: {
   projectId: string;
   collections: Membership[];
+  isFavourite: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const allQ = useCollections();
   const { add, remove, create } = useCollectionMembership(projectId);
+  const { toggle: toggleFavourite } = useFavourite(projectId, isFavourite);
   const [search, setSearch] = React.useState("");
 
   // The cache is updated optimistically, so `collections` already reflects pending changes.
   const member = new Set(collections.map((c) => c.id));
 
+  const favourites = (allQ.data ?? []).find((c) => c.is_favourites);
   const all = (allQ.data ?? []).filter((c) => !c.is_favourites);
   const typed = search.trim().replace(/\s+/g, " ");
   const exists = (allQ.data ?? []).some((c) => c.name.toLowerCase() === typed.toLowerCase());
@@ -67,8 +71,15 @@ export function CollectionPickerDialog({
             </CommandItem>
           </CommandGroup>
         ) : null}
-        {all.length > 0 ? (
+        {favourites || all.length > 0 ? (
           <CommandGroup heading="Collections">
+            {favourites ? (
+              <CommandItem key={favourites.id} value={favourites.name} onSelect={toggleFavourite} data-checked={isFavourite}>
+                <Star className="text-signal" />
+                <span className="flex-1 truncate">{favourites.name}</span>
+                {isFavourite ? <Check className="text-signal" /> : <span className="text-xs text-muted-foreground">{favourites.project_count}</span>}
+              </CommandItem>
+            ) : null}
             {all.map((c) => {
               const on = member.has(c.id);
               return (

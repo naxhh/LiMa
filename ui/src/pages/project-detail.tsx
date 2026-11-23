@@ -198,7 +198,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
 
       <div className="flex flex-col gap-2.5">
         <ProjectTagsEditor projectId={project.id} tags={project.tags} />
-        <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
+        <ProjectCollectionsEditor projectId={project.id} collections={project.collections} isFavourite={project.is_favourite} />
       </div>
 
       <div className="flex flex-wrap items-start gap-8">

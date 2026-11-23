@@ -144,7 +144,9 @@ function BulkTagsDialog({ open, count, onClose, onRun }: DialogProps) {
 }
 
 function BulkCollectionsDialog({ open, count, onClose, onRun }: DialogProps) {
-  const collections = (useCollections().data ?? []).filter((c) => !c.is_favourites);
+  const all = useCollections().data ?? [];
+  const favourites = all.find((c) => c.is_favourites);
+  const collections = all.filter((c) => !c.is_favourites);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -152,10 +154,23 @@ function BulkCollectionsDialog({ open, count, onClose, onRun }: DialogProps) {
           <DialogTitle>Collections for {plural(count)}</DialogTitle>
           <DialogDescription>Add all of them to a collection, or take them out of one.</DialogDescription>
         </DialogHeader>
-        {collections.length === 0 ? (
+        {all.length === 0 ? (
           <p className="text-sm text-muted-foreground">No collections yet. Create one from the Collections page.</p>
         ) : (
           <ul className="-mx-2 max-h-80 overflow-y-auto">
+            {favourites ? (
+              <li key={favourites.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-secondary/60">
+                <Star className="size-4 shrink-0 text-signal" />
+                <span className="min-w-0 flex-1 truncate">{favourites.name}</span>
+                <span className="font-mono text-xs text-dim">{favourites.project_count}</span>
+                <Button variant="ghost" size="sm" onClick={() => onRun({ action: "unfavourite" })}>
+                  Remove
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onRun({ action: "favourite" })}>
+                  Add
+                </Button>
+              </li>
+            ) : null}
             {collections.map((c) => (
               <li key={c.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-secondary/60">
                 <Layers className="size-4 shrink-0 text-dim" />
