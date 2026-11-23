@@ -275,6 +275,8 @@ function IgnoredFolders() {
   });
   const items = ignoredQ.data?.items ?? [];
 
+  if (ignoredQ.isLoading || (ignoredQ.isSuccess && items.length === 0)) return null;
+
   return (
     <section aria-labelledby="ignored-h" className="flex flex-col gap-3 rounded-2xl border bg-card p-4.5">
       <div className="flex items-center justify-between gap-3">
@@ -285,7 +287,6 @@ function IgnoredFolders() {
       </div>
       <p className="text-sm text-muted-foreground">Removed from LiMa with their files kept. Sync skips them.</p>
       {ignoredQ.isError ? <div className="text-sm text-destructive">{errorMessage(ignoredQ.error)}</div> : null}
-      {ignoredQ.isSuccess && items.length === 0 ? <div className="font-mono text-xs text-dim">none</div> : null}
       {items.length > 0 ? (
         <ul className="-mx-1.5 flex flex-col">
           {items.map((f) => (
