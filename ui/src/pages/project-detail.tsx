@@ -138,96 +138,97 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         <span className="truncate text-foreground">{project.folder_path}</span>
       </nav>
 
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <span className="font-mono text-xs tracking-[0.12em] text-signal">// PROJECT</span>
+          <h1 className="font-display text-3xl leading-[1.05] font-semibold tracking-[-0.03em] break-words sm:text-[40px]">
+            {project.name}
+          </h1>
+          <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
+          {project.source_url ? (
+            <span className="text-xs text-muted-foreground">
+              Imported from{" "}
+              <a href={project.source_url} target="_blank" rel="noopener noreferrer" className="text-foreground underline-offset-4 hover:underline">
+                {sourceLabel(project.source_url)}
+              </a>
+              {project.source_author ? ` · by ${project.source_author}` : ""}
+              {project.source_license ? ` · ${project.source_license}` : ""}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
+          <OpenProjectInSlicer
+            files={models
+              .filter((m) => sliceable(m.file_path))
+              .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
+          />
+          <ImportAssetsDialog projectId={project.id} onImported={refresh} />
+          <Button variant="outline" onClick={() => setEditing(true)}>
+            <Pencil />
+            Edit
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="More actions">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {current && current.id !== project.main_image_id ? (
+                <DropdownMenuItem onClick={() => patchM.mutate({ main_image_id: current.id })}>
+                  <Star />
+                  Use this image as cover
+                </DropdownMenuItem>
+              ) : null}
+              {current ? (
+                <DropdownMenuItem asChild>
+                  <a href={libraryUrl(project.folder_path, current.file_path)} target="_blank" rel="noopener">
+                    <ImageIcon />
+                    Open image in new tab
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              {current ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+                <Trash2 />
+                Remove project…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        <ProjectTagsEditor projectId={project.id} tags={project.tags} />
+        <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
+      </div>
+
       <div className="flex flex-wrap items-start gap-8">
         <Gallery project={project} images={images} models={viewable} current={shown} onSelect={setSelectedImage} />
 
         <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-5">
-          <div className="flex flex-col gap-2.5">
-            <span className="font-mono text-xs tracking-[0.12em] text-signal">// PROJECT</span>
-            <h1 className="font-display text-3xl leading-[1.05] font-semibold tracking-[-0.03em] break-words sm:text-[40px]">
-              {project.name}
-            </h1>
-            <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
-            {project.source_url ? (
-              <span className="text-xs text-muted-foreground">
-                Imported from{" "}
-                <a href={project.source_url} target="_blank" rel="noopener noreferrer" className="text-foreground underline-offset-4 hover:underline">
-                  {sourceLabel(project.source_url)}
-                </a>
-                {project.source_author ? ` · by ${project.source_author}` : ""}
-                {project.source_license ? ` · ${project.source_license}` : ""}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-2.5">
-            <ProjectTagsEditor projectId={project.id} tags={project.tags} />
-            <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
-            <OpenProjectInSlicer
-              files={models
-                .filter((m) => sliceable(m.file_path))
-                .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
-            />
-            <ImportAssetsDialog projectId={project.id} onImported={refresh} />
-            <Button variant="outline" onClick={() => setEditing(true)}>
-              <Pencil />
-              Edit
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="More actions">
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {current && current.id !== project.main_image_id ? (
-                  <DropdownMenuItem onClick={() => patchM.mutate({ main_image_id: current.id })}>
-                    <Star />
-                    Use this image as cover
-                  </DropdownMenuItem>
-                ) : null}
-                {current ? (
-                  <DropdownMenuItem asChild>
-                    <a href={libraryUrl(project.folder_path, current.file_path)} target="_blank" rel="noopener">
-                      <ImageIcon />
-                      Open image in new tab
-                    </a>
-                  </DropdownMenuItem>
-                ) : null}
-                {current ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
-                  <Trash2 />
-                  Remove project…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {project.description.trim() ? (
-            <Markdown>{project.description}</Markdown>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="cursor-pointer self-start text-sm text-dim hover:text-foreground"
-            >
-              + Add a description
-            </button>
-          )}
-
           <dl className="grid grid-cols-2 overflow-hidden rounded-xl border">
             <Spec label="Files" value={`${project.assets.length} · ${models.length} model${models.length === 1 ? "" : "s"}`} className="border-r border-b" />
             <Spec label="Size" value={formatBytes(totalBytes)} className="border-b" />
             <Spec label="Added" value={new Date(project.created_at).toLocaleDateString()} className="border-r" />
             <Spec label="Last scan" value={timeAgo(project.last_scanned_at)} />
           </dl>
-
         </aside>
       </div>
+
+      {project.description.trim() ? (
+        <Markdown>{project.description}</Markdown>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="cursor-pointer self-start text-sm text-dim hover:text-foreground"
+        >
+          + Add a description
+        </button>
+      )}
 
       <FilesTable
         project={project}
