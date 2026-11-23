@@ -7,9 +7,9 @@ import { X } from "lucide-react";
 
 import { apiGet } from "@/lib/api";
 import type { components } from "@/gen/openapi";
-import { formatBytes, timeAgo } from "@/lib/format";
+import { formatBytes } from "@/lib/format";
 import { useAllTags } from "@/lib/tags";
-import { useLibraryStats, useSyncStatus } from "@/lib/sync";
+import { useLibraryStats } from "@/lib/sync";
 import { cn } from "@/lib/utils";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/project-card";
@@ -152,9 +152,7 @@ export function ProjectsPage() {
             ? `${stats.projects.toLocaleString()} projects · ${stats.assets.toLocaleString()} files · ${formatBytes(stats.total_bytes)} on disk`
             : " "
         }
-      >
-        <SyncBadge />
-      </PageHero>
+      />
 
       <PageBody className="pt-5">
         <TagChips selected={filters.tags} onToggle={(id) => toggleIn("tags", filters.tags, id)} />
@@ -388,41 +386,5 @@ function Pill({ children, onRemove, label }: { children: React.ReactNode; onRemo
         <X className="size-3" />
       </button>
     </span>
-  );
-}
-
-/** Watcher / last sync summary linking to the sync admin. */
-function SyncBadge() {
-  const statusQ = useSyncStatus();
-  const s = statusQ.data;
-  if (!s) return null;
-
-  const live = s.watcher.enabled && s.watcher.active;
-  const title = s.running ? "Sync running" : live ? "Watcher live" : s.watcher.enabled ? "Watcher stopped" : "Watcher off";
-  const last = s.run;
-  const detail = s.running
-    ? `${last?.stats.projects_scanned ?? 0} / ${last?.stats.projects_total || "?"} projects`
-    : last
-      ? `last sync ${timeAgo(last.finished_at ?? last.started_at)} · ${last.status === "failed" ? "failed" : last.mode}`
-      : "no sync yet";
-
-  return (
-    <Link
-      to="/admin/sync"
-      className="flex items-center gap-3 rounded-xl border border-input bg-card px-3.5 py-2.5 transition-colors hover:border-dim"
-    >
-      <span
-        className={cn(
-          "size-2 rounded-full",
-          s.running || live ? "pulse-signal bg-signal" : s.watcher.enabled ? "bg-warn" : "bg-dim",
-        )}
-      />
-      <span className="flex flex-col gap-0.5">
-        <span className="text-[13px] font-medium">{title}</span>
-        <span className={cn("font-mono text-[11px]", last?.status === "failed" ? "text-destructive" : "text-muted-foreground")}>
-          {detail}
-        </span>
-      </span>
-    </Link>
   );
 }
