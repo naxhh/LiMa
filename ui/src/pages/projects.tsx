@@ -162,7 +162,7 @@ export function ProjectsPage() {
         subtitle={
           stats
             ? `${stats.projects.toLocaleString()} projects · ${stats.assets.toLocaleString()} files · ${formatBytes(stats.total_bytes)} on disk`
-            : " "
+            : "\u00A0"
         }
       />
 

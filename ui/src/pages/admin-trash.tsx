@@ -104,17 +104,18 @@ export function AdminTrashPage() {
             ? `Deleted projects and files stay here for ${days} days · restoring a project brings back its tags, collections and description too`
             : "The trash is off (LIMA_TRASH_DAYS=0): deletes are final"
         }
-      >
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" disabled={items.length === 0 || purgeM.isPending} onClick={() => setConfirm("all")}>
-            <Trash2 />
-            Empty trash
-          </Button>
-        </div>
-      </PageHero>
+      />
 
       <PageBody className="flex flex-col gap-6 pt-7 pb-16">
-        <AdminNav trashCount={items.length} />
+        <AdminNav
+          trashCount={items.length}
+          actions={
+            <Button variant="outline" size="sm" disabled={items.length === 0 || purgeM.isPending} onClick={() => setConfirm("all")}>
+              <Trash2 />
+              Empty trash
+            </Button>
+          }
+        />
         {trashQ.isError ? <div className="text-sm text-destructive">{apiErrorMessage(trashQ.error)}</div> : null}
         {trashQ.isSuccess && items.length === 0 ? (
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
