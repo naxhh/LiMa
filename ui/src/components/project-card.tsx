@@ -176,6 +176,7 @@ export function ProjectCard({
         <CollectionPickerDialog
           projectId={p.id}
           collections={p.collections}
+          isFavourite={p.is_favourite}
           open
           onOpenChange={(o) => !o && setPicker(null)}
         />

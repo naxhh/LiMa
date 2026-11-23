@@ -1,6 +1,6 @@
 import * as React from "react";
 import { toast } from "sonner";
-import { hasFreeWords } from "@/lib/search-syntax";
+import { hasFreeWords, hasToken, quote, toggleToken } from "@/lib/search-syntax";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -24,19 +24,11 @@ type ListProjectsResponse = components["schemas"]["ListProjectsResponse"];
 
 const TAG_CHIPS = 10;
 
-type Filters = { tags: string[]; formats: string[]; noImage: boolean };
-
-/** Model formats offered as quick filters. */
-const FORMAT_CHIPS = ["STL", "3MF", "STEP", "OBJ"];
-
-function buildUrl(params: { limit: number; cursor?: string | null; query?: string; filters: Filters; sort?: SortOption }) {
+function buildUrl(params: { limit: number; cursor?: string | null; query?: string; sort?: SortOption }) {
   const usp = new URLSearchParams();
   usp.set("limit", String(params.limit));
   if (params.cursor) usp.set("cursor", params.cursor);
   if (params.query && params.query.trim()) usp.set("query", params.query.trim());
-  if (params.filters.tags.length) usp.set("tags", params.filters.tags.join(","));
-  if (params.filters.formats.length) usp.set("formats", params.filters.formats.join(","));
-  if (params.filters.noImage) usp.set("no_image", "true");
   // Searches with words are ordered by relevance (the server ignores the sort then).
   if (params.sort) {
     usp.set("sort", params.sort.sort);
@@ -59,30 +51,54 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 }
 
 export function ProjectsPage() {
-  // The search box lives in the header and writes ?query=; filters live next to it in the URL.
+  // The search box lives in the header and reads ?query=: the single source of truth for filters.
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("query") ?? "";
   const debouncedQ = useDebouncedValue(query, 250);
-  const tagsParam = searchParams.get("tags");
-  const formatsParam = searchParams.get("formats");
-  const noImage = searchParams.get("no_image") === "true";
-  const filters = React.useMemo<Filters>(
-    () => ({ tags: splitParam(tagsParam), formats: splitParam(formatsParam).map((f) => f.toUpperCase()), noImage }),
-    [tagsParam, formatsParam, noImage],
-  );
-  const filtered = filters.tags.length > 0 || filters.formats.length > 0 || filters.noImage;
+  const tagsQ = useAllTags();
+
+  // Older bookmarks kept filters as tags/formats/no_image params; fold them into `query` once.
+  React.useEffect(() => {
+    const tagIds = splitParam(searchParams.get("tags"));
+    const formats = splitParam(searchParams.get("formats"));
+    const noImage = searchParams.get("no_image") === "true";
+    if (tagIds.length === 0 && formats.length === 0 && !noImage) return;
+    // Tag ids map to names once the tags list is loaded (ids are gone by then).
+    if (tagIds.length > 0 && !tagsQ.data) return;
+    const tokens: string[] = [];
+    for (const id of tagIds) {
+      const tag = tagsQ.data?.find((t) => t.id === id);
+      if (tag) tokens.push(`#${quote(tag.name)}`);
+    }
+    for (const f of formats) tokens.push(`format:${f.toLowerCase()}`);
+    if (noImage) tokens.push("no:image");
+    const merged = [searchParams.get("query") ?? "", ...tokens].map((x) => x.trim()).filter(Boolean).join(" ");
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("tags");
+        next.delete("formats");
+        next.delete("no_image");
+        if (merged) next.set("query", merged);
+        else next.delete("query");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, tagsQ.data, setSearchParams]);
 
   // Sort: from the URL, else the last choice, else the default.
   const view = useViewPrefs("lima.projects.view", LIBRARY_SORTS, searchParams);
   const sortOption = view.sort;
   const searching = hasFreeWords(debouncedQ);
+  const hasQuery = query.trim().length > 0;
 
   const projectsQ = useInfiniteQuery({
-    queryKey: ["projects", { limit: PAGE_SIZE, query: debouncedQ, filters, sort: searching ? null : sortOption.id }],
+    queryKey: ["projects", { limit: PAGE_SIZE, query: debouncedQ, sort: searching ? null : sortOption.id }],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       apiGet<ListProjectsResponse>(
-        buildUrl({ limit: PAGE_SIZE, cursor: pageParam, query: debouncedQ, filters, sort: searching ? undefined : sortOption }),
+        buildUrl({ limit: PAGE_SIZE, cursor: pageParam, query: debouncedQ, sort: searching ? undefined : sortOption }),
       ),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
@@ -93,8 +109,8 @@ export function ProjectsPage() {
   const selectAllMatching = async () => {
     if (!projectsQ.hasNextPage) return selection.selectAll();
     try {
-      const usp = new URL(buildUrl({ limit: 1, query: debouncedQ, filters }), "http://x").searchParams;
-      usp.delete("limit");
+      const usp = new URLSearchParams();
+      if (debouncedQ.trim()) usp.set("query", debouncedQ.trim());
       const res = await apiGet<{ ids: string[]; truncated: boolean }>(`/projects/ids?${usp}`);
       selection.selectIds(res.ids);
       if (res.truncated) toast.info(`Selected the first ${res.ids.length.toLocaleString()} matches`, { description: "Bulk actions handle up to 2,000 projects at once." });
@@ -135,11 +151,7 @@ export function ProjectsPage() {
       { replace: true },
     );
   const setParam = (key: string, value: string | null) => setParams({ [key]: value });
-  const toggleIn = (key: "tags" | "formats", list: string[], value: string) => {
-    const next = list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-    setParam(key, next.length ? next.join(",") : null);
-  };
-  const clearAll = () => setParams({ query: null, tags: null, formats: null, no_image: null });
+  const toggleTag = (name: string) => setParam("query", toggleToken(query, `#${quote(name)}`));
 
   return (
     <div>
@@ -155,22 +167,8 @@ export function ProjectsPage() {
       />
 
       <PageBody className="pt-5">
-        <TagChips selected={filters.tags} onToggle={(id) => toggleIn("tags", filters.tags, id)} />
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b pt-3.5 pb-4">
-          <div role="group" aria-label="File type" className="flex flex-wrap gap-1 rounded-[10px] border border-input bg-card p-[3px]">
-            <FilterToggle on={filters.formats.length === 0 && !filters.noImage} onClick={() => setParams({ formats: null, no_image: null })}>
-              All
-            </FilterToggle>
-            {FORMAT_CHIPS.map((f) => (
-              <FilterToggle key={f} mono on={filters.formats.includes(f)} onClick={() => toggleIn("formats", filters.formats, f)}>
-                {f}
-              </FilterToggle>
-            ))}
-            <FilterToggle mono on={filters.noImage} onClick={() => setParam("no_image", filters.noImage ? null : "true")}>
-              NO IMAGE
-            </FilterToggle>
-          </div>
-          
+        <TagChips query={query} onToggle={toggleTag} />
+        <div className="flex flex-wrap items-center justify-end gap-3 border-b pt-3.5 pb-4">
           <div className="flex flex-wrap items-center gap-3">
             <SortSelect options={LIBRARY_SORTS} sort={sortOption} onSort={(id) => setParams(view.chooseSort(id))} searching={hasFreeWords(query)} />
             <Button variant={selection.active ? "default" : "outline"} size="sm" className="h-8" onClick={selection.active ? selection.exit : selection.start}>
@@ -180,25 +178,23 @@ export function ProjectsPage() {
             <span className="font-mono text-xs text-muted-foreground">
               {projectsQ.isLoading
                 ? "loading…"
-                : query || filtered
+                : hasQuery
                   ? `${items.length}${hasNextPage ? "+" : ""} match${items.length === 1 ? "" : "es"}`
                   : stats
                     ? `showing ${items.length} of ${stats.projects}`
                     : `showing ${items.length}`}
             </span>
+            {hasQuery ? (
+              <button
+                type="button"
+                onClick={() => setParam("query", null)}
+                className="flex h-8 cursor-pointer items-center gap-1 px-1 text-[13px] text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" /> Clear
+              </button>
+            ) : null}
           </div>
         </div>
-        {query || filtered ? (
-          <ActiveFilters
-            query={query}
-            filters={filters}
-            onClearQuery={() => setParam("query", null)}
-            onRemoveTag={(id) => toggleIn("tags", filters.tags, id)}
-            onClearFormats={() => setParam("formats", null)}
-            onClearNoImage={() => setParam("no_image", null)}
-            onClearAll={clearAll}
-          />
-        ) : null}
       </PageBody>
 
       <PageBody className="pt-6 pb-16">
@@ -210,9 +206,9 @@ export function ProjectsPage() {
 
         {!projectsQ.isLoading && !projectsQ.isError && items.length === 0 ? (
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
-            <div className="font-display text-xl font-semibold">{query || filtered ? "Nothing matches" : "The bay is empty"}</div>
+            <div className="font-display text-xl font-semibold">{hasQuery ? "Nothing matches" : "The bay is empty"}</div>
             <p className="mt-2 text-sm text-muted-foreground">
-              {query || filtered ? (
+              {hasQuery ? (
                 "Try fewer words or filters, or search by file name or tag."
               ) : (
                 <>
@@ -250,13 +246,13 @@ export function ProjectsPage() {
       </PageBody>
       <BulkBar
         selection={selection}
-        total={!projectsQ.hasNextPage ? items.length : !searching && !filtered && stats ? stats.projects : null} onSelectAll={() => void selectAllMatching()} />
+        total={!projectsQ.hasNextPage ? items.length : !searching && stats ? stats.projects : null} onSelectAll={() => void selectAllMatching()} />
     </div>
   );
 }
 
-/** Most-used tags as filter toggles (selected tags always shown). Several tags must all match. */
-function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (id: string) => void }) {
+/** Most-used tags as filter toggles (tags already in the query always show). Several tags must all match. */
+function TagChips({ query, onToggle }: { query: string; onToggle: (name: string) => void }) {
   const tagsQ = useAllTags();
   const chips = React.useMemo(() => {
     const all = tagsQ.data ?? [];
@@ -264,20 +260,20 @@ function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (id: s
       .filter((t) => t.project_count > 0)
       .sort((a, b) => b.project_count - a.project_count)
       .slice(0, TAG_CHIPS);
-    const extra = all.filter((t) => selected.includes(t.id) && !top.some((x) => x.id === t.id));
+    const extra = all.filter((t) => hasToken(query, `#${quote(t.name)}`) && !top.some((x) => x.id === t.id));
     return [...extra, ...top];
-  }, [tagsQ.data, selected]);
+  }, [tagsQ.data, query]);
   if (chips.length === 0) return null;
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
       <MicroLabel className="mr-1 shrink-0 text-[11px]">Tags</MicroLabel>
       {chips.map((t) => {
-        const on = selected.includes(t.id);
+        const on = hasToken(query, `#${quote(t.name)}`);
         return (
           <button
             key={t.id}
             type="button"
-            onClick={() => onToggle(t.id)}
+            onClick={() => onToggle(t.name)}
             aria-pressed={on}
             className={cn(
               "flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-[13px] transition-colors",
@@ -294,97 +290,5 @@ function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (id: s
         All tags →
       </Link>
     </div>
-  );
-}
-
-function FilterToggle({
-  on,
-  mono,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  mono?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "h-[30px] cursor-pointer rounded-[7px] px-3 transition-colors",
-        mono ? "font-mono text-xs" : "text-[13px]",
-        on ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Removable pills for the search and every active filter. */
-function ActiveFilters({
-  query,
-  filters,
-  onClearQuery,
-  onRemoveTag,
-  onClearFormats,
-  onClearNoImage,
-  onClearAll,
-}: {
-  query: string;
-  filters: Filters;
-  onClearQuery: () => void;
-  onRemoveTag: (id: string) => void;
-  onClearFormats: () => void;
-  onClearNoImage: () => void;
-  onClearAll: () => void;
-}) {
-  const tagsQ = useAllTags();
-  const tagById = new Map((tagsQ.data ?? []).map((t) => [t.id, t]));
-  const count = (query ? 1 : 0) + filters.tags.length + filters.formats.length + (filters.noImage ? 1 : 0);
-  return (
-    <div className="flex flex-wrap items-center gap-2 pt-3 text-sm">
-      <span className="text-muted-foreground">Showing</span>
-      {query ? <Pill onRemove={onClearQuery} label={`Clear search ${query}`}>“{query}”</Pill> : null}
-      {filters.tags.map((id) => {
-        const t = tagById.get(id);
-        return (
-          <Pill key={id} onRemove={() => onRemoveTag(id)} label={`Remove tag ${t?.name ?? id}`}>
-            <span className="size-2 rounded-full" style={{ backgroundColor: t?.color ?? "var(--dim)" }} />
-            {t?.name ?? "unknown tag"}
-          </Pill>
-        );
-      })}
-      {filters.formats.length ? (
-        <Pill onRemove={onClearFormats} label="Remove file type filter">
-          <span className="font-mono text-xs">{filters.formats.join(" or ")}</span>
-        </Pill>
-      ) : null}
-      {filters.noImage ? <Pill onRemove={onClearNoImage} label="Remove no image filter">without images</Pill> : null}
-      {count > 1 ? (
-        <button type="button" onClick={onClearAll} className="cursor-pointer px-1 text-[13px] text-muted-foreground hover:text-foreground">
-          Clear all
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function Pill({ children, onRemove, label }: { children: React.ReactNode; onRemove: () => void; label: string }) {
-  return (
-    <span className="inline-flex max-w-[60vw] items-center gap-1.5 rounded-full border border-signal bg-signal-soft py-0.5 pr-1 pl-2.5">
-      <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-full hover:bg-signal/20"
-        aria-label={label}
-      >
-        <X className="size-3" />
-      </button>
-    </span>
   );
 }

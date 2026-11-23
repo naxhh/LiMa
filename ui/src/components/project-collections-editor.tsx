@@ -8,7 +8,7 @@ import { useCollectionMembership, type Membership } from "@/lib/project-mutation
 const VISIBLE = 12;
 
 /** The project's collections as chips, plus a picker to add it to more (or a new one). */
-export function ProjectCollectionsEditor({ projectId, collections }: { projectId: string; collections: Membership[] }) {
+export function ProjectCollectionsEditor({ projectId, collections, isFavourite }: { projectId: string; collections: Membership[]; isFavourite: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const { remove } = useCollectionMembership(projectId);
@@ -57,7 +57,7 @@ export function ProjectCollectionsEditor({ projectId, collections }: { projectId
         </button>
       </div>
       {open ? (
-        <CollectionPickerDialog projectId={projectId} collections={collections} open={open} onOpenChange={setOpen} />
+        <CollectionPickerDialog projectId={projectId} collections={collections} isFavourite={isFavourite} open={open} onOpenChange={setOpen} />
       ) : null}
     </div>
   );
