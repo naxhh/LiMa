@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronDown, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Search, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -13,6 +13,7 @@ import { ModelViewer } from "@/components/model-viewer";
 import { viewerFormat } from "@/lib/viewer";
 import { useTrash } from "@/lib/trash";
 import { apiErrorMessage } from "@/lib/tags";
+import { MANY } from "@/lib/thresholds";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ import { ZipContentsPanel } from "@/components/zip-contents";
 import { ModelPlaceholder } from "@/components/model-placeholder";
 import { MicroLabel, PageBody } from "@/components/layout";
 import { Markdown } from "@/components/markdown";
+import { PromptBreadcrumb } from "@/components/prompt-breadcrumb";
 
 type ProjectDetail = components["schemas"]["ProjectDetailResponse"];
 type ProjectAsset = components["schemas"]["ProjectAssetResponse"];
@@ -130,104 +132,89 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
 
   return (
     <PageBody className="flex flex-col gap-5 pt-5 pb-16">
-      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
-        <Link to="/" className="hover:text-signal">
-          library
-        </Link>
-        <span className="text-dim">/</span>
-        <span className="truncate text-foreground">{project.folder_path}</span>
-      </nav>
+      <PromptBreadcrumb segments={[{ label: "~/library", to: "/" }, { label: project.folder_path }]} />
+
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <span className="font-mono text-xs tracking-[0.12em] text-signal">// PROJECT</span>
+          <h1 className="font-display text-3xl leading-[1.05] font-semibold tracking-[-0.03em] break-words sm:text-[40px]">
+            {project.name}
+          </h1>
+          <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
+          {project.source_url ? (
+            <span className="text-xs text-muted-foreground">
+              Imported from{" "}
+              <a href={project.source_url} target="_blank" rel="noopener noreferrer" className="text-foreground underline-offset-4 hover:underline">
+                {sourceLabel(project.source_url)}
+              </a>
+              {project.source_author ? ` · by ${project.source_author}` : ""}
+              {project.source_license ? ` · ${project.source_license}` : ""}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
+          <OpenProjectInSlicer
+            files={models
+              .filter((m) => sliceable(m.file_path))
+              .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
+          />
+          <ImportAssetsDialog projectId={project.id} onImported={refresh} />
+          <Button variant="outline" onClick={() => setEditing(true)}>
+            <Pencil />
+            Edit
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="More actions">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {current && current.id !== project.main_image_id ? (
+                <DropdownMenuItem onClick={() => patchM.mutate({ main_image_id: current.id })}>
+                  <Star />
+                  Use this image as cover
+                </DropdownMenuItem>
+              ) : null}
+              {current ? (
+                <DropdownMenuItem asChild>
+                  <a href={libraryUrl(project.folder_path, current.file_path)} target="_blank" rel="noopener">
+                    <ImageIcon />
+                    Open image in new tab
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              {current ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+                <Trash2 />
+                Remove project…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        <ProjectTagsEditor projectId={project.id} tags={project.tags} />
+        <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
+      </div>
 
       <div className="flex flex-wrap items-start gap-8">
         <Gallery project={project} images={images} models={viewable} current={shown} onSelect={setSelectedImage} />
 
         <aside className="flex min-w-0 flex-[1_1_380px] flex-col gap-5">
-          <div className="flex flex-col gap-2.5">
-            <span className="font-mono text-xs tracking-[0.12em] text-signal">// PROJECT</span>
-            <h1 className="font-display text-3xl leading-[1.05] font-semibold tracking-[-0.03em] break-words sm:text-[40px]">
-              {project.name}
-            </h1>
-            <span className="font-mono text-xs break-all text-muted-foreground">library/{project.folder_path}/</span>
-            {project.source_url ? (
-              <span className="text-xs text-muted-foreground">
-                Imported from{" "}
-                <a href={project.source_url} target="_blank" rel="noopener noreferrer" className="text-foreground underline-offset-4 hover:underline">
-                  {sourceLabel(project.source_url)}
-                </a>
-                {project.source_author ? ` · by ${project.source_author}` : ""}
-                {project.source_license ? ` · ${project.source_license}` : ""}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-2.5">
-            <ProjectTagsEditor projectId={project.id} tags={project.tags} />
-            <ProjectCollectionsEditor projectId={project.id} collections={project.collections} />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <FavouriteButton projectId={project.id} isFavourite={project.is_favourite} />
-            <OpenProjectInSlicer
-              files={models
-                .filter((m) => sliceable(m.file_path))
-                .map((m) => ({ url: libraryUrl(project.folder_path, m.file_path), name: fileName(m.file_path) }))}
-            />
-            <ImportAssetsDialog projectId={project.id} onImported={refresh} />
-            <Button variant="outline" onClick={() => setEditing(true)}>
-              <Pencil />
-              Edit
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="More actions">
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {current && current.id !== project.main_image_id ? (
-                  <DropdownMenuItem onClick={() => patchM.mutate({ main_image_id: current.id })}>
-                    <Star />
-                    Use this image as cover
-                  </DropdownMenuItem>
-                ) : null}
-                {current ? (
-                  <DropdownMenuItem asChild>
-                    <a href={libraryUrl(project.folder_path, current.file_path)} target="_blank" rel="noopener">
-                      <ImageIcon />
-                      Open image in new tab
-                    </a>
-                  </DropdownMenuItem>
-                ) : null}
-                {current ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
-                  <Trash2 />
-                  Remove project…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {project.description.trim() ? (
-            <Markdown>{project.description}</Markdown>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="cursor-pointer self-start text-sm text-dim hover:text-foreground"
-            >
-              + Add a description
-            </button>
-          )}
-
           <dl className="grid grid-cols-2 overflow-hidden rounded-xl border">
             <Spec label="Files" value={`${project.assets.length} · ${models.length} model${models.length === 1 ? "" : "s"}`} className="border-r border-b" />
             <Spec label="Size" value={formatBytes(totalBytes)} className="border-b" />
             <Spec label="Added" value={new Date(project.created_at).toLocaleDateString()} className="border-r" />
             <Spec label="Last scan" value={timeAgo(project.last_scanned_at)} />
           </dl>
-
         </aside>
       </div>
+
+      <Readme description={project.description} onAdd={() => setEditing(true)} />
 
       <FilesTable
         project={project}
@@ -317,6 +304,94 @@ function Spec({ label, value, className }: { label: string; value: string; class
   );
 }
 
+/** Above this height the README body is clipped until "show all". */
+const README_CLIP_PX = 480;
+
+/** The project description rendered as a collapsible, signal-tinted terminal box. */
+function Readme({ description, onAdd }: { description: string; onAdd: () => void }) {
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("lima.readme.collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [showAll, setShowAll] = React.useState(false);
+  const bodyRef = React.useRef<HTMLDivElement | null>(null);
+  const [tall, setTall] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => setTall(el.scrollHeight > README_CLIP_PX);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [description, collapsed, showAll]);
+
+  if (!description.trim()) {
+    return (
+      <button type="button" onClick={onAdd} className="cursor-pointer self-start text-sm text-dim hover:text-foreground">
+        + Add a description
+      </button>
+    );
+  }
+
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem("lima.readme.collapsed", next ? "1" : "0");
+    } catch {
+      /* storage is unavailable; state still toggles for this session */
+    }
+  };
+
+  const clipped = !collapsed && !showAll && tall;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-signal/35 bg-signal/[0.04]">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        className="flex w-full cursor-pointer items-center justify-between gap-3 border-b border-signal/25 px-4 py-2 font-mono text-xs"
+      >
+        <span>
+          <span className="text-signal">$</span> cat README.md
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+          {collapsed ? "expand" : "collapse"}
+          {collapsed ? <ChevronDown /> : <ChevronUp />}
+        </span>
+      </button>
+      {collapsed ? null : (
+        <div>
+          <div ref={bodyRef} className={cn("px-5 py-4", clipped && "max-h-[480px] overflow-hidden")}>
+            <Markdown>{description}</Markdown>
+          </div>
+          {clipped ? (
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-x-0 -top-20 h-20 bg-gradient-to-t from-card to-transparent" />
+              <div className="relative flex justify-center pb-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="cursor-pointer rounded-full border border-input px-3 py-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+                >
+                  show all
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Gallery({
   project,
   images,
@@ -331,6 +406,7 @@ function Gallery({
   current: ProjectAsset | null;
   onSelect: (id: string) => void;
 }) {
+  const [filter, setFilter] = React.useState<string | null>(null);
   const items = [...images, ...models];
   const index = current ? items.findIndex((a) => a.id === current.id) : -1;
   const step = (d: number) => {
@@ -342,6 +418,27 @@ function Gallery({
   const label = isModel
     ? `3D ${models.indexOf(current!) + 1} / ${models.length}`
     : `IMG ${images.indexOf(current!) + 1} / ${images.length}`;
+
+  const extCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of models) counts.set(fileExt(m.file_path), (counts.get(fileExt(m.file_path)) ?? 0) + 1);
+    return counts;
+  }, [models]);
+
+  const chips: { key: string | null; label: string }[] = [{ key: null, label: `All ${items.length}` }];
+  if (images.length) chips.push({ key: "image", label: `Images ${images.length}` });
+  for (const [ext, n] of extCounts) chips.push({ key: ext, label: `${ext} ${n}` });
+
+  const visibleImages = filter === null || filter === "image" ? images : [];
+  const visibleModels = filter === null ? models : filter === "image" ? [] : models.filter((m) => fileExt(m.file_path) === filter);
+
+  const selectFilter = (next: string | null) => {
+    setFilter(next);
+    const nextList = next === null ? items : next === "image" ? images : models.filter((m) => fileExt(m.file_path) === next);
+    if (current && nextList.length > 0 && !nextList.some((a) => a.id === current.id)) {
+      onSelect(nextList[0].id);
+    }
+  };
 
   return (
     <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
@@ -387,9 +484,28 @@ function Gallery({
         ) : null}
       </div>
 
+      {items.length > MANY ? (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((c) => (
+            <button
+              key={c.key ?? "all"}
+              type="button"
+              onClick={() => selectFilter(c.key)}
+              aria-pressed={filter === c.key}
+              className={cn(
+                "h-7 cursor-pointer rounded-full border px-3 font-mono text-xs transition-colors",
+                filter === c.key ? "border-signal bg-signal/10 text-foreground" : "border-input text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {items.length > 1 ? (
-        <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
-          {images.map((a, i) => (
+        <div className="grid max-h-[26rem] grid-cols-4 gap-2.5 overflow-y-auto overscroll-contain sm:grid-cols-6">
+          {visibleImages.map((a, i) => (
             <button
               key={a.id}
               type="button"
@@ -409,7 +525,7 @@ function Gallery({
               ) : null}
             </button>
           ))}
-          {models.map((a) => (
+          {visibleModels.map((a) => (
             <button
               key={a.id}
               type="button"
@@ -468,23 +584,49 @@ function FilesTable({
       return next;
     });
 
+  const [filter, setFilter] = React.useState("");
+  const q = filter.trim().toLowerCase();
+  const filtered = q ? project.assets.filter((a) => a.file_path.toLowerCase().includes(q)) : project.assets;
+
   return (
     <section aria-labelledby="files-h" className="flex flex-col gap-3 pt-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="files-h" className="font-display text-[22px] font-semibold">
           Files <span className="font-mono text-[13px] font-normal text-muted-foreground">{project.assets.length}</span>
+          {q ? (
+            <span className="ml-2 font-mono text-[13px] font-normal text-dim">
+              {filtered.length} of {project.assets.length}
+            </span>
+          ) : null}
         </h2>
-        {project.assets.length > 0 ? (
-          <Button asChild variant="outline">
-            <a href={projectDownloadUrl(project.id)} download>
-              <Download />
-              Download all
-              <span className="font-mono text-xs text-muted-foreground">
-                zip · {formatBytes(project.assets.reduce((n, a) => n + a.size_bytes, 0))}
-              </span>
-            </a>
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {project.assets.length > MANY ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-dim" aria-hidden />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setFilter("");
+                }}
+                placeholder="Filter files…"
+                aria-label="Filter files"
+                className="h-8 w-56 pl-8 text-sm"
+              />
+            </div>
+          ) : null}
+          {project.assets.length > 0 ? (
+            <Button asChild variant="outline">
+              <a href={projectDownloadUrl(project.id)} download>
+                <Download />
+                Download all
+                <span className="font-mono text-xs text-muted-foreground">
+                  zip · {formatBytes(project.assets.reduce((n, a) => n + a.size_bytes, 0))}
+                </span>
+              </a>
+            </Button>
+          ) : null}
+        </div>
       </div>
       {project.assets.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
@@ -505,7 +647,7 @@ function FilesTable({
               </tr>
             </thead>
             <tbody>
-              {project.assets.map((a) => {
+              {filtered.map((a) => {
                 const url = libraryUrl(project.folder_path, a.file_path);
                 const zip = isZip(a.file_path);
                 const open = zip && opened.has(a.id);
@@ -595,6 +737,13 @@ function FilesTable({
                   </React.Fragment>
                 );
               })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No files match
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -660,9 +809,9 @@ function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[90vh] flex-col">
         <form
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (canSave) onSave({ name: name.trim(), description, main_image_id: cover || null });
@@ -672,71 +821,72 @@ function EditProjectDialog({
             <DialogTitle>Edit project</DialogTitle>
             <DialogDescription className="sr-only">Change the project's name, description and cover image.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
-            <label htmlFor="project-name" className="text-sm font-medium">
-              Name
-            </label>
-            <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <label htmlFor="project-description" className="text-sm font-medium">
-                Description <span className="font-normal text-muted-foreground">(Markdown)</span>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+            <div className="space-y-1.5">
+              <label htmlFor="project-name" className="text-sm font-medium">
+                Name
               </label>
-              <div role="group" aria-label="Description view" className="flex rounded-md border border-input p-0.5 text-xs">
-                {(["write", "preview"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    aria-pressed={descMode === m}
-                    onClick={() => setDescMode(m)}
-                    className={cn(
-                      "cursor-pointer rounded px-2 py-0.5 capitalize",
-                      descMode === m ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
+              <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </div>
-            {descMode === "write" ? (
-              <Textarea
-                id="project-description"
-                rows={8}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Print settings, notes, where it came from… **bold**, - lists and [links](https://…) work."
-                className="font-mono text-[13px]"
-              />
-            ) : (
-              <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
-                {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="project-description" className="text-sm font-medium">
+                  Description <span className="font-normal text-muted-foreground">(Markdown)</span>
+                </label>
+                <div role="group" aria-label="Description view" className="flex rounded-md border border-input p-0.5 text-xs">
+                  {(["write", "preview"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={descMode === m}
+                      onClick={() => setDescMode(m)}
+                      className={cn(
+                        "cursor-pointer rounded px-2 py-0.5 capitalize",
+                        descMode === m ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
+              {descMode === "write" ? (
+                <Textarea
+                  id="project-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Print settings, notes, where it came from… **bold**, - lists and [links](https://…) work."
+                  className="min-h-40 max-h-[50vh] resize-y overflow-y-auto font-mono text-[13px]"
+                />
+              ) : (
+                <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
+                  {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+                </div>
+              )}
+            </div>
+            {images.length > 0 ? (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">Cover image</legend>
+                <div className="grid grid-cols-5 gap-2">
+                  {images.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setCover(a.id)}
+                      aria-pressed={cover === a.id}
+                      aria-label={fileName(a.file_path)}
+                      className={cn(
+                        "relative aspect-square cursor-pointer overflow-hidden rounded-lg border bg-thumb",
+                        cover === a.id && "border-2 border-signal",
+                      )}
+                    >
+                      <MediaImage src={thumbUrl(project.id, a.id)} alt="" />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
           </div>
-          {images.length > 0 ? (
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">Cover image</legend>
-              <div className="grid grid-cols-5 gap-2">
-                {images.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => setCover(a.id)}
-                    aria-pressed={cover === a.id}
-                    aria-label={fileName(a.file_path)}
-                    className={cn(
-                      "relative aspect-square cursor-pointer overflow-hidden rounded-lg border bg-thumb",
-                      cover === a.id && "border-2 border-signal",
-                    )}
-                  >
-                    <MediaImage src={thumbUrl(project.id, a.id)} alt="" />
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
