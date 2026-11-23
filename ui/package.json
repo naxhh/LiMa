@@ -31,7 +31,8 @@
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.4.0",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "tus-js-client": "4.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

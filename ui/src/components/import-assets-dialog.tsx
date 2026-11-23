@@ -1,7 +1,9 @@
 import * as React from "react";
 import { Upload } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { apiMultipart, bundleForm, apiJsonNoResponse, ApiError } from "@/lib/api";
+import { apiJsonNoResponse, ApiError } from "@/lib/api";
+import { uploadToBundle } from "@/lib/uploads";
+import { formatBytes } from "@/lib/format";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,12 +17,6 @@ import {
 import { FileDropzone } from "@/components/file-dropzone";
 import { ZipExtractOptions } from "@/components/zip-extract-options";
 import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
-
-type CreateBundleResponse = {
-  id: string;
-  files: string[];
-  failed_files: string[];
-};
 
 type ImportProjectRequest = {
   bundle_id: string;
@@ -56,12 +52,14 @@ export function ImportAssetsDialog({
   const [files, setFiles] = React.useState<File[]>([]);
   const [bundleId, setBundleId] = React.useState<string | null>(null);
   const [mainImageName, setMainImageName] = React.useState<string>("");
+  const [uploadProgress, setUploadProgress] = React.useState({ sent: 0, total: 0 });
   const [zipPrefs, setZipPrefs] = useZipPrefs();
   const zipCount = files.filter((f) => f.name.toLowerCase().endsWith(".zip")).length;
 
   const createBundleM = useMutation({
     mutationFn: async (currentFiles: File[]) => {
-      return apiMultipart<CreateBundleResponse>("/bundles", bundleForm(currentFiles));
+      setUploadProgress({ sent: 0, total: currentFiles.reduce((sum, file) => sum + file.size, 0) });
+      return uploadToBundle(currentFiles, (sent, total) => setUploadProgress({ sent, total }));
     },
     onSuccess: (b) => {
       setBundleId(b.id);
@@ -93,6 +91,7 @@ export function ImportAssetsDialog({
   });
 
   const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+  const uploadPercent = uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.sent / uploadProgress.total) * 100)) : 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -125,15 +124,27 @@ export function ImportAssetsDialog({
             }}
           />
 
-          <div className="text-xs text-muted-foreground">
-            {createBundleM.isPending
-              ? "Uploading bundle…"
-              : bundleId
+          {createBundleM.isPending ? (
+            <div className="space-y-1">
+              <div className="h-1 rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-signal transition-[width]"
+                  style={{ width: `${uploadPercent}%` }}
+                />
+              </div>
+              <div className="font-mono text-xs text-muted-foreground">
+                {uploadPercent}% · {formatBytes(uploadProgress.sent)} / {formatBytes(uploadProgress.total)}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              {bundleId
                 ? `Bundle ready: ${bundleId}`
                 : files.length > 0
                   ? "Bundle not ready yet."
                   : "Add files to create a bundle."}
-          </div>
+            </div>
+          )}
 
           <ZipExtractOptions count={zipCount} value={zipPrefs} onChange={setZipPrefs} />
 
