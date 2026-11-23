@@ -11,7 +11,7 @@ import { refreshAfterTrash, restoreFromTrash, useTrash, type TrashItem } from "@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageBody, PageHero } from "@/components/layout";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminNav, adminIndex } from "@/components/admin-nav";
 
 /** "in 12 days", "today", ... */
 function untilLabel(iso: string): string {
@@ -50,7 +50,7 @@ export function AdminTrashPage() {
   return (
     <div>
       <PageHero
-        index="06"
+        index={adminIndex("/admin/trash")}
         label="Trash"
         title="Trash"
         subtitle={

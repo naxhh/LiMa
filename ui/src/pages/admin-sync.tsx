@@ -12,7 +12,7 @@ import { timeAgo } from "@/lib/format";
 import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { BackupsBox } from "@/components/backups-box";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminNav, adminIndex } from "@/components/admin-nav";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
@@ -138,7 +138,7 @@ export function AdminSyncPage() {
 
   return (
     <div>
-      <PageHero index="04" label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified" />
+      <PageHero index={adminIndex("/admin/sync")} label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified" />
 
       <PageBody className="flex flex-col gap-6 pt-7 pb-16">
         <AdminNav />

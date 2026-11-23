@@ -5,7 +5,7 @@ import { Box, Check, Copy, EyeOff, FileBox, Image as ImageIcon, Loader2, Star, T
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageBody, PageHero } from "@/components/layout";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminNav, adminIndex } from "@/components/admin-nav";
 import {
   useClearDismissed,
   useDismissDuplicates,
@@ -36,7 +36,7 @@ export function AdminDuplicatesPage() {
   return (
     <div>
       <PageHero
-        index="07"
+        index={adminIndex("/admin/duplicates")}
         label="Duplicates"
         title="Duplicates"
         subtitle={
