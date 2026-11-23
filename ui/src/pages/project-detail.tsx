@@ -734,9 +734,9 @@ function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[90vh] flex-col">
         <form
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (canSave) onSave({ name: name.trim(), description, main_image_id: cover || null });
@@ -746,71 +746,72 @@ function EditProjectDialog({
             <DialogTitle>Edit project</DialogTitle>
             <DialogDescription className="sr-only">Change the project's name, description and cover image.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
-            <label htmlFor="project-name" className="text-sm font-medium">
-              Name
-            </label>
-            <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <label htmlFor="project-description" className="text-sm font-medium">
-                Description <span className="font-normal text-muted-foreground">(Markdown)</span>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+            <div className="space-y-1.5">
+              <label htmlFor="project-name" className="text-sm font-medium">
+                Name
               </label>
-              <div role="group" aria-label="Description view" className="flex rounded-md border border-input p-0.5 text-xs">
-                {(["write", "preview"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    aria-pressed={descMode === m}
-                    onClick={() => setDescMode(m)}
-                    className={cn(
-                      "cursor-pointer rounded px-2 py-0.5 capitalize",
-                      descMode === m ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
+              <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </div>
-            {descMode === "write" ? (
-              <Textarea
-                id="project-description"
-                rows={8}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Print settings, notes, where it came from… **bold**, - lists and [links](https://…) work."
-                className="font-mono text-[13px]"
-              />
-            ) : (
-              <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
-                {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="project-description" className="text-sm font-medium">
+                  Description <span className="font-normal text-muted-foreground">(Markdown)</span>
+                </label>
+                <div role="group" aria-label="Description view" className="flex rounded-md border border-input p-0.5 text-xs">
+                  {(["write", "preview"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={descMode === m}
+                      onClick={() => setDescMode(m)}
+                      className={cn(
+                        "cursor-pointer rounded px-2 py-0.5 capitalize",
+                        descMode === m ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
+              {descMode === "write" ? (
+                <Textarea
+                  id="project-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Print settings, notes, where it came from… **bold**, - lists and [links](https://…) work."
+                  className="min-h-40 max-h-[50vh] resize-y overflow-y-auto font-mono text-[13px]"
+                />
+              ) : (
+                <div className="max-h-72 min-h-[9.5rem] overflow-auto rounded-lg border border-input p-3">
+                  {description.trim() ? <Markdown>{description}</Markdown> : <span className="text-sm text-dim">Nothing to preview.</span>}
+                </div>
+              )}
+            </div>
+            {images.length > 0 ? (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">Cover image</legend>
+                <div className="grid grid-cols-5 gap-2">
+                  {images.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setCover(a.id)}
+                      aria-pressed={cover === a.id}
+                      aria-label={fileName(a.file_path)}
+                      className={cn(
+                        "relative aspect-square cursor-pointer overflow-hidden rounded-lg border bg-thumb",
+                        cover === a.id && "border-2 border-signal",
+                      )}
+                    >
+                      <MediaImage src={thumbUrl(project.id, a.id)} alt="" />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
           </div>
-          {images.length > 0 ? (
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">Cover image</legend>
-              <div className="grid grid-cols-5 gap-2">
-                {images.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => setCover(a.id)}
-                    aria-pressed={cover === a.id}
-                    aria-label={fileName(a.file_path)}
-                    className={cn(
-                      "relative aspect-square cursor-pointer overflow-hidden rounded-lg border bg-thumb",
-                      cover === a.id && "border-2 border-signal",
-                    )}
-                  >
-                    <MediaImage src={thumbUrl(project.id, a.id)} alt="" />
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
