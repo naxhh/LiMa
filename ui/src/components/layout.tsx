@@ -4,6 +4,7 @@ import { FolderPlus, Layers, LayoutGrid, Link as LinkIcon, Plus, Search, Setting
 
 import { cn } from "@/lib/utils";
 import { CreateActionsContext, useCreateActions, type CreateActions } from "@/lib/create-menu";
+import { useShortcuts, useShortcutsContext } from "@/lib/shortcuts";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { ImportUrlDialog } from "@/components/import-url-dialog";
@@ -69,18 +70,7 @@ function HeaderSearch() {
   const [params] = useSearchParams();
   const query = location.pathname === "/" ? (params.get("query") ?? "") : "";
   const [open, setOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
-      if (((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") || (e.key === "/" && !typing)) {
-        e.preventDefault();
-        setOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useShortcuts({ "/": () => setOpen(true), "mod+k": () => setOpen(true) }, { global: true });
 
   return (
     <>
@@ -121,20 +111,32 @@ function NewButton() {
   const location = useLocation();
   const actions = useCreateActions();
   const order = createOrder(location.pathname);
+  const [open, setOpen] = React.useState(false);
+  useShortcuts({ c: () => setOpen(true) }, { global: true });
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button aria-label="Create">
           <Plus strokeWidth={2.4} />
           <span className="hidden sm:inline">New</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent
+        align="end"
+        onKeyDown={(e) => {
+          // The hints pick an item (instead of Radix typeahead jumping by first letter). Clicking
+          // it goes through Radix's select, so focus lands in the dialog like a mouse pick.
+          const item = CREATE_ITEMS.find((x) => x.hint === e.key);
+          if (!item || e.ctrlKey || e.metaKey || e.altKey) return;
+          e.preventDefault();
+          e.currentTarget.querySelector<HTMLElement>(`[data-hint="${item.hint}"]`)?.click();
+        }}
+      >
         {order.map((key) => {
           const item = CREATE_ITEMS.find((x) => x.key === key)!;
           return (
             <React.Fragment key={key}>
-              <DropdownMenuItem onSelect={() => actions[item.action]()}>
+              <DropdownMenuItem data-hint={item.hint} onSelect={() => actions[item.action]()}>
                 <item.icon />
                 {item.label}
                 <DropdownMenuShortcut className="font-mono text-[10px] text-dim">{item.hint}</DropdownMenuShortcut>
@@ -145,6 +147,23 @@ function NewButton() {
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Opens the keyboard cheat sheet (also `?`). */
+function ShortcutsButton() {
+  const { openHelp } = useShortcutsContext();
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label="Keyboard shortcuts"
+      title="Keyboard shortcuts (?)"
+      onClick={openHelp}
+      className="hidden text-muted-foreground md:inline-flex"
+    >
+      <span aria-hidden className="font-mono text-[15px] font-semibold">?</span>
+    </Button>
   );
 }
 
@@ -178,6 +197,7 @@ export function AppHeader() {
         </div>
         <div className="ml-auto flex items-center gap-2 md:ml-0">
           <NewButton />
+          <ShortcutsButton />
           <ThemeToggle />
         </div>
       </div>
