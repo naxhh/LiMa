@@ -97,10 +97,10 @@ pub async fn write_backup(
         std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
         if only_if_changed {
             let latest = list(&dir).map_err(|e| e.to_string())?.into_iter().next();
-            if let Some(latest) = latest {
-                if read(&dir.join(&latest.name)).and_then(|b| fingerprint(&b)) == fingerprint(&backup) {
-                    return Ok(None);
-                }
+            if let Some(latest) = latest
+                && read(&dir.join(&latest.name)).and_then(|b| fingerprint(&b)) == fingerprint(&backup)
+            {
+                return Ok(None);
             }
         }
         let name = file_name(time::OffsetDateTime::now_utc());

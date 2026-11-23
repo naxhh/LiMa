@@ -68,6 +68,8 @@ pub async fn remove_missing_project(pool: &Pool<Sqlite>, project_id: &str) -> Re
     Ok(())
 }
 
+// reason: the insert needs every asset column as a separate parameter.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_discovered_asset(
     tx: &mut Transaction<'_, Sqlite>,
     project_id: &str,

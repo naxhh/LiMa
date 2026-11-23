@@ -410,7 +410,7 @@ mod tests {
         assert_eq!(sorted(Some(ProjectSort::Name), true).await, vec!["b", "a"]);
 
         // Only projects with an image give covers.
-        let covers = cover_images(pool, &[c.id.clone()], 4).await.unwrap();
+        let covers = cover_images(pool, std::slice::from_ref(&c.id), 4).await.unwrap();
         assert_eq!(covers[&c.id].len(), 1);
         assert_eq!(covers[&c.id][0].project_id, a);
 

@@ -1,7 +1,7 @@
 //! Bundles: files staged under `<state>/bundles/<id>/` with a `meta.json`, before they're
 //! imported into a project (uploads, URL imports, extracted zips).
 
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::path::{Path, PathBuf};
 
 use lima_domain::config::Paths;
@@ -108,7 +108,7 @@ pub async fn write_bundle_meta(bundle_dir: &Path, files: Vec<FileMeta>) -> Resul
         uploaded_at: OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_else(|_| "unknown".to_string()),
         files,
     };
-    let json = serde_json::to_vec_pretty(&meta).map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    let json = serde_json::to_vec_pretty(&meta).map_err(|e| Error::other(e.to_string()))?;
     let mut file = fs::File::create(bundle_dir.join("meta.json")).await?;
     file.write_all(&json).await?;
     file.flush().await?;
@@ -153,13 +153,13 @@ async fn extract_mtime(file: &fs::File) -> Result<String, Error> {
     let metadata = file.metadata().await?;
     OffsetDateTime::from(metadata.modified()?)
         .format(&time::format_description::well_known::Rfc3339)
-        .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to format mtime: {e}")))
+        .map_err(|e| Error::other(format!("Failed to format mtime: {e}")))
 }
 
 async fn compute_checksum(path: PathBuf) -> Result<String, Error> {
     tokio::task::spawn_blocking(move || lima_indexer::hash::hash_file(&path))
         .await
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?
+        .map_err(|e| Error::other(e.to_string()))?
 }
 
 #[cfg(test)]

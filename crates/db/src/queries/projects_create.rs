@@ -9,6 +9,8 @@ pub struct CreatedProject {
     pub folder_path: String,
 }
 
+// reason: the insert needs every project column as a separate parameter.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_project(
     pool: &Pool<Sqlite>,
     paths: &Paths,
@@ -24,10 +26,10 @@ pub async fn create_project(
 
     let project_dir = paths.project_dir(folder_path);
     create_dir_all(&project_dir).await.map_err(|e| {
-        sqlx::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to create project directory: {}", e),
-        ))
+        sqlx::Error::Io(std::io::Error::other(format!(
+            "Failed to create project directory: {}",
+            e
+        )))
     })?;
 
     sqlx::query(

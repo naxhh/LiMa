@@ -28,6 +28,8 @@ fn is_hidden(name: &str) -> bool {
 }
 
 /// Lists project folders: the non-hidden directories directly under the library root.
+// reason: the two lists share one walk; a struct would not simplify the callers.
+#[allow(clippy::type_complexity)]
 pub fn list_project_dirs(root: &Path) -> io::Result<(Vec<String>, Vec<(String, String)>)> {
     let mut dirs = Vec::new();
     let mut skipped = Vec::new();

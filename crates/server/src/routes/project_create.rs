@@ -62,21 +62,21 @@ pub async fn create_project(
     .await {
         Ok(created) => {
             tracing::info!("Project created with id {} & path: {}", created.id, created.folder_path);
-            return Ok((
+            Ok((
                 StatusCode::CREATED,
                 Json(CreateProjectResponse {
                     id: created.id,
                     folder_path: created.folder_path,
                 }),
-            ));
+            ))
         }
         Err(e) => {
             let msg = e.to_string();
             tracing::warn!("Failed to create project: {}", msg);
             if msg.contains("UNIQUE") || msg.contains("unique") {
-                return Err(ApiErrorResponse::new(StatusCode::CONFLICT, "existing_project", "Project with same name or path already exists").with_cause(&msg));
+                Err(ApiErrorResponse::new(StatusCode::CONFLICT, "existing_project", "Project with same name or path already exists").with_cause(&msg))
             } else {
-                return Err(ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to create project").with_cause(&msg));
+                Err(ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Failed to create project").with_cause(&msg))
             }
         }
     }

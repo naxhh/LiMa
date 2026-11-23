@@ -59,25 +59,25 @@ pub async fn asset_delete(
             Ok(Json(DeleteAssetResponse { trash_id: None }))
         }
         Err(DeleteAssetError::NotFound { project_id: _ }) => {
-            return Err(ApiErrorResponse::new(
+            Err(ApiErrorResponse::new(
                 StatusCode::NOT_FOUND,
                 "asset_not_found",
                 "Asset not found in the specified project",
-            ));
+            ))
         }
         Err(DeleteAssetError::Db(e)) => {
-            return Err(ApiErrorResponse::new(
+            Err(ApiErrorResponse::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "database_error",
-                &"Database error occurred",
-            ).with_cause(&e.to_string()));
+                "Database error occurred",
+            ).with_cause(&e.to_string()))
         }
         Err(DeleteAssetError::Fs(e)) => {
-            return Err(ApiErrorResponse::new(
+            Err(ApiErrorResponse::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "filesystem_error",
                 "Failed to delete asset file from disk",
-            ).with_cause(&e.to_string()));
+            ).with_cause(&e.to_string()))
         }
     }
 

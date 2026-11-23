@@ -44,11 +44,11 @@ impl From<sqlx::Error> for GetProjectError {
     }}
 }
 
-impl ToString for GetProjectError {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for GetProjectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GetProjectError::NotFound => "Project not found".to_string(),
-            GetProjectError::Db(e) => format!("Database error: {}", e),
+            GetProjectError::NotFound => write!(f, "Project not found"),
+            GetProjectError::Db(e) => write!(f, "Database error: {}", e),
         }
     }
 }
@@ -78,7 +78,7 @@ pub async fn get_project(
     .bind(project_id)
     .fetch_one(pool)
     .await
-    .map_err(|e| GetProjectError::from(e))
+    .map_err(GetProjectError::from)
 }
 
 pub async fn get_project_tags(

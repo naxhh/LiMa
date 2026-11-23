@@ -1,6 +1,6 @@
 use sqlx::Pool;
 use tokio::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use lima_domain::models::bundle::BundleMeta;
 use serde_json;
 
@@ -25,16 +25,16 @@ pub enum ImportFromBundleError {
     }
 }*/
 
-impl ToString for ImportFromBundleError {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for ImportFromBundleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ImportFromBundleError::BundleNotFound => "Bundle not found".to_string(),
-            ImportFromBundleError::MetaNotFound => "Missing meta file in bundle".to_string(),
-            ImportFromBundleError::ProjectNotFound => "Project not found".to_string(),
-            ImportFromBundleError::MissingFile { name } => format!("Missing file in bundle: {}", name),
-            ImportFromBundleError::Conflict { name } => format!("Conflict with existing file: {}", name),
-            ImportFromBundleError::DatabaseError(e) => format!("Database error: {}", e),
-            ImportFromBundleError::FileSystemError(e) => format!("File system error: {}", e),
+            ImportFromBundleError::BundleNotFound => write!(f, "Bundle not found"),
+            ImportFromBundleError::MetaNotFound => write!(f, "Missing meta file in bundle"),
+            ImportFromBundleError::ProjectNotFound => write!(f, "Project not found"),
+            ImportFromBundleError::MissingFile { name } => write!(f, "Missing file in bundle: {}", name),
+            ImportFromBundleError::Conflict { name } => write!(f, "Conflict with existing file: {}", name),
+            ImportFromBundleError::DatabaseError(e) => write!(f, "Database error: {}", e),
+            ImportFromBundleError::FileSystemError(e) => write!(f, "File system error: {}", e),
         }
     }
 }
@@ -92,12 +92,12 @@ pub async fn import_assets_from_bundle(
         }
 
         // Extracted archives keep their folders.
-        if let Some(parent) = dst.parent() {
-            if let Err(e) = fs::create_dir_all(parent).await {
-                rollback_imported_files(&moved_files).await;
-                let _ = transaction.rollback().await;
-                return Err(ImportFromBundleError::FileSystemError(e.to_string()));
-            }
+        if let Some(parent) = dst.parent()
+            && let Err(e) = fs::create_dir_all(parent).await
+        {
+            rollback_imported_files(&moved_files).await;
+            let _ = transaction.rollback().await;
+            return Err(ImportFromBundleError::FileSystemError(e.to_string()));
         }
 
         if let Err(e) = move_file(&src, &dst).await {
@@ -132,7 +132,7 @@ pub async fn import_assets_from_bundle(
         .bind(file_info.size)
         .bind(file_info.mtime.as_deref().unwrap_or(""))
         .bind(&file_info.mime)
-        .bind(&file_info.checksum.as_deref())
+        .bind(file_info.checksum.as_deref())
         .bind(&meta.uploaded_at)
         .bind(&meta.uploaded_at)
         .execute(&mut *transaction)
@@ -158,10 +158,10 @@ pub async fn import_assets_from_bundle(
         .await
         .ok();
 
-    return Ok(built_assets);
+    Ok(built_assets)
 }
 
-async fn get_bundle_meta_file(bundle_folder: &PathBuf) -> Option<BundleMeta> {
+async fn get_bundle_meta_file(bundle_folder: &Path) -> Option<BundleMeta> {
     let meta_path = bundle_folder.join("meta.json");
     let meta_data = fs::read_to_string(meta_path).await.ok()?;
     let bundle_meta: BundleMeta = serde_json::from_str(&meta_data).ok()?;
@@ -175,10 +175,10 @@ async fn move_file(src: &PathBuf, dst: &PathBuf) -> Result<(), std::io::Error> {
             // A copy gets the current date; keep the original one.
             let modified = fs::metadata(src).await.and_then(|m| m.modified()).ok();
             fs::copy(src, dst).await?;
-            if let Some(time) = modified {
-                if let Ok(file) = std::fs::File::options().write(true).open(dst) {
-                    let _ = file.set_modified(time);
-                }
+            if let Some(time) = modified
+                && let Ok(file) = std::fs::File::options().write(true).open(dst)
+            {
+                let _ = file.set_modified(time);
             }
             fs::remove_file(src).await?;
             Ok(())
@@ -187,7 +187,7 @@ async fn move_file(src: &PathBuf, dst: &PathBuf) -> Result<(), std::io::Error> {
     }
 }
 
-async fn rollback_imported_files(moved_files: &Vec<PathBuf>) {
+async fn rollback_imported_files(moved_files: &[PathBuf]) {
     for file_path in moved_files.iter() {
         let _ = fs::remove_file(file_path).await;
     }

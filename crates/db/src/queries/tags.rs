@@ -141,10 +141,10 @@ pub async fn update_tag(
     }
 
     if let Some(name) = name {
-        if let Some(other) = find_tag_id_by_name(&mut *tx, name).await? {
-            if other != id {
-                return Err(UpdateTagError::NameTaken);
-            }
+        if let Some(other) = find_tag_id_by_name(&mut *tx, name).await?
+            && other != id
+        {
+            return Err(UpdateTagError::NameTaken);
         }
         // Name update fires trg_tags_au, which refreshes the projects FTS index.
         sqlx::query(r#"UPDATE tags SET name = ?1, updated_at = ?2 WHERE id = ?3"#)
