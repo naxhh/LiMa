@@ -123,6 +123,8 @@ async fn fetch(state: &AppState, c: &CollectionRef) -> Result<lima_importers::co
 }
 
 /// The Bambu token from this browser, checked with Bambu. `Err` asks the UI for a login.
+// reason: axum's Response error type is fixed; boxing it would change every call site.
+#[allow(clippy::result_large_err)]
 async fn bambu_token(state: &AppState, headers: &HeaderMap) -> Result<String, Response> {
     let token = bambu::token_from_headers(headers).ok_or_else(bambu::login_required)?;
     match lima_importers::bambu::verify_token(&state.http, &token).await {
@@ -189,6 +191,8 @@ pub async fn start_collection_import(State(state): State<AppState>, headers: Hea
     }
 }
 
+// reason: axum's Response error type is fixed; boxing it would change every call site.
+#[allow(clippy::result_large_err)]
 async fn start_inner(state: AppState, headers: HeaderMap, body: StartCollectionImportRequest) -> Result<StartCollectionImportResponse, Response> {
     let c = parse(&body.url).map_err(IntoResponse::into_response)?;
     let remote = fetch(&state, &c).await.map_err(IntoResponse::into_response)?;
@@ -203,10 +207,10 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartCollectionI
     let selected: HashSet<String> = body.model_ids.into_iter().collect();
     let token = if remote.source == Source::Makerworld && !selected.is_empty() { Some(bambu_token(&state, &headers).await?) } else { None };
     let now = now_rfc3339();
-    if body.keep_in_sync {
-        if let Some(t) = &token {
-            db::set_token(pool, BAMBU_TOKEN, t, &now).await.map_err(|e| db_error(e).into_response())?;
-        }
+    if body.keep_in_sync
+        && let Some(t) = &token
+    {
+        db::set_token(pool, BAMBU_TOKEN, t, &now).await.map_err(|e| db_error(e).into_response())?;
     }
 
     // A free collection name: "Toys", "Toys (2)", ...
@@ -307,6 +311,8 @@ pub async fn get_collection_source(State(state): State<AppState>, Path(collectio
         (status = 404, description = "Not imported from a site", body = ApiErrorBody),
     )
 )]
+// reason: axum's Response error type is fixed; boxing it would change every call site.
+#[allow(clippy::result_large_err)]
 pub async fn update_collection_source(
     State(state): State<AppState>,
     Path(collection_id): Path<String>,

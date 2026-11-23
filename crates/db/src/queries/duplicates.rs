@@ -247,9 +247,7 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
     if exists == 0 {
         return Ok(None);
     }
-    let mut merged = Merged::default();
-
-    merged.tags = sqlx::query(
+    let tags = sqlx::query(
         "INSERT OR IGNORE INTO project_tags (project_id, tag_id)
          SELECT DISTINCT ?1, tag_id FROM project_tags WHERE project_id IN (SELECT value FROM json_each(?2))",
     )
@@ -269,8 +267,8 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
     .bind(&others_json)
     .execute(&mut *tx)
     .await?;
-    merged.collections = added.rows_affected();
-    if merged.collections > 0 {
+    let collections = added.rows_affected();
+    if collections > 0 {
         sqlx::query(
             "UPDATE collections SET updated_at = ?2
              WHERE id IN (SELECT collection_id FROM collection_projects WHERE project_id IN (SELECT value FROM json_each(?1)))",
@@ -281,7 +279,7 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
         .await?;
     }
 
-    merged.description = sqlx::query(
+    let description = sqlx::query(
         "UPDATE projects SET description = (
              SELECT description FROM projects WHERE id IN (SELECT value FROM json_each(?2)) AND trim(description) <> ''
              ORDER BY length(description) DESC LIMIT 1)
@@ -295,7 +293,7 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
     .rows_affected()
         > 0;
 
-    merged.source = sqlx::query(
+    let source = sqlx::query(
         "UPDATE projects SET (source_url, source_author, source_license) = (
              SELECT source_url, source_author, source_license FROM projects
              WHERE id IN (SELECT value FROM json_each(?2)) AND source_url IS NOT NULL ORDER BY updated_at DESC LIMIT 1)
@@ -310,7 +308,7 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
         > 0;
 
     // The other copy's cover goes away with it, so use the same picture from the kept project's own files.
-    merged.cover = sqlx::query(
+    let cover = sqlx::query(
         "UPDATE projects SET main_image_id = (
              SELECT mine.id FROM projects o
              JOIN assets theirs ON theirs.id = o.main_image_id
@@ -329,6 +327,14 @@ pub async fn merge_into(pool: &Pool<Sqlite>, keep: &str, others: &[String], now:
     .await?
     .rows_affected()
         > 0;
+
+    let merged = Merged {
+        tags,
+        collections,
+        description,
+        source,
+        cover,
+    };
 
     if merged != Merged::default() {
         sqlx::query("UPDATE projects SET updated_at = ?2 WHERE id = ?1").bind(keep).bind(now).execute(&mut *tx).await?;
@@ -425,11 +431,11 @@ mod tests {
         assert_eq!(report.shared_files.len(), 1, "benchy.stl is also in a project that isn't a duplicate");
         assert_eq!(report.shared_files[0].entries.len(), 3);
 
-        crate::queries::bulk::add_tags(pool, &[copy.clone()], &["boat".into()], "t").await.unwrap();
+        crate::queries::bulk::add_tags(pool, std::slice::from_ref(&copy), &["boat".into()], "t").await.unwrap();
         let fav = crate::queries::collections::ensure_favourites(pool, "t").await.unwrap();
         crate::queries::collections::add_project(pool, &fav, &copy, "t").await.unwrap();
 
-        let merged = merge_into(pool, &keep, &[copy.clone()], "t2").await.unwrap().unwrap();
+        let merged = merge_into(pool, &keep, std::slice::from_ref(&copy), "t2").await.unwrap().unwrap();
         assert_eq!(merged, Merged { tags: 1, collections: 1, description: true, source: true, cover: true });
         let (description, cover, source): (String, Option<String>, Option<String>) =
             sqlx::query_as("SELECT description, main_image_id, source_url FROM projects WHERE id = ?1").bind(&keep).fetch_one(pool).await.unwrap();
@@ -437,8 +443,8 @@ mod tests {
         assert_eq!(cover.as_deref(), Some(my_photo.as_str()), "the kept project's own copy of the cover");
         assert_eq!(source.as_deref(), Some("https://example.com/b"));
         assert!(crate::queries::collections::is_favourite(pool, &keep).await.unwrap());
-        assert_eq!(merge_into(pool, &keep, &[copy.clone()], "t3").await.unwrap().unwrap(), Merged::default(), "nothing new the second time");
-        assert_eq!(merge_into(pool, "missing", &[copy.clone()], "t").await.unwrap(), None);
+        assert_eq!(merge_into(pool, &keep, std::slice::from_ref(&copy), "t3").await.unwrap().unwrap(), Merged::default(), "nothing new the second time");
+        assert_eq!(merge_into(pool, "missing", std::slice::from_ref(&copy), "t").await.unwrap(), None);
 
         dismiss(pool, &report.project_groups[0].key, "t").await.unwrap();
         let report = find(pool).await.unwrap();

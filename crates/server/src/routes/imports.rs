@@ -218,6 +218,8 @@ pub async fn start_import(State(state): State<AppState>, headers: HeaderMap, Jso
     }
 }
 
+// reason: axum's Response error type is fixed; boxing it would change every call site.
+#[allow(clippy::result_large_err)]
 async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportRequest) -> Result<StartImportResponse, Response> {
     let model = fetch(&state, &body.url).await.map_err(IntoResponse::into_response)?;
 
@@ -545,10 +547,10 @@ impl ImportTask {
         }
 
         // Images were downloaded first, in the site's order: the first is the cover.
-        if let Some(cover) = assets.iter().find(|a| a.kind == "image") {
-            if let Err(e) = lima_db::queries::projects_update::set_main_image(self.state.db.pool(), &self.project_id, &cover.id, &now_rfc3339()).await {
-                tracing::warn!("Could not set the cover of project {}: {e}", self.project_id);
-            }
+        if let Some(cover) = assets.iter().find(|a| a.kind == "image")
+            && let Err(e) = lima_db::queries::projects_update::set_main_image(self.state.db.pool(), &self.project_id, &cover.id, &now_rfc3339()).await
+        {
+            tracing::warn!("Could not set the cover of project {}: {e}", self.project_id);
         }
         Ok(())
     }

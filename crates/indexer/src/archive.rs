@@ -123,10 +123,7 @@ pub fn list(path: &Path) -> Result<Listing, ArchiveError> {
     let mut archive = open(path)?;
     let mut out = Listing::default();
     for i in 0..archive.len() {
-        let file = match archive.by_index_raw(i) {
-            Ok(f) => f,
-            Err(e) => return Err(e.into()),
-        };
+        let file = archive.by_index_raw(i)?;
         if file.is_dir() || is_symlink(&file) {
             continue;
         }

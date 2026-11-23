@@ -9,6 +9,8 @@ pub struct InsertedAsset {
     pub kind: String,
 }
 
+// reason: the insert needs every asset column as a separate parameter.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_asset(
     tx: &mut Transaction<'_, Sqlite>,
     project_id: &str,
@@ -48,12 +50,12 @@ pub enum DeleteAssetError {
     Fs(std::io::Error),
 }
 
-impl ToString for DeleteAssetError {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for DeleteAssetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DeleteAssetError::NotFound { project_id } => format!("Asset not found in project {}", project_id),
-            DeleteAssetError::Db(e) => format!("Database error: {}", e),
-            DeleteAssetError::Fs(e) => format!("Filesystem error: {}", e),
+            DeleteAssetError::NotFound { project_id } => write!(f, "Asset not found in project {}", project_id),
+            DeleteAssetError::Db(e) => write!(f, "Database error: {}", e),
+            DeleteAssetError::Fs(e) => write!(f, "Filesystem error: {}", e),
         }
     }
 }

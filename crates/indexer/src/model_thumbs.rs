@@ -36,10 +36,10 @@ fn extension(path: &Path) -> Option<String> {
 pub fn preview(source: &Path) -> Result<DynamicImage, String> {
     let ext = extension(source).unwrap_or_default();
     let size = fs::metadata(source).map_err(|e| e.to_string())?.len();
-    if ext == "3mf" {
-        if let Some(img) = embedded_3mf_thumbnail(source)? {
-            return Ok(img);
-        }
+    if ext == "3mf"
+        && let Some(img) = embedded_3mf_thumbnail(source)?
+    {
+        return Ok(img);
     }
     if size > MAX_RENDER_BYTES {
         return Err(format!("too large to render ({} MB)", size / (1024 * 1024)));
@@ -130,10 +130,10 @@ fn parse_3mf_model(xml: &str, tris: &mut Vec<Tri>) {
             }
             "triangle" => {
                 let idx = |k| attr_f32(tag, k).map(|v| base + v as usize);
-                if let (Some(a), Some(b), Some(c)) = (idx("v1"), idx("v2"), idx("v3")) {
-                    if let (Some(a), Some(b), Some(c)) = (vertices.get(a), vertices.get(b), vertices.get(c)) {
-                        tris.push([*a, *b, *c]);
-                    }
+                if let (Some(a), Some(b), Some(c)) = (idx("v1"), idx("v2"), idx("v3"))
+                    && let (Some(a), Some(b), Some(c)) = (vertices.get(a), vertices.get(b), vertices.get(c))
+                {
+                    tris.push([*a, *b, *c]);
                 }
             }
             _ => {}
@@ -146,14 +146,14 @@ fn attr_f32(tag: &str, key: &str) -> Option<f32> {
     while let Some(pos) = search.find(key) {
         let before_ok = pos == 0 || search.as_bytes()[pos - 1].is_ascii_whitespace();
         let after = search[pos + key.len()..].trim_start();
-        if before_ok {
-            if let Some(after) = after.strip_prefix('=') {
-                let after = after.trim_start();
-                let quote = after.chars().next()?;
-                if quote == '"' || quote == '\'' {
-                    let value = &after[1..];
-                    return value[..value.find(quote)?].trim().parse().ok();
-                }
+        if before_ok
+            && let Some(after) = after.strip_prefix('=')
+        {
+            let after = after.trim_start();
+            let quote = after.chars().next()?;
+            if quote == '"' || quote == '\'' {
+                let value = &after[1..];
+                return value[..value.find(quote)?].trim().parse().ok();
             }
         }
         search = &search[pos + key.len()..];
@@ -188,7 +188,7 @@ fn parse_stl(bytes: &[u8]) -> Result<Vec<Tri>, String> {
             }
         }
     }
-    Ok(verts.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect())
+    Ok(verts.as_chunks::<3>().0.to_vec())
 }
 
 /// OBJ is Y-up: vertices are turned Z-up like the other formats.

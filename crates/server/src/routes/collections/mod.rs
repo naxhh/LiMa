@@ -97,7 +97,7 @@ pub(crate) fn name_taken(existing_id: &str) -> ApiErrorResponse {
 /// Loads one collection with its covers, or 404.
 pub(crate) async fn load(pool: &sqlx::Pool<sqlx::Sqlite>, id: &str) -> Result<Collection, ApiErrorResponse> {
     let row = lima_db::queries::collections::get_collection(pool, id).await.map_err(db_error)?.ok_or_else(not_found)?;
-    let mut covers = lima_db::queries::collections::cover_images(pool, &[row.id.clone()], COVERS_PER_COLLECTION)
+    let mut covers = lima_db::queries::collections::cover_images(pool, std::slice::from_ref(&row.id), COVERS_PER_COLLECTION)
         .await
         .map_err(db_error)?;
     let c = covers.remove(&row.id).unwrap_or_default();

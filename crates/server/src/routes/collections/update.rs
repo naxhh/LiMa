@@ -45,10 +45,10 @@ pub async fn update_collection(
         if current.system_key.is_some() && *name != current.name {
             return Err(protected());
         }
-        if let Some(existing) = lima_db::queries::collections::find_collection_id_by_name(pool, name).await.map_err(db_error)? {
-            if existing != collection_id {
-                return Err(name_taken(&existing));
-            }
+        if let Some(existing) = lima_db::queries::collections::find_collection_id_by_name(pool, name).await.map_err(db_error)?
+            && existing != collection_id
+        {
+            return Err(name_taken(&existing));
         }
     }
     let found = lima_db::queries::collections::update_collection(pool, &collection_id, name.as_deref(), description.as_deref(), &now())

@@ -227,10 +227,10 @@ pub(crate) async fn download_with(request: reqwest::RequestBuilder, dest: &Path)
         let _ = tokio::fs::remove_file(dest).await;
         return Err(e);
     }
-    if let Some(time) = last_modified {
-        if let Err(e) = out.into_std().await.set_modified(time) {
-            tracing::debug!("Could not set the date of {}: {e}", dest.display());
-        }
+    if let Some(time) = last_modified
+        && let Err(e) = out.into_std().await.set_modified(time)
+    {
+        tracing::debug!("Could not set the date of {}: {e}", dest.display());
     }
     Ok(dest.to_path_buf())
 }
