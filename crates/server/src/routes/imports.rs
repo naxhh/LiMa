@@ -513,7 +513,7 @@ impl ImportTask {
             return Ok(());
         }
 
-        crate::routes::bundle_create::write_bundle_meta(&dir.to_path_buf(), metas)
+        crate::bundles::write_bundle_meta(dir, metas)
             .await
             .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not write the bundle: {e}") })?;
 
@@ -568,7 +568,7 @@ impl ImportTask {
                 return Ok(false);
             }
         };
-        match file_meta(&path, name).await {
+        match crate::bundles::file_meta(path.clone(), name).await {
             Ok(meta) => {
                 metas.push(meta);
                 Ok(true)
@@ -581,15 +581,3 @@ impl ImportTask {
     }
 }
 
-async fn file_meta(path: &Path, name: &str) -> std::io::Result<FileMeta> {
-    let file = tokio::fs::File::open(path).await?;
-    let size = file.metadata().await?.len() as i64;
-    Ok(FileMeta {
-        name: name.to_string(),
-        size,
-        mtime: crate::routes::bundle_create::extract_mtime(&file).await.ok(),
-        mime: crate::routes::bundle_create::guess_mime(name),
-        kind: lima_domain::models::asset::asset_kind(name).to_string(),
-        checksum: crate::routes::bundle_create::compute_checksum(path.to_path_buf()).await.ok(),
-    })
-}

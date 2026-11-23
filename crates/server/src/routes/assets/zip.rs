@@ -165,7 +165,7 @@ pub async fn zip_entry(
     let file_name = entry.path.rsplit('/').next().unwrap_or(&entry.path).to_string();
     let mut res = Response::new(Body::from_stream(ReaderStream::new(reader)));
     let headers = res.headers_mut();
-    let mime = crate::routes::bundle_create::guess_mime(&file_name);
+    let mime = crate::bundles::guess_mime(&file_name);
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_str(&mime).unwrap_or(HeaderValue::from_static("application/octet-stream")));
     headers.insert(header::CONTENT_LENGTH, HeaderValue::from(entry.size));
     if params.download {

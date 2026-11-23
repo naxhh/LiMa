@@ -203,50 +203,52 @@ pub async fn list_projects(
 ) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let (filter, text) = params.filter();
-
     let cursor = match params.cursor {
-        Some(ref c) => Some(decode_cursor(c).map_err(|e| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(&e))?),
+        Some(ref c) => Some(decode_cursor(c).map_err(|e| bad_cursor(&e))?),
         None => None,
     };
+    if text.trim().is_empty() {
+        let (sort, descending) = params.sort()?;
+        list_page(&state, limit, cursor, sort, descending, &filter).await
+    } else {
+        search_page(&state, &text, limit, cursor, &filter).await
+    }
+}
 
-    // TODO: likely move this to its own method
-    if let Some(query) = Some(text.as_str()).filter(|query| !query.trim().is_empty()) {
-        if let Some(ref c) = cursor {
-            if c.rank.is_none() {
-                return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause("Cursor is missing rank"));
-            }
-        }
+fn bad_cursor(cause: &str) -> ApiErrorResponse {
+    ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(cause)
+}
 
-        let search_projects = lima_db::queries::projects_search::search_projects(
-            state.db.pool(),
-            query,
-            limit,
-            cursor,
-            &filter,
-        )
+/// Full-text results by relevance; the cursor carries the rank.
+async fn search_page(
+    state: &AppState,
+    text: &str,
+    limit: i64,
+    cursor: Option<Cursor>,
+    filter: &lima_db::queries::projects::ProjectFilter,
+) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
+    if cursor.as_ref().is_some_and(|c| c.rank.is_none()) {
+        return Err(bad_cursor("Cursor is missing rank"));
+    }
+    let rows = lima_db::queries::projects_search::search_projects(state.db.pool(), text, limit, cursor, filter)
         .await
         .map_err(|e| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed searching projects").with_cause(&e.to_string()))?;
+    let next_cursor = rows.last().map(|row| {
+        encode_cursor(&Cursor { updated_at: row.project.updated_at.clone(), id: row.project.id.clone(), rank: Some(row.rank), sort: None, sort_value: None })
+    });
+    let items = with_summaries(state, rows.into_iter().map(|row| row.project).collect()).await?;
+    Ok(Json(ListProjectsResponse { items, next_cursor }))
+}
 
-        let next_cursor = search_projects.last().map(|row| {
-            encode_cursor(&Cursor {
-                updated_at: row.project.updated_at.clone(),
-                id: row.project.id.clone(),
-                rank: Some(row.rank),
-                sort: None,
-                sort_value: None,
-            })
-        });
-
-        let projects = with_summaries(&state, search_projects.into_iter().map(|row| row.project).collect()).await?;
-
-        return Ok(Json(ListProjectsResponse {
-            items: projects,
-            next_cursor,
-        }));
-    }
-
-    let (sort, descending) = params.sort()?;
-    let bad_cursor = |cause: &str| ApiErrorResponse::new(StatusCode::BAD_REQUEST, "invalid_cursor", "Invalid cursor parameter").with_cause(cause);
+/// Projects in `sort` order; the cursor carries the sort and the last value.
+async fn list_page(
+    state: &AppState,
+    limit: i64,
+    cursor: Option<Cursor>,
+    sort: lima_db::queries::projects::ProjectSort,
+    descending: bool,
+    filter: &lima_db::queries::projects::ProjectFilter,
+) -> Result<Json<ListProjectsResponse>, ApiErrorResponse> {
     // The cursor must come from a page with the same sort, or the next page would skip or repeat projects.
     let after = match cursor {
         None => None,
@@ -255,22 +257,13 @@ pub async fn list_projects(
             _ => return Err(bad_cursor("Cursor was made for a different sort")),
         },
     };
-
-    let projects_with_sort = lima_db::queries::projects::list_projects(
-        state.db.pool(),
-        limit,
-        after,
-        sort,
-        descending,
-        &filter,
-    )
-    .await
-    .map_err(|e| match e {
-        sqlx::Error::Protocol(ref m) if m == lima_db::queries::projects::INVALID_CURSOR => bad_cursor(m),
-        e => ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()),
-    })?;
-
-    let next_cursor = projects_with_sort.last().map(|(project, sort_value)| {
+    let rows = lima_db::queries::projects::list_projects(state.db.pool(), limit, after, sort, descending, filter)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Protocol(ref m) if m == lima_db::queries::projects::INVALID_CURSOR => bad_cursor(m),
+            e => ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string()),
+        })?;
+    let next_cursor = rows.last().map(|(project, sort_value)| {
         encode_cursor(&Cursor {
             updated_at: project.updated_at.clone(),
             id: project.id.clone(),
@@ -279,11 +272,6 @@ pub async fn list_projects(
             sort_value: Some(sort_value.clone()),
         })
     });
-
-    let projects = projects_with_sort.into_iter().map(|(project, _)| project).collect();
-    
-    Ok(Json(ListProjectsResponse {
-        items: with_summaries(&state, projects).await?,
-        next_cursor,
-    }))
+    let items = with_summaries(state, rows.into_iter().map(|(project, _)| project).collect()).await?;
+    Ok(Json(ListProjectsResponse { items, next_cursor }))
 }
