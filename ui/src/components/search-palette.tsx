@@ -8,7 +8,7 @@ import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
 import { useCollections } from "@/lib/collections";
 import { thumbUrl } from "@/lib/media";
-import { FILTERS, currentToken, quote, replaceToken } from "@/lib/search-syntax";
+import { FILTERS, currentToken, quote, replaceToken, searchType, stripType } from "@/lib/search-syntax";
 import { useAllTags } from "@/lib/tags";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -50,6 +50,9 @@ export function SearchPalette({ open, onOpenChange, initial }: { open: boolean; 
   const tags = useAllTags().data ?? [];
   const collections = useCollections().data ?? [];
   const token = currentToken(value);
+  const mode = searchType(value);
+  const searchQuery = stripType(value).trim();
+  const searchText = searchQuery.toLowerCase();
   const debounced = useDebounced(value.trim(), 200);
   const projectsQ = useQuery({
     queryKey: ["palette-projects", debounced],
@@ -80,9 +83,70 @@ export function SearchPalette({ open, onOpenChange, initial }: { open: boolean; 
   const collectionHits = collections.filter((c) => match(c.name)).slice(0, 8);
   const projects = projectsQ.data?.items ?? [];
 
-  // Suggestions for the filter being typed.
+  // Suggestions for the filter being typed (or the chosen `type:` kind).
   let suggestions: React.ReactNode = null;
-  if (token.key === "tag") {
+  if (mode === "tag") {
+    const hits = tags.filter((t) => !searchText || t.name.toLowerCase().includes(searchText)).slice(0, 30);
+    suggestions = (
+      <CommandPrimitive.Group heading="Tags" className={group}>
+        {hits.map((t) => (
+          <CommandPrimitive.Item
+            key={t.id}
+            value={`tag-${t.id}`}
+            className={item}
+            onSelect={() => {
+              close();
+              navigate(`/?query=${encodeURIComponent(`#${quote(t.name)}`)}`);
+            }}
+          >
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: t.color }} />
+            {t.name}
+            <span className="ml-auto font-mono text-[11px] text-dim">{t.project_count}</span>
+          </CommandPrimitive.Item>
+        ))}
+      </CommandPrimitive.Group>
+    );
+  } else if (mode === "collection") {
+    const hits = collections.filter((c) => !searchText || c.name.toLowerCase().includes(searchText)).slice(0, 30);
+    suggestions = (
+      <CommandPrimitive.Group heading="Collections" className={group}>
+        {hits.map((c) => (
+          <CommandPrimitive.Item
+            key={c.id}
+            value={`collection-${c.id}`}
+            className={item}
+            onSelect={() => {
+              close();
+              navigate(`/collections/${c.id}`);
+            }}
+          >
+            {c.is_favourites ? <Star /> : <Layers />}
+            {c.name}
+            <span className="ml-auto font-mono text-[11px] text-dim">{c.project_count}</span>
+          </CommandPrimitive.Item>
+        ))}
+      </CommandPrimitive.Group>
+    );
+  } else if (token.key === "type") {
+    const options = [
+      { value: "type:project", label: "Projects", Icon: Box },
+      { value: "type:tag", label: "Tags", Icon: Hash },
+      { value: "type:collection", label: "Collections", Icon: Layers },
+    ];
+    suggestions = (
+      <CommandPrimitive.Group heading="Search for" className={group}>
+        {options
+          .filter((o) => o.value.toLowerCase().includes(token.value) || o.label.toLowerCase().includes(token.value))
+          .map((o) => (
+            <CommandPrimitive.Item key={o.value} value={o.value} className={item} onSelect={() => complete(o.value)}>
+              <o.Icon />
+              {o.label}
+              <span className="ml-auto font-mono text-[11px] text-dim">{o.value}</span>
+            </CommandPrimitive.Item>
+          ))}
+      </CommandPrimitive.Group>
+    );
+  } else if (token.key === "tag") {
     suggestions = (
       <CommandPrimitive.Group heading="Tags" className={group}>
         {tagHits.map((t) => (
@@ -158,23 +222,29 @@ export function SearchPalette({ open, onOpenChange, initial }: { open: boolean; 
           </div>
           <CommandPrimitive.List className="max-h-[min(60vh,440px)] overflow-y-auto pb-1.5">
             {suggestions}
-            {token.key !== null ? (
+            {mode === "project" && token.key !== null ? (
               <CommandPrimitive.Group className={group}>
-                <CommandPrimitive.Item value="search" className={item} onSelect={() => search(value)}>
+                <CommandPrimitive.Item value="search" className={item} onSelect={() => search(searchQuery)}>
                   <Search />
-                  Search the library for <span className="truncate font-medium">{value.trim()}</span>
+                  {searchQuery ? (
+                    <>
+                      Search the library for <span className="truncate font-medium">{searchQuery}</span>
+                    </>
+                  ) : (
+                    "Show the whole library"
+                  )}
                 </CommandPrimitive.Item>
               </CommandPrimitive.Group>
             ) : null}
 
-            {token.key === null ? (
+            {mode === "project" && token.key === null ? (
               <>
                 <CommandPrimitive.Group className={group}>
-                  <CommandPrimitive.Item value="search" className={item} onSelect={() => search(value)}>
+                  <CommandPrimitive.Item value="search" className={item} onSelect={() => search(searchQuery)}>
                     <Search />
-                    {value.trim() ? (
+                    {searchQuery ? (
                       <>
-                        Search the library for <span className="truncate font-medium">{value.trim()}</span>
+                        Search the library for <span className="truncate font-medium">{searchQuery}</span>
                       </>
                     ) : (
                       "Show the whole library"
@@ -257,6 +327,7 @@ export function SearchPalette({ open, onOpenChange, initial }: { open: boolean; 
           <div className="flex flex-wrap gap-x-3 gap-y-1 border-t px-4 py-2 font-mono text-[10px] text-dim">
             <span>↵ search</span>
             <span>#tag</span>
+            <span>type:tag</span>
             <span>in:collection</span>
             <span>is:fav</span>
             <span>format:stl</span>

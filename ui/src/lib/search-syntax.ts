@@ -10,6 +10,7 @@ export const FILTERS: FilterHelp[] = [
   { insert: "#", label: "Tag", example: "#pla" },
   { insert: "in:", label: "In a collection", example: "in:desk" },
   { insert: "is:fav ", label: "Favourites", example: "is:fav" },
+  { insert: "type:", label: "Search for", example: "type:tag  ·  type:collection" },
   { insert: "format:", label: "Model format", example: "format:3mf" },
   { insert: "file:", label: "File name", example: "file:benchy" },
   { insert: "has:image ", label: "Has pictures", example: "has:image  ·  no:image" },
@@ -39,7 +40,7 @@ export type Token = {
   start: number;
 };
 
-const ALIASES: Record<string, string> = { tag: "tag", tags: "tag", in: "in", collection: "in", col: "in", is: "is", format: "format", ext: "format", type: "format", from: "from", source: "from", has: "has", no: "has", by: "by", author: "by", file: "file" };
+const ALIASES: Record<string, string> = { tag: "tag", tags: "tag", in: "in", collection: "in", col: "in", is: "is", format: "format", ext: "format", type: "type", from: "from", source: "from", has: "has", no: "has", by: "by", author: "by", file: "file" };
 
 export function currentToken(input: string): Token {
   const start = lastTokenStart(input);
@@ -117,4 +118,32 @@ export function toggleToken(query: string, token: string): string {
   if (idx >= 0) tokens.splice(idx, 1);
   else tokens.push(token);
   return tokens.join(" ");
+}
+
+export type SearchType = "project" | "tag" | "collection";
+
+/** The kind the palette should search: the last `type:` token, `project` when absent. */
+export function searchType(query: string): SearchType {
+  let kind: SearchType = "project";
+  for (const raw of tokenize(query)) {
+    const body = raw.startsWith("-") ? raw.slice(1) : raw;
+    const colon = body.indexOf(":");
+    if (colon <= 0 || body.slice(0, colon).toLowerCase() !== "type") continue;
+    const value = body.slice(colon + 1).replace(/"/g, "").toLowerCase();
+    if (value === "tag" || value === "tags") kind = "tag";
+    else if (value === "collection" || value === "collections") kind = "collection";
+    else if (value === "project" || value === "projects") kind = "project";
+  }
+  return kind;
+}
+
+/** The query with any `type:` token removed, for filtering tags/collections by the rest. */
+export function stripType(query: string): string {
+  return tokenize(query)
+    .filter((raw) => {
+      const body = raw.startsWith("-") ? raw.slice(1) : raw;
+      const colon = body.indexOf(":");
+      return !(colon > 0 && body.slice(0, colon).toLowerCase() === "type");
+    })
+    .join(" ");
 }

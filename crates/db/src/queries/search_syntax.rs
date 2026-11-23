@@ -6,6 +6,7 @@
 //! | `in:desk`, `collection:desk` | projects in the Desk collection (`in:favourites` too) |
 //! | `is:fav` | favourites |
 //! | `format:stl`, `ext:3mf` | projects with a model of that format |
+//! | `type:tag`, `type:collection`, `type:project` | the search palette's kind; project search ignores these |
 //! | `file:benchy` | projects with a file whose path contains "benchy" |
 //! | `has:image`, `no:image` | projects with / without pictures |
 //! | `from:printables` | projects imported from Printables (or MakerWorld, Thingiverse, a domain) |
@@ -82,12 +83,14 @@ pub fn parse_into(input: &str, filter: &mut ProjectFilter) -> ParsedSearch {
             ("is", n) if matches!(value.as_str(), "fav" | "favs" | "favourite" | "favorite" | "favourites" | "favorites" | "starred") => {
                 filter.favourite = Some(!n)
             }
-            ("format" | "ext" | "type", false) => {
+            ("format" | "ext", false) => {
                 let f = value.trim_start_matches('.').to_ascii_uppercase();
                 if !f.is_empty() && f.len() <= 10 && f.chars().all(|c| c.is_ascii_alphanumeric()) && !filter.formats.contains(&f) {
                     filter.formats.push(f);
                 }
             }
+            // `type:` picks what the palette searches; the project search returns projects regardless.
+            ("type", _) if matches!(value.as_str(), "project" | "projects" | "tag" | "tags" | "collection" | "collections") => {}
             ("has", n) if matches!(value.as_str(), "image" | "images" | "picture" | "pictures" | "photo" | "photos" | "cover") => {
                 filter.has_image = Some(!n)
             }
@@ -137,5 +140,22 @@ mod tests {
         assert_eq!(f.has_image, Some(false));
         assert_eq!(f.tag_names, vec!["silk pla"]);
         assert_eq!(text, "print-in-place -dash https://x.y/z wat:ever #", "unknown keys and dashes stay words");
+    }
+
+    #[test]
+    fn type_filter_is_palette_only() {
+        // Recognised `type:` values are consumed and ignored, not left as search words.
+        let (text, f) = parse("type:tag type:collection type:project dragon");
+        assert_eq!(text, "dragon");
+        assert!(f.formats.is_empty());
+
+        // Plurals are recognised too.
+        let (text, _) = parse("type:tags type:collections type:projects");
+        assert_eq!(text, "");
+
+        // `type:` is no longer an alias of `format:`; unknown values stay search words.
+        let (text, f) = parse("type:stl type:weird");
+        assert_eq!(text, "type:stl type:weird");
+        assert!(f.formats.is_empty());
     }
 }
