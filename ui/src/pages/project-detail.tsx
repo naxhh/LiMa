@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Search, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -584,23 +584,49 @@ function FilesTable({
       return next;
     });
 
+  const [filter, setFilter] = React.useState("");
+  const q = filter.trim().toLowerCase();
+  const filtered = q ? project.assets.filter((a) => a.file_path.toLowerCase().includes(q)) : project.assets;
+
   return (
     <section aria-labelledby="files-h" className="flex flex-col gap-3 pt-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="files-h" className="font-display text-[22px] font-semibold">
           Files <span className="font-mono text-[13px] font-normal text-muted-foreground">{project.assets.length}</span>
+          {q ? (
+            <span className="ml-2 font-mono text-[13px] font-normal text-dim">
+              {filtered.length} of {project.assets.length}
+            </span>
+          ) : null}
         </h2>
-        {project.assets.length > 0 ? (
-          <Button asChild variant="outline">
-            <a href={projectDownloadUrl(project.id)} download>
-              <Download />
-              Download all
-              <span className="font-mono text-xs text-muted-foreground">
-                zip · {formatBytes(project.assets.reduce((n, a) => n + a.size_bytes, 0))}
-              </span>
-            </a>
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {project.assets.length > MANY ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-dim" aria-hidden />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setFilter("");
+                }}
+                placeholder="Filter files…"
+                aria-label="Filter files"
+                className="h-8 w-56 pl-8 text-sm"
+              />
+            </div>
+          ) : null}
+          {project.assets.length > 0 ? (
+            <Button asChild variant="outline">
+              <a href={projectDownloadUrl(project.id)} download>
+                <Download />
+                Download all
+                <span className="font-mono text-xs text-muted-foreground">
+                  zip · {formatBytes(project.assets.reduce((n, a) => n + a.size_bytes, 0))}
+                </span>
+              </a>
+            </Button>
+          ) : null}
+        </div>
       </div>
       {project.assets.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
@@ -621,7 +647,7 @@ function FilesTable({
               </tr>
             </thead>
             <tbody>
-              {project.assets.map((a) => {
+              {filtered.map((a) => {
                 const url = libraryUrl(project.folder_path, a.file_path);
                 const zip = isZip(a.file_path);
                 const open = zip && opened.has(a.id);
@@ -711,6 +737,13 @@ function FilesTable({
                   </React.Fragment>
                 );
               })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No files match
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
