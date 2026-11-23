@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, ChevronDown, ChevronLeft, ChevronRight, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, EyeOff, Image as ImageIcon, MoreHorizontal, Pencil, Rotate3d, Star, Trash2, File as FileIcon, FileArchive } from "lucide-react";
 
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
@@ -213,17 +213,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
         </aside>
       </div>
 
-      {project.description.trim() ? (
-        <Markdown>{project.description}</Markdown>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="cursor-pointer self-start text-sm text-dim hover:text-foreground"
-        >
-          + Add a description
-        </button>
-      )}
+      <Readme description={project.description} onAdd={() => setEditing(true)} />
 
       <FilesTable
         project={project}
@@ -310,6 +300,94 @@ function Spec({ label, value, className }: { label: string; value: string; class
       </dt>
       <dd className="mt-1 font-mono text-[15px]">{value}</dd>
     </div>
+  );
+}
+
+/** Above this height the README body is clipped until "show all". */
+const README_CLIP_PX = 480;
+
+/** The project description rendered as a collapsible, signal-tinted terminal box. */
+function Readme({ description, onAdd }: { description: string; onAdd: () => void }) {
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("lima.readme.collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [showAll, setShowAll] = React.useState(false);
+  const bodyRef = React.useRef<HTMLDivElement | null>(null);
+  const [tall, setTall] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => setTall(el.scrollHeight > README_CLIP_PX);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [description, collapsed, showAll]);
+
+  if (!description.trim()) {
+    return (
+      <button type="button" onClick={onAdd} className="cursor-pointer self-start text-sm text-dim hover:text-foreground">
+        + Add a description
+      </button>
+    );
+  }
+
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem("lima.readme.collapsed", next ? "1" : "0");
+    } catch {
+      /* storage is unavailable; state still toggles for this session */
+    }
+  };
+
+  const clipped = !collapsed && !showAll && tall;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-signal/35 bg-signal/[0.04]">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        className="flex w-full cursor-pointer items-center justify-between gap-3 border-b border-signal/25 px-4 py-2 font-mono text-xs"
+      >
+        <span>
+          <span className="text-signal">$</span> cat README.md
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+          {collapsed ? "expand" : "collapse"}
+          {collapsed ? <ChevronDown /> : <ChevronUp />}
+        </span>
+      </button>
+      {collapsed ? null : (
+        <div>
+          <div ref={bodyRef} className={cn("px-5 py-4", clipped && "max-h-[480px] overflow-hidden")}>
+            <Markdown>{description}</Markdown>
+          </div>
+          {clipped ? (
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-x-0 -top-20 h-20 bg-gradient-to-t from-card to-transparent" />
+              <div className="relative flex justify-center pb-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="cursor-pointer rounded-full border border-input px-3 py-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+                >
+                  show all
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
   );
 }
 
