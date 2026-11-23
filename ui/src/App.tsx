@@ -7,6 +7,7 @@ import { ProjectDetailPage } from "@/pages/project-detail";
 import { AdminSyncPage } from "@/pages/admin-sync";
 import { AdminTrashPage } from "@/pages/admin-trash";
 import { AdminDuplicatesPage } from "@/pages/admin-duplicates";
+import { AdminTagsPage } from "@/pages/admin-tags";
 import { TagsPage } from "@/pages/tags";
 import { CollectionsPage } from "@/pages/collections";
 import { CollectionDetailPage } from "@/pages/collection-detail";
@@ -28,6 +29,7 @@ function App() {
         <Route path="/admin/backup" element={<Navigate to="/admin/sync" replace />} />
         <Route path="/admin/trash" element={<AdminTrashPage />} />
         <Route path="/admin/duplicates" element={<AdminDuplicatesPage />} />
+        <Route path="/admin/tags" element={<AdminTagsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <MobileNav />

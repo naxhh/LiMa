@@ -1,6 +1,8 @@
 pub mod create;
 pub mod delete;
+pub mod delete_many;
 pub mod list;
+pub mod merge;
 pub mod update;
 
 fn now() -> String {

@@ -1,9 +1,13 @@
+import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { ExternalLink, Image as ImageIcon } from "lucide-react";
 
+import { imageBasename } from "@/lib/markdown-images";
 import { cn } from "@/lib/utils";
+
+export type LocalImage = { name: string; url: string };
 
 /** Only http(s) and mailto links are followed; anything else renders as plain text. */
 function safeHref(href: string | undefined): string | null {
@@ -49,34 +53,91 @@ const components: Components = {
       </a>
     );
   },
-  // Remote images aren't loaded (no hotlinking or tracking); they become links.
-  img: ({ src, alt }) => {
-    const safe = safeHref(typeof src === "string" ? src : undefined);
-    const label = alt?.trim() || "image";
-    if (!safe) return <span className="text-dim">[{label}]</span>;
-    return (
-      <a
-        href={safe}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 rounded border border-input px-1.5 py-0.5 align-middle text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ImageIcon className="size-3" />
-        {label}
-        <ExternalLink className="size-3" />
-      </a>
-    );
-  },
 };
+
+/**
+ * The image's `src`: the project's local copy when its file name matches the
+ * image's basename, otherwise the original http(s) URL.
+ */
+function resolveImageSrc(href: string, localImages?: LocalImage[]): string {
+  if (!localImages || localImages.length === 0) return href;
+  const key = imageBasename(href);
+  const match = localImages.find((img) => imageBasename(img.name) === key);
+  return match?.url ?? href;
+}
+
+/** The link chip an image falls back to when it can't be loaded. */
+function ImageLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 rounded border border-input px-1.5 py-0.5 align-middle text-xs text-muted-foreground hover:text-foreground"
+    >
+      <ImageIcon className="size-3" />
+      {label}
+      <ExternalLink className="size-3" />
+    </a>
+  );
+}
+
+/**
+ * A Markdown image. The local copy is used when its file name matches, otherwise
+ * the original http(s) URL is loaded directly. If the image fails to load, it
+ * falls back to the link chip so there's still a way to open the original.
+ */
+function MarkdownImage({ src, alt, localImages }: { src?: string; alt?: string; localImages?: LocalImage[] }) {
+  const [failed, setFailed] = React.useState(false);
+  const safe = safeHref(src);
+  const label = alt?.trim() || "image";
+  // A new source gets a fresh chance to load.
+  React.useEffect(() => setFailed(false), [src]);
+  if (!safe) return <span className="text-dim">[{label}]</span>;
+  const resolved = resolveImageSrc(safe, localImages);
+  if (failed) return <ImageLink href={safe} label={label} />;
+  return (
+    <a href={resolved} target="_blank" rel="noopener noreferrer" className="my-3 block w-fit">
+      <img
+        src={resolved}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="max-h-[480px] max-w-full rounded-lg border object-contain"
+      />
+    </a>
+  );
+}
 
 /**
  * Renders a description written in Markdown. Raw HTML is dropped,
  * single newlines are kept as line breaks so older plain-text descriptions look the same.
+ * `localImages` maps file names to local URLs so images in the description are
+ * loaded from the project's own copies when a match exists.
  */
-export function Markdown({ children, className }: { children: string; className?: string }) {
+export function Markdown({
+  children,
+  className,
+  localImages,
+}: {
+  children: string;
+  className?: string;
+  localImages?: LocalImage[];
+}) {
   return (
     <div className={cn("text-[15px] leading-relaxed break-words text-muted-foreground", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components} skipHtml>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+        components={{
+          ...components,
+          img: ({ src, alt }) => (
+            <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt} localImages={localImages} />
+          ),
+        }}
+        skipHtml
+      >
         {children}
       </ReactMarkdown>
     </div>

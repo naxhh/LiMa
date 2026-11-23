@@ -596,6 +596,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_project_ids"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -836,6 +852,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tags/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["delete_tags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags/{tag_id}": {
         parameters: {
             query?: never;
@@ -850,6 +882,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_tag"];
+        trace?: never;
+    };
+    "/api/tags/{tag_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["merge_tag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/trash": {
@@ -1242,6 +1290,17 @@ export interface components {
             /** @description The trash item to restore it from; null when nothing went to the trash. */
             trash_id?: string | null;
         };
+        DeleteTagsRequest: {
+            /** @description Ids of the tags to delete (max 1000). */
+            tag_ids: string[];
+        };
+        DeleteTagsResponse: {
+            /**
+             * Format: int64
+             * @description Number of tags actually deleted.
+             */
+            deleted: number;
+        };
         DismissDuplicatesRequest: {
             /** @description The group's `key`. */
             key: string;
@@ -1463,6 +1522,17 @@ export interface components {
              */
             retention_days: number;
         };
+        MergeTagRequest: {
+            /** @description Id of the tag to merge this tag into. */
+            into_tag_id: string;
+        };
+        MergeTagResponse: {
+            /**
+             * Format: int64
+             * @description Number of projects that gained the target tag.
+             */
+            projects_affected: number;
+        };
         MergedMetadata: {
             /**
              * Format: int64
@@ -1544,6 +1614,11 @@ export interface components {
             source_url?: string | null;
             tags: components["schemas"]["ProjectTagResponse"][];
             updated_at: string;
+        };
+        ProjectIdsResponse: {
+            ids: string[];
+            /** @description More projects match than were returned. */
+            truncated: boolean;
         };
         /** @description A project plus the aggregates list views need (counts, size, formats, tags). */
         ProjectListItem: components["schemas"]["ProjectRow"] & {
@@ -3604,6 +3679,35 @@ export interface operations {
             };
         };
     };
+    list_project_ids: {
+        parameters: {
+            query?: {
+                /** @description Search query, as for /api/projects */
+                query?: string;
+                /** @description Comma-separated tag ids; projects must have all of them */
+                tags?: string;
+                /** @description Comma-separated model extensions; projects must have at least one */
+                formats?: string;
+                /** @description Only projects without images */
+                no_image?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ids of every project matching the search and filters (up to 2,000), for "select all" */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectIdsResponse"];
+                };
+            };
+        };
+    };
     project_detail: {
         parameters: {
             query?: never;
@@ -4456,6 +4560,48 @@ export interface operations {
             };
         };
     };
+    delete_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description Tags deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteTagsResponse"];
+                };
+            };
+            /** @description Too many tag ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     delete_tag: {
         parameters: {
             query?: never;
@@ -4540,6 +4686,60 @@ export interface operations {
             };
             /** @description Another tag already uses that name */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Database failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    merge_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag to merge away */
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Tag merged into another */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeTagResponse"];
+                };
+            };
+            /** @description Both tag ids are the same */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
