@@ -504,7 +504,7 @@ function Gallery({
       ) : null}
 
       {items.length > 1 ? (
-        <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
+        <div className="grid max-h-[26rem] grid-cols-4 gap-2.5 overflow-y-auto overscroll-contain sm:grid-cols-6">
           {visibleImages.map((a, i) => (
             <button
               key={a.id}
