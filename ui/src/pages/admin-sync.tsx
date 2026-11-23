@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, EyeOff, Layers, Loader2, Play, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { ExternalLink, EyeOff, Layers, Loader2, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import type { components } from "@/gen/openapi";
@@ -12,6 +12,7 @@ import { timeAgo } from "@/lib/format";
 import { RUNNING_POLL_MS, useSyncStatus } from "@/lib/sync";
 import { PageBody, PageHero, MicroLabel } from "@/components/layout";
 import { BackupsBox } from "@/components/backups-box";
+import { AdminNav } from "@/components/admin-nav";
 
 type SyncRun = components["schemas"]["SyncRunRow"];
 type SyncStats = components["schemas"]["SyncStats"];
@@ -137,24 +138,10 @@ export function AdminSyncPage() {
 
   return (
     <div>
-      <PageHero index="04" label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified">
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="ghost">
-            <Link to="/admin/trash">
-              <Trash2 />
-              Trash
-            </Link>
-          </Button>
-          <Button asChild variant="ghost">
-            <Link to="/admin/duplicates">
-              <Copy />
-              Duplicates
-            </Link>
-          </Button>
-        </div>
-      </PageHero>
+      <PageHero index="04" label="Sync" title="Sync" subtitle="Keeps LiMa in step with your data folders and imported collections · files on disk are never modified" />
 
       <PageBody className="flex flex-col gap-6 pt-7 pb-16">
+        <AdminNav />
         {startM.isError ? (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             Could not start sync: {errorMessage(startM.error)}

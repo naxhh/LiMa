@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { refreshAfterTrash, restoreFromTrash, useTrash, type TrashItem } from "@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageBody, PageHero } from "@/components/layout";
+import { AdminNav } from "@/components/admin-nav";
 
 /** "in 12 days", "today", ... */
 function untilLabel(iso: string): string {
@@ -63,13 +64,11 @@ export function AdminTrashPage() {
             <Trash2 />
             Empty trash
           </Button>
-          <Button asChild variant="outline">
-            <Link to="/admin/sync">Sync</Link>
-          </Button>
         </div>
       </PageHero>
 
-      <PageBody className="pt-7 pb-16">
+      <PageBody className="flex flex-col gap-6 pt-7 pb-16">
+        <AdminNav trashCount={items.length} />
         {trashQ.isError ? <div className="text-sm text-destructive">{apiErrorMessage(trashQ.error)}</div> : null}
         {trashQ.isSuccess && items.length === 0 ? (
           <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
