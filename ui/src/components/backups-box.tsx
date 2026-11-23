@@ -187,6 +187,8 @@ function RestoreDialog({ source, onClose, onDone }: { source: RestoreSource; onC
               {report.ignored_folders_added > 0 || report.projects_hidden > 0 ? (
                 <Stat label="Ignored folders" value={report.ignored_folders_added} />
               ) : null}
+              {(report.collection_sources_added ?? 0) > 0 ? <Stat label="Synced collections" value={report.collection_sources_added ?? 0} /> : null}
+              {(report.duplicate_dismissals_added ?? 0) > 0 ? <Stat label="Hidden duplicates" value={report.duplicate_dismissals_added ?? 0} /> : null}
             </dl>
 
             {report.matched_by_files.length > 0 ? (

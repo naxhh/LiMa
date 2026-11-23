@@ -64,6 +64,7 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 |--------|------|---------|
 | POST | `/projects` | Create project (metadata only) |
 | GET | `/projects` | List projects (cursor pagination + search). Each item includes file counts, total size, model formats, tags and `preview_id` (a model whose thumbnail stands in when there's no image). Search matches word prefixes. Filters: `tags` (comma-separated tag ids, all must match), `formats` (comma-separated model extensions, any matches), `no_image=true`. Order: `sort` = `updated` (default) / `created` / `modified` (newest file date) / `name` / `size` / `files`, `order` = `asc` / `desc`; ignored when searching |
+| GET | `/projects/ids` | Ids of every project matching `query`/`tags`/`formats`/`no_image` (up to 2,000), for "select all" |
 | DELETE | `/projects/{project_id}` | Delete a project: it goes to the trash (`{trash_id}` in the response) unless the trash is off. `?files=keep` only removes it from LiMa: the folder stays on disk and is added to the ignore list |
 | GET | `/projects/{project_id}` | Get single project details |
 | GET | `/projects/{project_id}/download` | All of the project's files as a streamed zip |
@@ -78,7 +79,7 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| DELETE | `/projects/{project_id}/assets/{asset_id}` | Remove asset |
+| DELETE | `/projects/{project_id}/assets/{asset_id}` | Delete a file: to the trash when it's on (returns `trash_id` to restore it), else from disk |
 | GET | `/projects/{project_id}/assets/{asset_id}/zip` | Files inside a zip asset, read in place (nothing is extracted) |
 | GET | `/projects/{project_id}/assets/{asset_id}/zip/entry?path=` | Stream one file out of a zip asset (`download=true` for an attachment) |
 
@@ -192,6 +193,9 @@ Backups are JSON (`format: "lima-metadata"`, `version: 1`) keyed by project fold
 hashes so renamed folders can be matched. Restores replace names, descriptions, covers and
 sources, and add tags, collections and favourites (nothing is removed). Ignored folders in the
 backup are ignored again, and dropped from the index if a sync had brought them back.
+Imported collections come back with their sync settings and what sync knew about each model,
+and duplicate groups marked "not duplicates" stay hidden (both are stored by folder, so they
+survive a rebuilt database).
 
 | Method | Path | Purpose |
 |--------|------|---------|

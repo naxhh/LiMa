@@ -14,7 +14,11 @@ import { useTrash } from "@/lib/trash";
 const plural = (n: number) => `${n} project${n === 1 ? "" : "s"}`;
 
 /** Floating bar with actions for the selected projects. */
-export function BulkBar({ selection, total }: { selection: Selection; total: number }) {
+/**
+ * `total` is how many projects match (null when unknown); `onSelectAll` selects all of them,
+ * loaded or not (defaults to the loaded cards).
+ */
+export function BulkBar({ selection, total, onSelectAll }: { selection: Selection; total: number | null; onSelectAll?: () => void }) {
   const [dialog, setDialog] = React.useState<"tags" | "collections" | "delete" | null>(null);
   const bulk = useBulkAction(selection.exit);
   const n = selection.ids.length;
@@ -36,9 +40,15 @@ export function BulkBar({ selection, total }: { selection: Selection; total: num
           <span className="font-mono text-sm tabular-nums">{n}</span>
           <span className="hidden text-sm text-muted-foreground sm:inline">selected</span>
         </div>
-        <Button variant="ghost" size="sm" className={action} aria-label={n === total ? "Select none" : `Select all ${total}`} onClick={n === total ? selection.clear : selection.selectAll}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={action}
+          aria-label={n > 0 && n === total ? "Select none" : `Select all${total ? ` ${total}` : ""}`}
+          onClick={n > 0 && n === total ? selection.clear : (onSelectAll ?? selection.selectAll)}
+        >
           <CheckCheck />
-          <span className="hidden sm:inline">{n === total ? "None" : `All ${total}`}</span>
+          <span className="hidden sm:inline">{n > 0 && n === total ? "None" : `All${total ? ` ${total}` : ""}`}</span>
         </Button>
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <Button variant="ghost" size="sm" className={action} disabled={!n} aria-label="Tags" onClick={() => setDialog("tags")}>

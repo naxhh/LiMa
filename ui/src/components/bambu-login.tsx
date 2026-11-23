@@ -173,7 +173,7 @@ export function BambuLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
         </Button>
       </div>
       <div className="text-[11px] text-dim">
-        Your password goes to Bambu through Lima and is never stored. The token is kept only in this browser.
+        Your password goes to Bambu through LiMa and is never stored. The token stays in this browser, and on the server only for MakerWorld collections you keep in sync.
       </div>
     </form>
   );

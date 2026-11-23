@@ -19,6 +19,8 @@ pub struct TrashItem {
     pub trashed_at: String,
     /// When it will be deleted for good (RFC 3339).
     pub expires_at: String,
+    /// Set when this is one file (relative to `folder_path`) rather than a whole project.
+    pub file_path: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -72,6 +74,7 @@ pub async fn list_trash(State(state): State<AppState>) -> Result<Json<ListTrashR
                 file_count: r.file_count,
                 size_bytes: r.size_bytes,
                 trashed_at: r.trashed_at,
+                file_path: r.file_path,
             })
             .collect(),
     }))

@@ -173,7 +173,7 @@ type AssetLike = { id: string; size_bytes: number };
 export function useDeleteAsset(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (assetId: string) => apiNoBody("DELETE", `/projects/${projectId}/assets/${assetId}`),
+    mutationFn: (assetId: string) => apiJson<{ trash_id: string | null }>("DELETE", `/projects/${projectId}/assets/${assetId}`),
     ...optimisticHandlers<string>(qc, {
       mutationKey: projectMutationKey(projectId),
       apply: (assetId) => {
@@ -199,8 +199,21 @@ export function useDeleteAsset(projectId: string) {
         );
       },
       errorTitle: "Couldn't delete the file",
-      invalidate: [...PROJECT_CACHE_KEYS, ["projects", "stats"]],
+      invalidate: [...PROJECT_CACHE_KEYS, ["projects", "stats"], TRASH_KEY],
     }),
+    onSuccess: (res) => {
+      if (res?.trash_id) {
+        const trashId = res.trash_id;
+        toast("Moved the file to the trash", {
+          duration: 10000,
+          action: {
+            label: "Undo",
+            onClick: () =>
+              void restoreFromTrash(qc, trashId, "the file").then(() => qc.invalidateQueries({ queryKey: ["project", projectId] })),
+          },
+        });
+      }
+    },
   });
 }
 

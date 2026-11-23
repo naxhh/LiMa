@@ -130,6 +130,50 @@ pub(crate) async fn with_summaries(state: &AppState, projects: Vec<ProjectRow>) 
 }
 
 
+/// Most ids returned by `/projects/ids` (the bulk action limit).
+const MAX_IDS: i64 = 2000;
+
+#[derive(Serialize, ToSchema)]
+pub struct ProjectIdsResponse {
+    pub ids: Vec<String>,
+    /// More projects match than were returned.
+    pub truncated: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/projects/ids",
+    tag = "Projects",
+    params(
+        ("query" = Option<String>, Query, description = "Search query, as for /api/projects"),
+        ("tags" = Option<String>, Query, description = "Comma-separated tag ids; projects must have all of them"),
+        ("formats" = Option<String>, Query, description = "Comma-separated model extensions; projects must have at least one"),
+        ("no_image" = Option<bool>, Query, description = "Only projects without images"),
+    ),
+    responses((status = 200, description = "Ids of every project matching the search and filters (up to 2,000), for \"select all\"", body = ProjectIdsResponse))
+)]
+pub async fn list_project_ids(State(state): State<AppState>, Query(params): Query<ListProjectsParams>) -> Result<Json<ProjectIdsResponse>, ApiErrorResponse> {
+    let filter = params.filter();
+    let db = |e: sqlx::Error| ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "DB failed listing projects").with_cause(&e.to_string());
+    let mut ids: Vec<String> = match params.query.as_deref().filter(|q| !q.trim().is_empty()) {
+        Some(query) => lima_db::queries::projects_search::search_projects(state.db.pool(), query, MAX_IDS + 1, None, &filter)
+            .await
+            .map_err(db)?
+            .into_iter()
+            .map(|r| r.project.id)
+            .collect(),
+        None => lima_db::queries::projects::list_projects(state.db.pool(), MAX_IDS + 1, None, lima_db::queries::projects::ProjectSort::Updated, true, &filter)
+            .await
+            .map_err(db)?
+            .into_iter()
+            .map(|(p, _)| p.id)
+            .collect(),
+    };
+    let truncated = ids.len() as i64 > MAX_IDS;
+    ids.truncate(MAX_IDS as usize);
+    Ok(Json(ProjectIdsResponse { ids, truncated }))
+}
+
 #[utoipa::path(
     get,
     path = "/api/projects",

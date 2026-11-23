@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use lima_domain::models::metadata::{
+    BackupCollectionSource, BackupDismissal, BackupSourceItem,
     BackupCollection, BackupMembership, BackupProject, BackupSource, BackupTag, METADATA_FORMAT, METADATA_VERSION,
     MetadataBackup, RenamedMatch, RestoreReport,
 };
@@ -124,6 +125,46 @@ pub async fn export_metadata(pool: &Pool<Sqlite>, now: &str) -> Result<MetadataB
         .map(|f| f.folder_path)
         .collect();
 
+    let folders: HashMap<String, String> =
+        sqlx::query_as::<_, (String, String)>("SELECT id, folder_path FROM projects").fetch_all(pool).await?.into_iter().collect();
+
+    let mut collection_sources = Vec::new();
+    for (id, collection, source, source_id, url, keep_in_sync) in sqlx::query_as::<_, (String, String, String, String, String, bool)>(
+        "SELECT s.id, c.name, s.source, s.source_id, s.url, s.keep_in_sync FROM collection_sources s JOIN collections c ON c.id = s.collection_id ORDER BY c.name",
+    )
+    .fetch_all(pool)
+    .await?
+    {
+        let items = crate::queries::collection_sources::items(pool, &id)
+            .await?
+            .into_iter()
+            .map(|i| BackupSourceItem {
+                project_folder: i.project_id.as_ref().and_then(|p| folders.get(p).cloned()),
+                model_id: i.model_id,
+                model_url: i.model_url,
+                name: i.name,
+                imported: i.imported,
+                excluded: i.excluded,
+            })
+            .collect();
+        collection_sources.push(BackupCollectionSource { collection, source, source_id, url, keep_in_sync, items });
+    }
+
+    // Dismissed groups name projects by id, which a rebuilt database doesn't keep.
+    let duplicate_dismissals = sqlx::query_scalar::<_, String>("SELECT key FROM duplicate_dismissals ORDER BY key")
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .filter_map(|key| {
+            if let Some(hash) = key.strip_prefix("file:") {
+                return Some(BackupDismissal { project_folders: vec![], file_hash: Some(hash.to_string()) });
+            }
+            let ids = key.strip_prefix("projects:")?;
+            let project_folders: Option<Vec<String>> = ids.split(',').map(|id| folders.get(id).cloned()).collect();
+            Some(BackupDismissal { project_folders: project_folders?, file_hash: None })
+        })
+        .collect();
+
     Ok(MetadataBackup {
         format: METADATA_FORMAT.to_string(),
         version: METADATA_VERSION,
@@ -132,6 +173,8 @@ pub async fn export_metadata(pool: &Pool<Sqlite>, now: &str) -> Result<MetadataB
         collections,
         projects,
         ignored_folders,
+        collection_sources,
+        duplicate_dismissals,
     })
 }
 
@@ -189,6 +232,8 @@ pub async fn export_project(pool: &Pool<Sqlite>, project_id: &str, now: &str) ->
     backup.tags = tags_keep;
     backup.collections = collections_keep;
     backup.ignored_folders.clear();
+    backup.collection_sources.clear();
+    backup.duplicate_dismissals.clear();
     Ok(Some(backup))
 }
 
@@ -270,6 +315,12 @@ pub async fn restore_metadata(
     }
     let collection_meta: HashMap<String, &BackupCollection> =
         backup.collections.iter().filter(|c| c.system_key.is_none()).map(|c| (c.name.to_lowercase(), c)).collect();
+
+    // Backup folder -> project id, for the parts of the backup that point at projects.
+    let mut project_ids: HashMap<String, String> = library.iter().map(|p| (p.folder_path.clone(), p.id.clone())).collect();
+    for (bp, i) in &pairs {
+        project_ids.insert(bp.folder_path.clone(), library[*i].id.clone());
+    }
 
     for (bp, i) in pairs {
         let lp = &library[i];
@@ -387,6 +438,77 @@ pub async fn restore_metadata(
         report.ignored_folders_added += res.rows_affected() as usize;
         let res = sqlx::query("DELETE FROM projects WHERE folder_path = ?1").bind(folder).execute(&mut *tx).await?;
         report.projects_hidden += res.rows_affected() as usize;
+    }
+
+    // Imported collections keep syncing as before. Ones already linked are left alone.
+    for cs in &backup.collection_sources {
+        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM collection_sources WHERE source = ?1 AND source_id = ?2")
+            .bind(&cs.source)
+            .bind(&cs.source_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if exists > 0 {
+            continue;
+        }
+        let key = cs.collection.to_lowercase();
+        let collection_id = match collection_ids.get(&key) {
+            Some(id) => id.clone(),
+            None => {
+                let id = create_collection_tx(&mut tx, &cs.collection, "", None, now).await?;
+                report.collections_created += 1;
+                collection_ids.insert(key, id.clone());
+                id
+            }
+        };
+        let linked: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM collection_sources WHERE collection_id = ?1").bind(&collection_id).fetch_one(&mut *tx).await?;
+        if linked > 0 {
+            continue;
+        }
+        let source_ref = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO collection_sources (id, collection_id, source, source_id, url, keep_in_sync, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .bind(&source_ref)
+        .bind(&collection_id)
+        .bind(&cs.source)
+        .bind(&cs.source_id)
+        .bind(&cs.url)
+        .bind(cs.keep_in_sync)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        for item in &cs.items {
+            let project_id = item.project_folder.as_ref().and_then(|f| project_ids.get(f));
+            sqlx::query(
+                "INSERT OR IGNORE INTO collection_source_items (source_ref, model_id, model_url, name, project_id, imported, excluded) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )
+            .bind(&source_ref)
+            .bind(&item.model_id)
+            .bind(&item.model_url)
+            .bind(&item.name)
+            .bind(project_id)
+            .bind(item.imported && project_id.is_some())
+            .bind(item.excluded)
+            .execute(&mut *tx)
+            .await?;
+        }
+        report.collection_sources_added += 1;
+    }
+
+    for d in &backup.duplicate_dismissals {
+        let key = match (&d.file_hash, d.project_folders.as_slice()) {
+            (Some(hash), _) => format!("file:{hash}"),
+            (None, folders) if folders.len() > 1 => {
+                let ids: Option<Vec<String>> = folders.iter().map(|f| project_ids.get(f).cloned()).collect();
+                match ids {
+                    Some(ids) => crate::queries::duplicates::project_group_key(&ids),
+                    None => continue,
+                }
+            }
+            _ => continue,
+        };
+        let res = sqlx::query("INSERT OR IGNORE INTO duplicate_dismissals (key, created_at) VALUES (?1, ?2)").bind(&key).bind(now).execute(&mut *tx).await?;
+        report.duplicate_dismissals_added += res.rows_affected() as usize;
     }
 
     if dry_run {
@@ -629,6 +751,8 @@ mod tests {
             tags: vec![],
             collections: vec![],
             ignored_folders: vec![],
+            collection_sources: vec![],
+            duplicate_dismissals: vec![],
             projects: vec![
                 BackupProject {
                     folder_path: "original".into(), name: "Original".into(), description: String::new(),
@@ -713,5 +837,69 @@ mod tests {
         assert_eq!(names, vec!["Desk"]);
         assert!(export_project(pool, "missing", T).await.unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn synced_collections_and_hidden_duplicates_survive_a_rebuild() {
+        let (old, dir1) = db().await;
+        let pool = old.pool();
+        let shark = indexed(pool, "shark", &[("shark.stl", "model", "s1")]).await;
+        let copy = indexed(pool, "shark-copy", &[("shark.stl", "model", "s1")]).await;
+        let toys = crate::queries::collections::create_collection(pool, "Toys", "", T).await.unwrap();
+        crate::queries::collections::add_project(pool, &toys.id, &shark, T).await.unwrap();
+        let src = crate::queries::collection_sources::SourceRow {
+            id: Uuid::new_v4().to_string(),
+            collection_id: toys.id.clone(),
+            source: "makerworld".into(),
+            source_id: "118240".into(),
+            url: "https://makerworld.com/en/collections/118240".into(),
+            keep_in_sync: true,
+            last_synced_at: None,
+            last_error: None,
+            created_at: T.into(),
+        };
+        crate::queries::collection_sources::create(pool, &src).await.unwrap();
+        let item = |model: &str, project: Option<&str>, imported, excluded| crate::queries::collection_sources::ItemRow {
+            model_id: model.into(),
+            model_url: format!("https://makerworld.com/en/models/{model}"),
+            name: model.into(),
+            project_id: project.map(String::from),
+            imported,
+            excluded,
+            last_error: None,
+        };
+        crate::queries::collection_sources::upsert_item(pool, &src.id, &item("1", Some(&shark), true, false)).await.unwrap();
+        crate::queries::collection_sources::upsert_item(pool, &src.id, &item("2", None, false, true)).await.unwrap();
+        crate::queries::duplicates::dismiss(pool, &crate::queries::duplicates::project_group_key(&[shark.clone(), copy.clone()]), T).await.unwrap();
+        crate::queries::duplicates::dismiss(pool, "file:abc", T).await.unwrap();
+
+        let backup = export_metadata(pool, T).await.unwrap();
+        assert_eq!(backup.collection_sources.len(), 1);
+        assert_eq!(backup.collection_sources[0].items[0].project_folder.as_deref(), Some("shark"));
+        assert_eq!(backup.duplicate_dismissals.len(), 2);
+
+        // Rebuilt from disk: same folders, new ids, nothing else.
+        let (new, dir2) = db().await;
+        let pool = new.pool();
+        let shark = indexed(pool, "shark", &[("shark.stl", "model", "s1")]).await;
+        let copy = indexed(pool, "shark-copy", &[("shark.stl", "model", "s1")]).await;
+        let r = restore_metadata(pool, &backup, false, T).await.unwrap();
+        assert_eq!((r.collection_sources_added, r.duplicate_dismissals_added), (1, 2));
+
+        let (source_ref, keep): (String, bool) = sqlx::query_as("SELECT id, keep_in_sync FROM collection_sources WHERE source_id = '118240'").fetch_one(pool).await.unwrap();
+        assert!(keep);
+        let items = crate::queries::collection_sources::items(pool, &source_ref).await.unwrap();
+        let one = items.iter().find(|i| i.model_id == "1").unwrap();
+        assert_eq!((one.project_id.as_deref(), one.imported), (Some(shark.as_str()), true), "points at the new project id");
+        assert!(items.iter().find(|i| i.model_id == "2").unwrap().excluded);
+        let report = crate::queries::duplicates::find(pool).await.unwrap();
+        assert_eq!(report.dismissed, 1, "the group is hidden again under its new ids");
+        assert!(report.project_groups.is_empty());
+        let _ = copy;
+
+        let again = restore_metadata(pool, &backup, false, T).await.unwrap();
+        assert_eq!((again.collection_sources_added, again.duplicate_dismissals_added), (0, 0), "restoring twice adds nothing");
+        let _ = std::fs::remove_dir_all(dir1);
+        let _ = std::fs::remove_dir_all(dir2);
     }
 }
