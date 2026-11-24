@@ -77,6 +77,11 @@ impl Paths {
         self.state.join("thumbnails")
     }
 
+    /// Cached decimated meshes for the browser viewer, keyed by file hash.
+    pub fn preview_meshes(&self) -> PathBuf {
+        self.state.join("previews")
+    }
+
     pub fn project_dir(&self, folder_path: &str) -> PathBuf {
         self.library.join(folder_path)
     }
@@ -107,6 +112,7 @@ mod tests {
         let id = "0b5e6a3c-1f2d-4c3b-9a8e-7d6c5b4a3f21";
         assert_eq!(p.bundle(id), Some(PathBuf::from(format!("data/state/bundles/{id}"))));
         assert_eq!(p.thumbnails(), PathBuf::from("data/state/thumbnails"));
+        assert_eq!(p.preview_meshes(), PathBuf::from("data/state/previews"));
         assert_eq!(p.uploads(), PathBuf::from("data/state/uploads"));
         assert_eq!(p.backups, PathBuf::from("data/state/backups"));
     }

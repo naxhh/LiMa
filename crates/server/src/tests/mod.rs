@@ -2,6 +2,7 @@
 //! Nothing runs in the background (no watcher, backups or schedulers).
 
 mod library;
+mod preview;
 mod projects;
 mod search;
 mod sync;

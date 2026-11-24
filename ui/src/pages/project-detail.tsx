@@ -6,7 +6,7 @@ import { Box, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, EyeOf
 import type { components } from "@/gen/openapi";
 import { apiGet } from "@/lib/api";
 import { formatBytes, timeAgo } from "@/lib/format";
-import { libraryUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
+import { libraryUrl, previewMeshUrl, projectDownloadUrl, thumbUrl } from "@/lib/media";
 import { sliceable } from "@/lib/slicers";
 import { OpenFileInSlicer, OpenProjectInSlicer } from "@/components/open-in-slicer";
 import { ModelViewer } from "@/components/model-viewer";
@@ -505,7 +505,14 @@ function Gallery({
     <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
       <div className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-2xl border bg-card [--corner-inset:16px] [--corner-size:22px]">
         {current && format ? (
-          <ModelViewer url={libraryUrl(project.folder_path, current.file_path)} format={format} sizeBytes={current.size_bytes} />
+          <ModelViewer
+            url={libraryUrl(project.folder_path, current.file_path)}
+            format={format}
+            sizeBytes={current.size_bytes}
+            previewUrl={
+              current.size_bytes > 8 * 1024 * 1024 ? previewMeshUrl(project.id, current.id) : undefined
+            }
+          />
         ) : current ? (
           <img
             key={current.id}

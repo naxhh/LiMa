@@ -3,5 +3,6 @@
 pub mod archive;
 pub mod hash;
 pub mod model_thumbs;
+pub mod preview_mesh;
 pub mod sync;
 pub mod thumbnails;

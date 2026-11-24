@@ -29,6 +29,7 @@ use crate::{archive, collection_sync, routes};
         routes::project_favourite::remove_favourite,
 
         routes::assets::delete::asset_delete,
+        routes::assets::preview::asset_preview,
 
         routes::tags::list::list_tags,
         routes::tags::create::create_tag,

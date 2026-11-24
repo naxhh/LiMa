@@ -47,6 +47,7 @@ pub fn router(state: AppState) -> Router {
         .route("/projects/{project_id}/assets/{asset_id}", delete(routes::assets::delete::asset_delete))
         .route("/projects/{project_id}/assets/{asset_id}/zip", get(routes::assets::zip::zip_contents))
         .route("/projects/{project_id}/assets/{asset_id}/zip/entry", get(routes::assets::zip::zip_entry))
+        .route("/projects/{project_id}/assets/{asset_id}/preview", get(routes::assets::preview::asset_preview))
         
         .route("/tags", get(routes::tags::list::list_tags))
         .route("/tags", post(routes::tags::create::create_tag))
