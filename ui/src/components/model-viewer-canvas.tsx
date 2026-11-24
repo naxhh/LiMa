@@ -10,6 +10,7 @@ import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { Box as BoxIcon, Loader2, RotateCcw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { ModelPoster } from "@/components/model-poster";
 import type { ViewerFormat } from "@/lib/viewer";
 
 type Stats = { size: [number, number, number]; triangles: number };
@@ -169,7 +170,17 @@ function disposeObject(obj: THREE.Object3D) {
   });
 }
 
-export default function ModelViewerCanvas({ url, format, previewUrl }: { url: string; format: ViewerFormat; previewUrl?: string }) {
+export default function ModelViewerCanvas({
+  url,
+  format,
+  previewUrl,
+  posterUrl,
+}: {
+  url: string;
+  format: ViewerFormat;
+  previewUrl?: string;
+  posterUrl?: string;
+}) {
   const mountRef = React.useRef<HTMLDivElement | null>(null);
   const api = React.useRef<{ reset: () => void; wireframe: (on: boolean) => void; tint: (params: TintParams) => void } | null>(null);
   const [progress, setProgress] = React.useState(0);
@@ -187,9 +198,13 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
     if (!mount) return;
     let disposed = false;
     let frame = 0;
+    // Render only when something changed: a still scene costs no GPU time, which keeps the
+    // rest of the page smooth even after a multi-million-triangle model is shown.
+    let dirty = true;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    let pixelRatio = Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
     renderer.domElement.className = "block h-full w-full touch-none";
@@ -213,12 +228,25 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      dirty = true;
     });
     resize.observe(mount);
 
+    /** Big meshes at 2× device pixels are fill-rate bound; drop to 1× so orbiting stays usable. */
+    const setQuality = (triangles: number) => {
+      const next = triangles > 500_000 ? 1 : Math.min(window.devicePixelRatio, 2);
+      if (next === pixelRatio) return;
+      pixelRatio = next;
+      renderer.setPixelRatio(next);
+      renderer.setSize(mount.clientWidth, Math.max(mount.clientHeight, 1));
+      dirty = true;
+    };
+
     const loop = () => {
       frame = requestAnimationFrame(loop);
-      controls.update();
+      const moved = controls.update();
+      if (!dirty && !moved) return;
+      dirty = false;
       renderer.render(scene, camera);
     };
     loop();
@@ -237,7 +265,9 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
 
         // Model size before reorienting (printing files are in mm, Z up).
         const raw = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
-        setStats({ size: [raw.x, raw.y, raw.z], triangles: countTriangles(obj) });
+        const triangles = countTriangles(obj);
+        setStats({ size: [raw.x, raw.y, raw.z], triangles });
+        setQuality(triangles);
 
         // STL and 3MF are Z-up; three.js is Y-up. Server previews are always Z-up.
         if (previewUrl || format !== "obj") obj.rotation.x = -Math.PI / 2;
@@ -264,15 +294,18 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
           camera.position.copy(home);
           controls.target.copy(target);
           controls.update();
+          dirty = true;
         };
         reset();
         api.current = {
           reset,
-          wireframe: (on) =>
+          wireframe: (on) => {
             obj.traverse((o) => {
               if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.wireframe = on;
-            }),
-          tint: (params) =>
+            });
+            dirty = true;
+          },
+          tint: (params) => {
             obj.traverse((o) => {
               if (o instanceof THREE.Mesh) {
                 for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
@@ -283,7 +316,9 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
                   }
                 }
               }
-            }),
+            });
+            dirty = true;
+          },
         };
         // Paint with the current tint/theme before showing (loading may have overlapped a change).
         api.current.tint(tintParams(signalRef.current, tintRef.current));
@@ -329,6 +364,7 @@ export default function ModelViewerCanvas({ url, format, previewUrl }: { url: st
 
   return (
     <div className="absolute inset-0">
+      {posterUrl && !loaded && !error ? <ModelPoster url={posterUrl} /> : null}
       <div ref={mountRef} className="absolute inset-0" />
 
       {!loaded && !error ? (

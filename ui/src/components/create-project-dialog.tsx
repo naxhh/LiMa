@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ZipExtractOptions } from "@/components/zip-extract-options";
 import { useZipPrefs, zipFields } from "@/lib/zip-prefs";
 import { FileDropzone } from "@/components/file-dropzone";
+import { TagChipInput } from "@/components/tag-chip-input";
 import {
   Dialog,
   DialogContent,
@@ -48,23 +49,6 @@ function getApiErrorMessage(e: unknown): string {
   return "Request failed";
 }
 
-function parseTags(input: string): string[] {
-  const raw = input
-    .split(/[,|\n]/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of raw) {
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-  }
-  return out;
-}
-
 export function CreateProjectDialog({
   open,
   onOpenChange,
@@ -86,7 +70,7 @@ export function CreateProjectDialog({
 
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [tagsText, setTagsText] = React.useState("");
+  const [tags, setTags] = React.useState<string[]>([]);
 
   const [files, setFiles] = React.useState<File[]>([]);
   const [mainImageName, setMainImageName] = React.useState<string>("");
@@ -123,10 +107,7 @@ export function CreateProjectDialog({
       const project = await apiJson<CreateProjectResponse>("POST", "/projects", {
         name: name.trim(),
         description: description.trim() ? description : "",
-        tags: (() => {
-          const t = parseTags(tagsText);
-          return t.length ? t : [];
-        })(),
+        tags,
       } satisfies CreateProjectRequest);
 
       const importPayload: ImportProjectRequest = { bundle_id: bundleId, ...zipFields(zipPrefs, files.map((f) => f.name)) };
@@ -146,7 +127,7 @@ export function CreateProjectDialog({
       // reset form state (bundle can remain; but you asked "create project fast", so just reset)
       setName("");
       setDescription("");
-      setTagsText("");
+      setTags([]);
       setFiles([]);
       setMainImageName("");
       setBundleId(null);
@@ -199,11 +180,7 @@ export function CreateProjectDialog({
 
           <div className="space-y-1">
             <div className="text-sm font-medium">Tags</div>
-            <Textarea
-              value={tagsText}
-              onChange={(e) => setTagsText(e.target.value)}
-              placeholder="Comma or newline separated"
-            />
+            <TagChipInput value={tags} onChange={setTags} />
           </div>
 
           <div className="space-y-2">

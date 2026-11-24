@@ -27,6 +27,20 @@ export function useAllTags() {
   return useQuery({ queryKey: TAGS_QUERY_KEY, queryFn: fetchAllTags });
 }
 
+/** Tags matching `query` case-insensitively: names that start with it first, then the rest. */
+export function matchTags(tags: Tag[], query: string): Tag[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return tags;
+  const starts: Tag[] = [];
+  const rest: Tag[] = [];
+  for (const tag of tags) {
+    const name = tag.name.toLowerCase();
+    if (name.startsWith(q)) starts.push(tag);
+    else if (name.includes(q)) rest.push(tag);
+  }
+  return [...starts, ...rest];
+}
+
 /** Black or white, whichever reads better on the given `#RRGGBB` background. */
 export function tagTextColor(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);

@@ -112,7 +112,7 @@ function NewButton() {
   const actions = useCreateActions();
   const order = createOrder(location.pathname);
   const [open, setOpen] = React.useState(false);
-  useShortcuts({ c: () => setOpen(true) }, { global: true });
+  useShortcuts({ n: () => setOpen(true) }, { global: true });
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>

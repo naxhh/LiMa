@@ -123,7 +123,8 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
     f: ready(() => favourite.toggle()),
     d: ready((p) => (p.assets.length ? downloadUrl(projectDownloadUrl(p.id)) : void toast("Nothing to download"))),
     t: ready(() => setPicker("tags")),
-    a: ready(() => setPicker("collections")),
+    c: ready(() => setPicker("collections")),
+    a: ready(() => setPicker("collections")), // kept as an alias for muscle memory
     "#": ready(() => setConfirmDelete(true)),
     Delete: ready(() => setConfirmDelete(true)),
     e: ready(() => setEditing(true)),
@@ -509,9 +510,8 @@ function Gallery({
             url={libraryUrl(project.folder_path, current.file_path)}
             format={format}
             sizeBytes={current.size_bytes}
-            previewUrl={
-              current.size_bytes > 8 * 1024 * 1024 ? previewMeshUrl(project.id, current.id) : undefined
-            }
+            posterUrl={thumbUrl(project.id, current.id)}
+            previewUrl={current.size_bytes > 8 * 1024 * 1024 ? previewMeshUrl(project.id, current.id) : undefined}
           />
         ) : current ? (
           <img
@@ -564,7 +564,7 @@ function Gallery({
       ) : null}
 
       {items.length > 1 ? (
-        <div className="grid max-h-[26rem] grid-cols-4 gap-2.5 overflow-y-auto overscroll-contain sm:grid-cols-6">
+        <div className="grid max-h-[26rem] grid-cols-4 gap-2.5 overflow-y-auto sm:grid-cols-6">
           {visibleImages.map((a, i) => (
             <button
               key={a.id}

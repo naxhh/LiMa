@@ -33,7 +33,7 @@ function firstVisible(grid: HTMLElement | null): number {
 
 /**
  * Keyboard control for a grid of project cards: a focused card moved with arrows / h j k l,
- * Enter or o to open, x to select, and f d t a # Delete acting on the selection (when there
+ * Enter or o to open, x to select, and f d t c a # Delete acting on the selection (when there
  * is one) or the focused card. The focus resets whenever `listKey` (query, sort…) changes.
  */
 export function useGridKeys({
@@ -144,7 +144,8 @@ export function useGridKeys({
     f: act("favourite"),
     d: act("download"),
     t: act("tags"),
-    a: act("collections"),
+    c: act("collections"),
+    a: act("collections"), // kept as an alias for muscle memory
     "#": act("delete"),
     Delete: act("delete"),
     Escape: () => {
