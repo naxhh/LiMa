@@ -38,6 +38,7 @@ Environmentals:
 - **LIMA_DATA_DIR** base folder for library and state. Defaults to `data`
 - **LIMA_LIBRARY_DIR** model library, one folder per project. Defaults to `$LIMA_DATA_DIR/library`
 - **LIMA_STATE_DIR** app state (database, staged uploads, thumbnails). Defaults to `$LIMA_DATA_DIR/state`
+- **LIMA_UPLOAD_MAX_BYTES** largest resumable upload accepted, in bytes. Defaults to 20 GiB (`21474836480`)
 - **LIMA_DATABASE_URL** defaults to `sqlite:$LIMA_STATE_DIR/lima.db?mode=rwc` (created if missing)
 - **LIMA_UI_DIR** built UI served at `/`. Defaults to `ui/dist`
 - **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable

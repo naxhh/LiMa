@@ -1,6 +1,7 @@
 use lima_db::Db;
 use lima_domain::config::Paths;
 use lima_indexer::sync::SyncManager;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -23,6 +24,12 @@ pub struct AppState {
     pub trash_days: u64,
     /// Thingiverse app token (`LIMA_THINGIVERSE_TOKEN`); Thingiverse imports need it.
     pub thingiverse_token: Option<String>,
+    /// Largest resumable upload accepted, in bytes (`LIMA_UPLOAD_MAX_BYTES`).
+    pub upload_max_bytes: u64,
+    /// Serializes the `meta.json` read-modify-write when uploads finish in parallel.
+    pub bundle_meta_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Upload ids with a PATCH in progress: one writer per upload.
+    pub upload_patches: Arc<tokio::sync::Mutex<HashSet<String>>>,
 }
 
 /// Behaviour settings, read once from the environment (tests build their own).
@@ -35,6 +42,8 @@ pub struct Settings {
     pub thingiverse_token: Option<String>,
     /// Watch the library for changes (`LIMA_WATCHER`, on by default).
     pub watcher: bool,
+    /// Cap for one resumable upload (`LIMA_UPLOAD_MAX_BYTES`).
+    pub upload_max_bytes: u64,
 }
 
 impl Settings {
@@ -47,6 +56,7 @@ impl Settings {
             auto_backup,
             thingiverse_token: std::env::var("LIMA_THINGIVERSE_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()),
             watcher: !matches!(std::env::var("LIMA_WATCHER").unwrap_or_default().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"),
+            upload_max_bytes: crate::uploads::max_bytes_from_env(),
         }
     }
 }
@@ -67,6 +77,9 @@ impl AppState {
             backup_keep: settings.backup_keep,
             trash_days: settings.trash_days,
             thingiverse_token: settings.thingiverse_token.clone(),
+            upload_max_bytes: settings.upload_max_bytes,
+            bundle_meta_lock: Default::default(),
+            upload_patches: Default::default(),
         })
     }
 }

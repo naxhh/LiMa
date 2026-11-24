@@ -46,7 +46,14 @@ use crate::{archive, collection_sync, routes};
         routes::collections::membership::remove_project,
 
         routes::bundle_create::create_bundle,
+        routes::bundle_create::create_empty_bundle,
         routes::bundle_delete::bundle_delete,
+
+        routes::uploads::upload_capabilities,
+        routes::uploads::create_upload,
+        routes::uploads::upload_status,
+        routes::uploads::upload_patch,
+        routes::uploads::upload_terminate,
 
         routes::imports::import_preview,
         routes::imports::start_import,
@@ -160,6 +167,7 @@ use crate::{archive, collection_sync, routes};
         routes::collections::membership::AddCollectionProjectRequest,
 
         routes::bundle_create::CreateBundleResponse,
+        routes::bundle_create::NewBundleResponse,
 
         routes::imports::ImportPreviewRequest,
         routes::imports::ImportPreviewResponse,

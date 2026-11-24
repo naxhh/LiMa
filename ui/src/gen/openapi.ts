@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bundles/new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_empty_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bundles/{bundle_id}": {
         parameters: {
             query?: never;
@@ -948,6 +964,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Creates an upload for one file of a bundle (tus creation extension). */
+        post: operations["create_upload"];
+        delete?: never;
+        /** @description tus server discovery: supported version, extensions and the largest upload accepted. */
+        options: operations["upload_capabilities"];
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Cancels an upload and drops its bytes (tus termination extension). */
+        delete: operations["upload_terminate"];
+        options?: never;
+        /** @description An upload's offset and length (tus core). */
+        head: operations["upload_status"];
+        /** @description Appends a chunk at Upload-Offset (tus core). The finished file joins the bundle. */
+        patch: operations["upload_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1567,6 +1620,9 @@ export interface components {
              */
             version: number;
         };
+        NewBundleResponse: {
+            id: string;
+        };
         PatchCollectionRequest: {
             description?: string | null;
             name?: string | null;
@@ -1987,6 +2043,35 @@ export interface operations {
                 };
             };
             /** @description Failed creating files or folders */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    create_empty_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Empty bundle created. Files arrive through resumable uploads */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewBundleResponse"];
+                };
+            };
+            /** @description Failed creating the bundle folder */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -3496,7 +3581,7 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque pagination cursor */
                 cursor?: string;
-                /** @description Search query to filter projects */
+                /** @description Search: words, plus filters #tag, in:collection, is:fav, format:stl, file:name, has:image / no:image, from:printables, by:author; - negates, quotes keep spaces */
                 query?: string;
                 /** @description Comma-separated tag ids; projects must have all of them */
                 tags?: string;
@@ -4866,6 +4951,250 @@ export interface operations {
                 };
             };
             /** @description Moving the folder back failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    create_upload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must be 1.0.0 */
+                "Tus-Resumable": string;
+                /** @description Total size of the file, in bytes */
+                "Upload-Length": number;
+                /** @description Comma-separated `key base64value` pairs: bundle_id (from POST /api/bundles/new), filename, optional mtime (ms) */
+                "Upload-Metadata": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload created; its URL is in Location */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid Upload-Length, Upload-Metadata, filename or mtime */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The bundle does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Tus-Resumable is missing or not 1.0.0 */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The upload is larger than Tus-Max-Size */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Failed creating the upload files */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    upload_capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capabilities in the Tus-* headers */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upload_terminate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id from the Location header */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown upload */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Tus-Resumable is missing or not 1.0.0 */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    upload_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id from the Location header */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload-Offset and Upload-Length in the headers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or finished upload */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    upload_patch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must be 1.0.0 */
+                "Tus-Resumable": string;
+                /** @description Bytes already stored; must equal the server's offset */
+                "Upload-Offset": number;
+                /** @description Must be application/offset+octet-stream */
+                "Content-Type": string;
+            };
+            path: {
+                /** @description Upload id from the Location header */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description The bytes from Upload-Offset on */
+        requestBody: {
+            content: {
+                "application/offset+octet-stream": number[];
+            };
+        };
+        responses: {
+            /** @description Chunk stored; the new offset is in Upload-Offset */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad offset or a body longer than Upload-Length */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Unknown or finished upload */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Upload-Offset doesn't match, or another PATCH is in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Tus-Resumable is missing or not 1.0.0 */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Content-Type is not application/offset+octet-stream */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Failed writing the chunk */
             500: {
                 headers: {
                     [name: string]: unknown;

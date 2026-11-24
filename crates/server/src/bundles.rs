@@ -34,6 +34,16 @@ impl NewBundle {
         Ok(Self { id, dir, files: Vec::new(), failed: Vec::new() })
     }
 
+    /// A bundle with no files yet, for uploads that arrive one file at a time
+    /// (`POST /api/bundles/new`, then resumable uploads).
+    pub async fn create_empty(paths: &Paths) -> std::io::Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let dir = paths.bundle(&id).expect("generated bundle ids are UUIDs");
+        fs::create_dir_all(&dir).await?;
+        write_bundle_meta(&dir, Vec::new()).await?;
+        Ok(id)
+    }
+
     /// Starts a file. `None` (recorded as failed) when the name isn't a plain file name or
     /// the file can't be created.
     pub async fn start_file(&mut self, raw_name: &str) -> Option<FileWriter> {
@@ -115,6 +125,17 @@ pub async fn write_bundle_meta(bundle_dir: &Path, files: Vec<FileMeta>) -> Resul
     Ok(())
 }
 
+/// The bundle's current `meta.json`; empty when it hasn't been written yet.
+pub async fn read_bundle_meta(bundle_dir: &Path) -> std::io::Result<BundleMeta> {
+    match fs::read(bundle_dir.join("meta.json")).await {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error::other(e.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(BundleMeta { uploaded_at: String::new(), files: Vec::new() })
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// The metadata of a file already in a bundle folder (downloaded or extracted), stored as `name`.
 pub async fn file_meta(path: PathBuf, name: &str) -> std::io::Result<FileMeta> {
     let file = fs::File::open(&path).await?;
@@ -134,7 +155,7 @@ pub fn guess_mime(path: &str) -> String {
 }
 
 /// Sets an uploaded file's modification date to the one the browser reported.
-async fn keep_original_date(file: &mut fs::File, ms: u64, name: &str) {
+pub(crate) async fn keep_original_date(file: &mut fs::File, ms: u64, name: &str) {
     let time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms);
     // Pending writes would bump the date again.
     let result = match file.flush().await {

@@ -12,6 +12,7 @@ mod openapi;
 mod routes;
 mod state;
 mod trash;
+mod uploads;
 #[cfg(test)]
 mod tests;
 
@@ -43,6 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// The watcher, automatic backups, trash purging and collection syncs.
 async fn start_background_tasks(state: &state::AppState, settings: &state::Settings) {
+    uploads::spawn_cleanup(state.clone());
+
     if settings.watcher {
         state.sync.start_watcher(lima_indexer::sync::WatcherConfig::default());
     } else {

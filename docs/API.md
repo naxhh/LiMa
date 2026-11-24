@@ -110,7 +110,24 @@ The authoritative OpenAPI spec is served at `GET /openapi.json` and browsable at
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/bundles` | Create a new bundle and upload files (multipart) |
+| POST | `/bundles/new` | Create an empty bundle (`{id}`) for resumable uploads |
 | DELETE | `/bundles/{bundle_id}` | Delete bundle and staged files |
+
+### Resumable uploads (tus)
+
+A [tus 1.0.0](https://tus.io/protocols/resumable-upload) subset (`creation` and `termination`)
+for large files: create a bundle, upload each file to `/uploads` (resume with `HEAD` after a
+reload), then import the bundle into a project with `POST /projects/{project_id}/import`.
+Every response carries `Tus-Resumable: 1.0.0`. The largest upload is
+`LIMA_UPLOAD_MAX_BYTES` (default 20 GiB), and unfinished uploads are deleted after 24 hours.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| OPTIONS | `/uploads` | Capabilities: `Tus-Version`, `Tus-Extension`, `Tus-Max-Size` |
+| POST | `/uploads` | Create an upload for one file: `Upload-Length`, and `Upload-Metadata` with `bundle_id`, `filename` and optional `mtime` (ms). Returns 201 + `Location` |
+| HEAD | `/uploads/{upload_id}` | `Upload-Offset` and `Upload-Length`: where to resume |
+| PATCH | `/uploads/{upload_id}` | Append from `Upload-Offset` (`application/offset+octet-stream`). The last chunk moves the file into the bundle |
+| DELETE | `/uploads/{upload_id}` | Cancel the upload and drop its bytes |
 
 ### Imports
 

@@ -3,7 +3,9 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiJson, apiMultipart, bundleForm, apiJsonNoResponse, ApiError } from "@/lib/api";
+import { apiJson, apiJsonNoResponse, ApiError } from "@/lib/api";
+import { uploadToBundle, type UploadBundleResponse } from "@/lib/uploads";
+import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,12 +30,6 @@ type CreateProjectRequest = {
 type CreateProjectResponse = {
   id: string;
   folder_path: string;
-};
-
-type CreateBundleResponse = {
-  id: string;
-  files: string[];
-  failed_files: string[];
 };
 
 type ImportProjectRequest = {
@@ -99,13 +95,15 @@ export function CreateProjectDialog({
 
   const [bundleId, setBundleId] = React.useState<string | null>(null);
   const [bundleError, setBundleError] = React.useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState({ sent: 0, total: 0 });
 
   // Create bundle immediately whenever files are added/changed
   const createBundleM = useMutation({
     mutationFn: async (currentFiles: File[]) => {
-      return apiMultipart<CreateBundleResponse>("/bundles", bundleForm(currentFiles));
+      setUploadProgress({ sent: 0, total: currentFiles.reduce((sum, file) => sum + file.size, 0) });
+      return uploadToBundle(currentFiles, (sent, total) => setUploadProgress({ sent, total }));
     },
-    onSuccess: (bundle) => {
+    onSuccess: (bundle: UploadBundleResponse) => {
       setBundleId(bundle.id);
       setBundleError(null);
     },
@@ -160,6 +158,7 @@ export function CreateProjectDialog({
   });
 
   const canSubmit = name.trim().length > 0 && !!bundleId && !createProjectM.isPending;
+  const uploadPercent = uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.sent / uploadProgress.total) * 100)) : 0;
 
   return (
     <Dialog
@@ -229,15 +228,27 @@ export function CreateProjectDialog({
               }}
             />
 
-            <div className="text-xs text-muted-foreground">
-              {createBundleM.isPending
-                ? "Uploading bundle…"
-                : bundleId
+            {createBundleM.isPending ? (
+              <div className="space-y-1">
+                <div className="h-1 rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-signal transition-[width]"
+                    style={{ width: `${uploadPercent}%` }}
+                  />
+                </div>
+                <div className="font-mono text-xs text-muted-foreground">
+                  {uploadPercent}% · {formatBytes(uploadProgress.sent)} / {formatBytes(uploadProgress.total)}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                {bundleId
                   ? `Bundle ready: ${bundleId}`
                   : files.length > 0
                     ? "Bundle not ready yet."
                     : "Add files to create a bundle."}
-            </div>
+              </div>
+            )}
 
             {bundleError ? (
               <div className="text-sm text-destructive">
