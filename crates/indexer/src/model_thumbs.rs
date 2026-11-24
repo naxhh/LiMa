@@ -22,8 +22,6 @@ const SS: u32 = 2;
 const BACKGROUND: [u8; 3] = [26, 31, 39];
 const MODEL: [f32; 3] = [159.0, 180.0, 199.0];
 
-type Tri = [[f32; 3]; 3];
-
 pub fn is_model(path: &Path) -> bool {
     extension(path).is_some_and(|e| MODEL_EXTENSIONS.contains(&e.as_str()))
 }
@@ -32,24 +30,33 @@ fn extension(path: &Path) -> Option<String> {
     path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
 }
 
+/// One triangle, as three Z-up points.
+pub type Tri = [[f32; 3]; 3];
+
+/// The source mesh: STL, OBJ and 3MF, all in the Z-up orientation the viewer expects.
+pub fn mesh(source: &Path) -> Result<Vec<Tri>, String> {
+    let ext = extension(source).unwrap_or_default();
+    let size = fs::metadata(source).map_err(|e| e.to_string())?.len();
+    if size > MAX_RENDER_BYTES {
+        return Err(format!("too large to parse ({} MB)", size / (1024 * 1024)));
+    }
+    match ext.as_str() {
+        "stl" => parse_stl(&fs::read(source).map_err(|e| e.to_string())?),
+        "obj" => Ok(parse_obj(&fs::read_to_string(source).map_err(|e| e.to_string())?)),
+        "3mf" => mesh_3mf(source),
+        other => Err(format!("unsupported model format {other:?}")),
+    }
+}
+
 /// The preview for `source`: an embedded 3MF thumbnail if there is one, otherwise a render.
 pub fn preview(source: &Path) -> Result<DynamicImage, String> {
     let ext = extension(source).unwrap_or_default();
-    let size = fs::metadata(source).map_err(|e| e.to_string())?.len();
     if ext == "3mf"
         && let Some(img) = embedded_3mf_thumbnail(source)?
     {
         return Ok(img);
     }
-    if size > MAX_RENDER_BYTES {
-        return Err(format!("too large to render ({} MB)", size / (1024 * 1024)));
-    }
-    let tris = match ext.as_str() {
-        "stl" => parse_stl(&fs::read(source).map_err(|e| e.to_string())?)?,
-        "obj" => parse_obj(&fs::read_to_string(source).map_err(|e| e.to_string())?),
-        "3mf" => mesh_3mf(source)?,
-        other => return Err(format!("unsupported model format {other:?}")),
-    };
+    let tris = mesh(source)?;
     render(&tris).map(DynamicImage::ImageRgb8).ok_or_else(|| "no triangles to render".to_string())
 }
 

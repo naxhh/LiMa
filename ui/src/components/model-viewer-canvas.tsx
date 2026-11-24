@@ -98,6 +98,57 @@ async function loadObject(url: string, format: ViewerFormat, onProgress: (p: num
   return group;
 }
 
+/** `LMP1` mesh from the server: header, positions, normals, indices (all little-endian). */
+async function loadPreview(
+  url: string,
+  signal: AbortSignal,
+  onProgress: (p: number) => void,
+  material: () => THREE.MeshStandardMaterial,
+): Promise<THREE.Object3D> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`Preview request failed (${response.status})`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  if (response.body) {
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total > 0) onProgress(Math.min(received / total, 1));
+    }
+  } else {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    chunks.push(whole);
+    received = whole.length;
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  if (bytes.length < 12 || String.fromCharCode(...bytes.subarray(0, 4)) !== "LMP1") {
+    throw new Error("Unrecognised preview mesh");
+  }
+  const view = new DataView(bytes.buffer);
+  const vertexCount = view.getUint32(4, true);
+  const indexCount = view.getUint32(8, true);
+  const positionsAt = 12;
+  const normalsAt = positionsAt + vertexCount * 12;
+  const indicesAt = normalsAt + vertexCount * 12;
+  if (indicesAt + indexCount * 4 > bytes.length) throw new Error("Truncated preview mesh");
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(bytes.buffer, positionsAt, vertexCount * 3), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(bytes.buffer, normalsAt, vertexCount * 3), 3));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(bytes.buffer, indicesAt, indexCount), 1));
+  return new THREE.Mesh(geometry, material());
+}
+
 function countTriangles(obj: THREE.Object3D): number {
   let n = 0;
   obj.traverse((o) => {
@@ -118,7 +169,7 @@ function disposeObject(obj: THREE.Object3D) {
   });
 }
 
-export default function ModelViewerCanvas({ url, format }: { url: string; format: ViewerFormat }) {
+export default function ModelViewerCanvas({ url, format, previewUrl }: { url: string; format: ViewerFormat; previewUrl?: string }) {
   const mountRef = React.useRef<HTMLDivElement | null>(null);
   const api = React.useRef<{ reset: () => void; wireframe: (on: boolean) => void; tint: (params: TintParams) => void } | null>(null);
   const [progress, setProgress] = React.useState(0);
@@ -174,8 +225,12 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
 
     let object: THREE.Object3D | null = null;
     let grid: THREE.GridHelper | null = null;
+    const controller = previewUrl ? new AbortController() : null;
 
-    loadObject(url, format, setProgress, bodyMaterial)
+    const loading = previewUrl
+      ? loadPreview(previewUrl, controller!.signal, setProgress, bodyMaterial)
+      : loadObject(url, format, setProgress, bodyMaterial);
+    loading
       .then((obj) => {
         if (disposed) return disposeObject(obj);
         object = obj;
@@ -184,8 +239,8 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
         const raw = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
         setStats({ size: [raw.x, raw.y, raw.z], triangles: countTriangles(obj) });
 
-        // STL and 3MF are Z-up; three.js is Y-up.
-        if (format !== "obj") obj.rotation.x = -Math.PI / 2;
+        // STL and 3MF are Z-up; three.js is Y-up. Server previews are always Z-up.
+        if (previewUrl || format !== "obj") obj.rotation.x = -Math.PI / 2;
         obj.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(obj);
         const center = box.getCenter(new THREE.Vector3());
@@ -240,6 +295,7 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
 
     return () => {
       disposed = true;
+      controller?.abort();
       cancelAnimationFrame(frame);
       resize.disconnect();
       controls.dispose();
@@ -249,7 +305,7 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
       renderer.domElement.remove();
       api.current = null;
     };
-  }, [url, format]);
+  }, [url, format, previewUrl]);
 
   // Persist the choice and repaint the loaded model when it changes.
   React.useEffect(() => {
@@ -343,6 +399,7 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
           {stats ? (
             <div className="absolute bottom-4 left-4 z-[3] rounded bg-black/60 px-2 py-0.5 font-mono text-[11px] text-white/80">
               {stats.size.map((v) => v.toFixed(1)).join(" × ")} mm · {stats.triangles.toLocaleString()} tris
+              {previewUrl ? " · preview" : ""}
             </div>
           ) : null}
         </>

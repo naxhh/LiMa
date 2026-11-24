@@ -12,14 +12,25 @@ const ModelViewerCanvas = React.lazy(() => import("./model-viewer-canvas"));
 const AUTOLOAD_BYTES = 50 * 1024 * 1024;
 
 /** Interactive 3D preview that fills its (positioned) parent. */
-export function ModelViewer({ url, format, sizeBytes }: { url: string; format: ViewerFormat; sizeBytes: number }) {
-  const [confirmed, setConfirmed] = React.useState(sizeBytes <= AUTOLOAD_BYTES);
+export function ModelViewer({
+  url,
+  format,
+  sizeBytes,
+  previewUrl,
+}: {
+  url: string;
+  format: ViewerFormat;
+  sizeBytes: number;
+  /** Server-decimated mesh: cheap enough to load without asking, whatever the file size. */
+  previewUrl?: string;
+}) {
+  const [confirmed, setConfirmed] = React.useState(!!previewUrl || sizeBytes <= AUTOLOAD_BYTES);
 
   // A different file starts unconfirmed again if it's big.
   const [lastUrl, setLastUrl] = React.useState(url);
   if (url !== lastUrl) {
     setLastUrl(url);
-    setConfirmed(sizeBytes <= AUTOLOAD_BYTES);
+    setConfirmed(!!previewUrl || sizeBytes <= AUTOLOAD_BYTES);
   }
 
   if (!confirmed) {
@@ -50,7 +61,7 @@ export function ModelViewer({ url, format, sizeBytes }: { url: string; format: V
         </div>
       }
     >
-      <ModelViewerCanvas key={url} url={url} format={format} />
+      <ModelViewerCanvas key={url} url={url} format={format} previewUrl={previewUrl} />
     </React.Suspense>
   );
 }

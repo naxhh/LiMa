@@ -10,6 +10,11 @@ export function thumbUrl(projectId: string, assetId: string) {
   return `/media/thumbs/${encodeURIComponent(projectId)}/${encodeURIComponent(assetId)}.jpg`;
 }
 
+/** Decimated mesh built by the server for the 3D viewer (see `crates/indexer/src/preview_mesh.rs`). */
+export function previewMeshUrl(projectId: string, assetId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/preview`;
+}
+
 export function libraryUrl(projectFolderPath: string, filePath: string) {
   return `/media/library/${joinUrlSegments(projectFolderPath, filePath)}`;
 }
