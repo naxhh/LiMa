@@ -1,0 +1,23 @@
+services:
+  lima:
+    build: .
+    image: lima:latest
+    container_name: lima
+    ports:
+      - "6767:6767"
+    volumes:
+      # Your models. LiMa reads and writes here, never changes existing files.
+      - ./data/library:/library
+      # Database, thumbnails, staged uploads and metadata backups.
+      - ./data/state:/state
+    environment:
+      LIMA_LIBRARY_DIR: /library
+      LIMA_STATE_DIR: /state
+      # Optional:
+      # LIMA_WATCHER: "true"
+      # LIMA_TRASH_DAYS: "30"
+      # LIMA_BACKUP_INTERVAL_HOURS: "24"
+      # LIMA_BACKUP_KEEP: "7"
+      # LIMA_COLLECTION_SYNC_HOURS: "12"
+      # LIMA_THINGIVERSE_TOKEN: ""
+    restart: unless-stopped

@@ -2,62 +2,109 @@
 
 # LiMa: Library Index for Model Assets
 
-LiMa is a library index for 3d models and related assets.
+LiMa is a self-hosted library for 3D models and the files around them.
 
-Is not much different than MakerWorld, Thingiverse or Printables but removing the social aspect and being a self-hosted version.
+Point it at folders you already have, or upload new models. LiMa indexes them and adds fast
+search, tags, collections, previews and imports. Your files stay in normal folders on disk, and
+LiMa never renames or changes them. Metadata lives in a separate SQLite database that you can
+back up.
 
-The main use case is to store 3d models so you have a backup when the innevitable cloud erases it from existence for good.
+It is built for people who want a private, long-lived home for their models without the social
+feed of Printables, Thingiverse or MakerWorld.
 
-We provide tags and collections for sorting while providing a strong and fast API.
-You can create a new library or bring your existing file system folders to it, we will never modify your original files and metadata lives as a sidecar in the database.
+![The LiMa library page](docs/images/library.png)
 
-## Why?
+## What it does
 
-In the past I collaborated a bit in [MMP](https://github.com/Maker-Management-Platform/) to provide the features I wanted to have in a service like this one instead of condig yet another solution.
+- **Indexes folders you already have.** Drop a folder into the library and sync it. LiMa builds
+  the project list from what is on disk and keeps it up to date.
+- **Keeps your files untouched.** The filesystem is the source of truth. Names, tags,
+  collections and covers live in the database, not inside your files.
+- **Fast browsing and search.** Search by name, tag, collection, format, source and more.
+  Filter the library and sort it by newest, name, size or file count.
+- **Tags, collections and favourites.** Organise models the way you think about them.
+- **Uploads that survive big files.** Drag and drop files or folders. Large uploads are
+  resumable, and zip files can be extracted while keeping their folders.
+- **3D previews and thumbnails.** STL, OBJ and 3MF models get a preview. Images and models are
+  shown as cards, and models can be opened in Bambu Studio, OrcaSlicer or PrusaSlicer.
+- **Imports.** Import single models or whole collections from Printables, MakerWorld and
+  Thingiverse. Imported collections can stay in sync and pick up new models later.
+- **Duplicate detection.** Find projects that contain the same models and merge the one you
+  want to keep.
+- **Trash and backups.** Deleted projects go to a trash folder first. Metadata can be backed up
+  and restored from the Sync page.
+- **API first.** A typed HTTP API with Swagger UI at `/docs` and the OpenAPI document at
+  `/openapi.json`.
 
-MMP seems to be now on an uncertain state and I envisioned the sync process a bit different to how MMP approaches it so I decided to take this project again since I also wanted to learn more Rust and this is a good excuse.
+LiMa is still early in development. Keep your own backups and do not treat it as the only copy
+of anything important.
 
-## Features, bugs, etc...
-This is under start development and I wouldn't recommend anyone to use it yet.
+## Run it with Docker
 
-Check the [docs](./docs/) folder for immediate goals and dev hints.
-If you are running the project go to `/docs/` for a SwaggerUI with current API endpoints.
+You need Docker with the Compose plugin.
 
-**UI is not a priority at the moment**
-
-
-## Dev
-
-Run:
 ```bash
-cargo run -p lima-server
+git clone https://github.com/naxhh/LiMa.git
+cd LiMa
+
+mkdir -p data/library data/state
+docker compose up -d --build
 ```
 
-Environmentals:
-- **LIMA_SERVER_PORT** defaults to `6767`
-- **LIMA_DATA_DIR** base folder for library and state. Defaults to `data`
-- **LIMA_LIBRARY_DIR** model library, one folder per project. Defaults to `$LIMA_DATA_DIR/library`
-- **LIMA_STATE_DIR** app state (database, staged uploads, thumbnails). Defaults to `$LIMA_DATA_DIR/state`
-- **LIMA_UPLOAD_MAX_BYTES** largest resumable upload accepted, in bytes. Defaults to 20 GiB (`21474836480`)
-- **LIMA_DATABASE_URL** defaults to `sqlite:$LIMA_STATE_DIR/lima.db?mode=rwc` (created if missing)
-- **LIMA_UI_DIR** built UI served at `/`. Defaults to `ui/dist`
-- **LIMA_WATCHER** watch the library folder and sync changes automatically. Defaults to `true`; set `false` to disable
-- **LIMA_BACKUP_DIR** automatic metadata backups. Defaults to `$LIMA_STATE_DIR/backups`; put it on a different disk than the database
-- **LIMA_BACKUP_INTERVAL_HOURS** hours between automatic backups (only written when something changed). Defaults to `24`; `0` disables
-- **LIMA_BACKUP_KEEP** how many backup files to keep. Defaults to `7`
-- **LIMA_TRASH_DAYS** how long deleted projects stay in the trash (`<library>/.lima-trash/`) before they're deleted for good. Defaults to `30`; `0` turns the trash off so deletes are final
-- **LIMA_THINGIVERSE_TOKEN** Thingiverse app token, needed to import Thingiverse links. Create an app at https://www.thingiverse.com/apps/create (any name and URL work) and copy its **App Token**. It only reads public things. Keep it in your `env/` secrets (sops) like other credentials
-- **LIMA_COLLECTION_SYNC_HOURS** how long after its last check a collection imported with "keep in sync" is checked again for added and removed models. Defaults to `12`; `0` only syncs when you press Sync. Shown on the Sync page under Sync collections
+Open <http://localhost:6767>.
 
-Missing library and state folders are created on start. For containers, mount the library
-(read/write: uploads and deletes write to it) and the state folder as volumes, e.g.
-`LIMA_LIBRARY_DIR=/library LIMA_STATE_DIR=/state`.
+The included [`docker-compose.yml`](./docker-compose.yml) mounts two folders:
 
-### Metadata backup and restore
+| Path | What it holds |
+|------|---------------|
+| `./data/library` | Your model library, one folder per project. LiMa reads and writes here. |
+| `./data/state` | Database, thumbnails, staged uploads and metadata backups. |
 
-Files on disk are the source of truth; names, descriptions, covers, tags, collections and
-favourites live only in the database. LiMa writes a JSON backup of them to `LIMA_BACKUP_DIR`
-every day, and the **Sync → Backups** page lets you back up now, download an export, and
-restore. To recover after losing the database: start LiMa, run a sync so the projects exist
-again, then restore the latest backup. Projects are matched by folder; a folder renamed since
-the backup is matched by its files' hashes.
+Put existing model folders under `data/library/` before the first start, or use the UI to upload
+new ones. To expose LiMa on another port, change `"6767:6767"` to `"8080:6767"`.
+
+The compose file builds the image from the Dockerfile in this repository. If you already have an
+image, replace `build: .` with your `image:` line.
+
+## Configuration
+
+All settings are environment variables. The defaults are fine for a first run.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LIMA_SERVER_PORT` | `6767` | Port the server listens on. |
+| `LIMA_DATA_DIR` | `data` | Base folder for the library and state. |
+| `LIMA_LIBRARY_DIR` | `$LIMA_DATA_DIR/library` | Model library, one folder per project. |
+| `LIMA_STATE_DIR` | `$LIMA_DATA_DIR/state` | Database, uploads, thumbnails and backups. |
+| `LIMA_DATABASE_URL` | `sqlite:$LIMA_STATE_DIR/lima.db?mode=rwc` | Database location. |
+| `LIMA_UI_DIR` | `ui/dist` | Built web UI to serve at `/`. |
+| `LIMA_UPLOAD_MAX_BYTES` | `21474836480` (20 GiB) | Largest accepted resumable upload. |
+| `LIMA_WATCHER` | `true` | Watch the library and sync changes automatically. Set `false` to disable. |
+| `LIMA_BACKUP_DIR` | `$LIMA_STATE_DIR/backups` | Where metadata backups are written. |
+| `LIMA_BACKUP_INTERVAL_HOURS` | `24` | Hours between automatic backups. `0` disables them. |
+| `LIMA_BACKUP_KEEP` | `7` | Number of backup files to keep. |
+| `LIMA_TRASH_DAYS` | `30` | Days deleted projects stay in `<library>/.lima-trash/`. `0` makes deletes final. |
+| `LIMA_COLLECTION_SYNC_HOURS` | `12` | Hours between checks of imported collections. `0` only syncs when you press Sync. |
+| `LIMA_THINGIVERSE_TOKEN` | empty | Thingiverse app token, needed for Thingiverse imports. |
+
+## Metadata backup and restore
+
+Files on disk are the source of truth. Names, descriptions, covers, tags, collections and
+favourites live only in the database, so LiMa writes a JSON backup to `LIMA_BACKUP_DIR` every
+day.
+
+The **Sync → Backups** page can back up now, download an export and restore. To recover after
+losing the database: start LiMa, run a sync so the projects exist again, then restore the latest
+backup. Projects are matched by folder; a folder renamed since the backup is matched by its
+files' hashes.
+
+Put the backup folder on a different disk than the database when possible.
+
+## Development
+
+Building, testing and running the UI and server from source is described in
+[CONTRIBUTING.md](./CONTRIBUTING.md).
+
+More documentation lives in [`docs/`](./docs/): the [API summary](./docs/API.md),
+[backend brief](./docs/BRIEF.md), [frontend notes](./docs/FRONTEND.md) and
+[slicer integration notes](./docs/SLICERS.md).
