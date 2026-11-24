@@ -27,8 +27,12 @@ feed of Printables, Thingiverse or MakerWorld.
   resumable, and zip files can be extracted while keeping their folders.
 - **3D previews and thumbnails.** STL, OBJ and 3MF models get a preview. Images and models are
   shown as cards, and models can be opened in Bambu Studio, OrcaSlicer or PrusaSlicer.
-- **Imports.** Import single models or whole collections from Printables, MakerWorld and
-  Thingiverse. Imported collections can stay in sync and pick up new models later.
+- **Import from public sites.** Paste a model page from Printables, MakerWorld or Thingiverse
+  and LiMa reads its name, description, tags, images and files. Pick what to download and it
+  becomes a normal project.
+- **Import and sync collections.** Paste a public collection URL and LiMa imports the models you
+  choose into a new collection. Turn on **Keep in sync** to pick up models added upstream and
+  drop the ones removed upstream, on a schedule or with the Sync button.
 - **Duplicate detection.** Find projects that contain the same models and merge the one you
   want to keep.
 - **Trash and backups.** Deleted projects go to a trash folder first. Metadata can be backed up
@@ -38,6 +42,32 @@ feed of Printables, Thingiverse or MakerWorld.
 
 LiMa is still early in development. Keep your own backups and do not treat it as the only copy
 of anything important.
+
+## Importing from public sites
+
+LiMa can import a single model or a whole collection from:
+
+- **Printables** — `printables.com/model/...` and `printables.com/@user/collections/...`
+- **MakerWorld** — `makerworld.com/.../models/...` and `makerworld.com/.../collections/...`
+- **Thingiverse** — `thingiverse.com/thing:...` and `thingiverse.com/user/collections/...`
+
+Use **New → Import from URL** and paste the page address. LiMa previews the name, description,
+tags, images and files before downloading anything. Imported models become normal projects, and
+models already in your library (matched by their source URL) are linked instead of downloaded
+twice.
+
+For collections, LiMa creates a collection and imports the models you tick. With **Keep in
+sync** on, it checks the collection again later: models added upstream are imported, models
+removed upstream go to the trash (or only leave the collection if they were already in your
+library), and models you unticked or deleted are never brought back. The check runs every
+`LIMA_COLLECTION_SYNC_HOURS` hours (default 12), or right away from **Sync → Sync collections**.
+
+Two integrations need credentials:
+
+- **Thingiverse** needs an app token in `LIMA_THINGIVERSE_TOKEN`. Create one at
+  <https://www.thingiverse.com/apps/create>.
+- **MakerWorld** downloads may need a Bambu account. Sign in from the import dialog or paste the
+  `token` cookie from makerworld.com.
 
 ## Run it with Docker
 
