@@ -4,12 +4,10 @@
 import * as React from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { Box as BoxIcon, Loader2, RotateCcw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { loadModelOffThread } from "@/lib/model-worker";
 import type { ViewerFormat } from "@/lib/viewer";
 
 type Stats = { size: [number, number, number]; triangles: number };
@@ -44,13 +42,6 @@ function tintParams(signal: string, tint: Tint): TintParams {
   };
 }
 
-/** The body material, tagged so the tint only recolours the parts we painted (not 3MF colours). */
-function bodyMaterial(): THREE.MeshStandardMaterial {
-  const material = new THREE.MeshStandardMaterial({ color: NEUTRAL, roughness: 0.6, metalness: 0.08, flatShading: false });
-  material.userData.limaBody = true;
-  return material;
-}
-
 const TINT_KEY = "lima.viewer.tint";
 
 function readTint(): Tint {
@@ -74,28 +65,6 @@ function writeTint(tint: Tint) {
 /** The accent colour the current theme exposes (see `--signal`). */
 function readSignal(): string {
   return getComputedStyle(document.documentElement).getPropertyValue("--signal").trim() || "#0e9f83";
-}
-
-async function loadObject(url: string, format: ViewerFormat, onProgress: (p: number) => void, material: () => THREE.MeshStandardMaterial): Promise<THREE.Object3D> {
-  const progress = (e: ProgressEvent) => e.total && onProgress(e.loaded / e.total);
-  if (format === "stl") {
-    const geometry = await new STLLoader().loadAsync(url, progress);
-    if (!geometry.attributes.normal) geometry.computeVertexNormals();
-    return new THREE.Mesh(geometry, material());
-  }
-  if (format === "obj") {
-    const group = await new OBJLoader().loadAsync(url, progress);
-    group.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.material = material();
-    });
-    return group;
-  }
-  // 3MF keeps its own colours (multi-colour prints); untextured parts get ours.
-  const group = await new ThreeMFLoader().loadAsync(url, progress);
-  group.traverse((o) => {
-    if (o instanceof THREE.Mesh && !o.material) o.material = material();
-  });
-  return group;
 }
 
 function countTriangles(obj: THREE.Object3D): number {
@@ -175,7 +144,8 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
     let object: THREE.Object3D | null = null;
     let grid: THREE.GridHelper | null = null;
 
-    loadObject(url, format, setProgress, bodyMaterial)
+    const task = loadModelOffThread(url, format, setProgress);
+    task.promise
       .then((obj) => {
         if (disposed) return disposeObject(obj);
         object = obj;
@@ -240,6 +210,7 @@ export default function ModelViewerCanvas({ url, format }: { url: string; format
 
     return () => {
       disposed = true;
+      task.cancel();
       cancelAnimationFrame(frame);
       resize.disconnect();
       controls.dispose();
