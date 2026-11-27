@@ -81,6 +81,7 @@ pub fn router(state: AppState) -> Router {
         .route("/imports", post(routes::imports::start_import))
         .route("/imports/preview", post(routes::imports::import_preview))
         .route("/imports/{job_id}", get(routes::imports::import_status))
+        .route("/imports/{job_id}", delete(routes::imports::discard_import))
         .route("/imports/collections", post(routes::collection_import::start_collection_import))
         .route("/imports/collections/preview", post(routes::collection_import::collection_preview))
         .route("/imports/collections/{job_id}", get(routes::collection_import::collection_job_status))

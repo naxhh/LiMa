@@ -96,6 +96,8 @@ pub enum ImportError {
     NotFound,
     #[error("login required to download from this site")]
     LoginRequired,
+    #[error("the site asked for a captcha; pass it in a browser and retry")]
+    CaptchaRequired,
     #[error("unknown file id {0}")]
     UnknownFile(String),
     #[error("unexpected response from {site}: {message}")]
@@ -200,6 +202,9 @@ pub async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Re
 /// Sends `request` and streams the response body into `dest`.
 pub(crate) async fn download_with(request: reqwest::RequestBuilder, dest: &Path) -> Result<PathBuf> {
     let res = request.send().await?;
+    if res.status() == reqwest::StatusCode::IM_A_TEAPOT {
+        return Err(ImportError::CaptchaRequired);
+    }
     if !res.status().is_success() {
         return Err(ImportError::Upstream {
             site: "download",

@@ -112,6 +112,35 @@ function MarkdownImage({ src, alt, localImages }: { src?: string; alt?: string; 
 }
 
 /**
+ * `** bold **` → `**bold**`: spaces just inside the markers stop CommonMark making it bold.
+ * Fenced blocks and inline code keep their asterisks as written.
+ */
+function normalizeBoldSpacing(markdown: string): string {
+  const tighten = (text: string) =>
+    text
+      .replace(/\*\*[ \t]+([^*\n]+?)[ \t]*\*\*/g, "**$1**")
+      .replace(/\*\*([^*\n]+?)[ \t]+\*\*/g, "**$1**");
+  const out: string[] = [];
+  let fence: string | null = null;
+  for (const line of markdown.split("\n")) {
+    const trimmed = line.trimStart();
+    const marker = trimmed.startsWith("```") ? "```" : trimmed.startsWith("~~~") ? "~~~" : null;
+    if (fence) {
+      out.push(line);
+      if (marker === fence) fence = null;
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      out.push(line);
+      continue;
+    }
+    out.push(line.split(/(`+[^`]*`+)/g).map((part, i) => (i % 2 === 1 ? part : tighten(part))).join(""));
+  }
+  return out.join("\n");
+}
+
+/**
  * Renders a description written in Markdown. Raw HTML is dropped,
  * single newlines are kept as line breaks so older plain-text descriptions look the same.
  * `localImages` maps file names to local URLs so images in the description are
@@ -138,7 +167,7 @@ export function Markdown({
         }}
         skipHtml
       >
-        {children}
+        {normalizeBoldSpacing(children)}
       </ReactMarkdown>
     </div>
   );

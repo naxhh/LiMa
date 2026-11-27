@@ -366,7 +366,8 @@ export interface paths {
         get: operations["import_status"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Discards a job waiting on a duplicate: its downloaded files are removed. */
+        delete: operations["discard_import"];
         options?: never;
         head?: never;
         patch?: never;
@@ -655,6 +656,22 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["asset_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/assets/{asset_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["asset_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1362,6 +1379,13 @@ export interface components {
             /** @description Comma-separated project ids. */
             ids: string;
         };
+        /** @description The library already has the model being imported. */
+        DuplicateImport: {
+            /** @description Asset whose thumbnail shows it (the cover, or a model when it has no image). */
+            cover_asset_id?: string | null;
+            name: string;
+            project_id: string;
+        };
         DuplicateProject: components["schemas"]["ProjectListItem"] & {
             source_url?: string | null;
         };
@@ -1441,12 +1465,13 @@ export interface components {
             /** @description File being downloaded. */
             current?: string | null;
             done: number;
+            duplicate?: null | components["schemas"]["DuplicateImport"];
             error?: string | null;
-            /** @description e.g. `bambu_login_required` when the Bambu token stopped working mid-import. */
+            /** @description e.g. `bambu_login_required` or `makerworld_captcha`. */
             error_code?: string | null;
             id: string;
             project_id: string;
-            /** @description `downloading`, `importing`, `complete` or `failed`. A failed import removes its project. */
+            /** @description `downloading`, `importing`, `duplicate`, `complete` or `failed`. A failed import removes its project. */
             status: string;
             total: number;
             /** @description Files that could not be downloaded (the rest were imported). */
@@ -1793,18 +1818,24 @@ export interface components {
             job_id: string;
         };
         StartImportRequest: {
+            /** @description Image from the preview to use as the cover (default: the first). */
+            cover_index?: number | null;
             /** @description Defaults to the model description. */
             description?: string | null;
             /** @description Extract downloaded zip files, keeping their folders (default false). */
             extract_zips?: boolean;
             /** @description Ids from the preview's `files` to download. */
             file_ids?: string[];
+            /** @description Import even when the library already has a project with the same files. */
+            force?: boolean;
             /** @description Download the model images too (default true). */
             include_images?: boolean | null;
             /** @description With `extract_zips`, also keep the original archives (default false). */
             keep_zips?: boolean;
             /** @description Project name; defaults to the model name. */
             name?: string | null;
+            /** @description A job that stopped on a duplicate: import from its downloaded files instead of fetching again. */
+            resume_job_id?: string | null;
             /** @description Defaults to the model tags. */
             tags?: string[] | null;
             url: string;
@@ -3110,6 +3141,45 @@ export interface operations {
             };
         };
     };
+    discard_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Import job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job and its downloaded files removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The import is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     bambu_login: {
         parameters: {
             query?: never;
@@ -3982,6 +4052,48 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+        };
+    };
+    asset_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Decimated binary mesh: `LMP1`, vertex count (u32 LE), index count (u32 LE), positions (f32x3), normals (f32x3), indices (u32). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a model file */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Model not found in the specified project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The model could not be read */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
