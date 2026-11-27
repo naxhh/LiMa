@@ -29,6 +29,7 @@ import { SortSelect } from "@/components/sort-select";
 import { BulkBar } from "@/components/bulk-bar";
 import { useSelection } from "@/lib/selection";
 import { useGridKeys } from "@/lib/grid-keys";
+import { useShortcuts } from "@/lib/shortcuts";
 import { GridKeyDialogs } from "@/components/grid-key-dialogs";
 import { COLLECTION_SORTS, useViewPrefs } from "@/lib/view-prefs";
 import { CollectionFormDialog } from "@/components/collection-form-dialog";
@@ -66,6 +67,18 @@ function CollectionDetailInner({ id }: { id: string }) {
 
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // Header keys: the grid's `d` (download) wins while a selection is active.
+  useShortcuts({
+    e: () => {
+      if (!c || c.is_favourites) return false;
+      setEditing(true);
+    },
+    d: () => {
+      if (!c || c.is_favourites || (selection.active && selection.ids.length > 0)) return false;
+      setConfirmDelete(true);
+    },
+  });
 
   const removeM = useMutation({
     mutationFn: (projectId: string) => apiNoBody("DELETE", `/collections/${id}/projects/${projectId}`),

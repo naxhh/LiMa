@@ -86,12 +86,19 @@ pub struct StartImportRequest {
     pub file_ids: Vec<String>,
     /// Download the model images too (default true).
     pub include_images: Option<bool>,
+    /// Image from the preview to use as the cover (default: the first).
+    pub cover_index: Option<usize>,
     /// Extract downloaded zip files, keeping their folders (default false).
     #[serde(default)]
     pub extract_zips: bool,
     /// With `extract_zips`, also keep the original archives (default false).
     #[serde(default)]
     pub keep_zips: bool,
+    /// Import even when the library already has a project with the same files.
+    #[serde(default)]
+    pub force: bool,
+    /// A job that stopped on a duplicate: import from its downloaded files instead of fetching again.
+    pub resume_job_id: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -100,11 +107,20 @@ pub struct StartImportResponse {
     pub project_id: String,
 }
 
+/// The library already has the model being imported.
+#[derive(Clone, Serialize, ToSchema)]
+pub struct DuplicateImport {
+    pub project_id: String,
+    pub name: String,
+    /// Asset whose thumbnail shows it (the cover, or a model when it has no image).
+    pub cover_asset_id: Option<String>,
+}
+
 #[derive(Clone, Serialize, ToSchema)]
 pub struct ImportJobResponse {
     pub id: String,
     pub project_id: String,
-    /// `downloading`, `importing`, `complete` or `failed`. A failed import removes its project.
+    /// `downloading`, `importing`, `duplicate`, `complete` or `failed`. A failed import removes its project.
     pub status: String,
     pub total: usize,
     pub done: usize,
@@ -113,11 +129,27 @@ pub struct ImportJobResponse {
     /// Files that could not be downloaded (the rest were imported).
     pub warnings: Vec<String>,
     pub error: Option<String>,
-    /// e.g. `bambu_login_required` when the Bambu token stopped working mid-import.
+    /// e.g. `bambu_login_required` or `makerworld_captcha`.
     pub error_code: Option<String>,
+    /// Set when the import stopped because the library already has the same files.
+    pub duplicate: Option<DuplicateImport>,
     #[serde(skip)]
     finished_at: Option<i64>,
+    /// Files kept for a forced retry after a duplicate.
+    #[serde(skip)]
+    pending: Option<PendingImport>,
 }
+
+/// What a duplicate job keeps so **Import anyway** doesn't download everything again.
+#[derive(Clone)]
+struct PendingImport {
+    bundle_id: String,
+    model: RemoteModel,
+    cover_name: Option<String>,
+    extract_zips: bool,
+    keep_zips: bool,
+}
+
 
 pub(crate) fn fetch_error(e: ImportError) -> ApiErrorResponse {
     match e {
@@ -137,6 +169,11 @@ pub(crate) fn fetch_error(e: ImportError) -> ApiErrorResponse {
             "Thingiverse rejected the app token in LIMA_THINGIVERSE_TOKEN.",
         ),
         ImportError::NotFound => ApiErrorResponse::new(StatusCode::NOT_FOUND, "model_not_found", "No model found at that link."),
+        ImportError::CaptchaRequired => ApiErrorResponse::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "makerworld_captcha",
+            "MakerWorld wants a captcha. Open the model page in a browser, pass it, and try again.",
+        ),
         e => ApiErrorResponse::new(StatusCode::BAD_GATEWAY, "upstream_error", "Could not read the model page.")
             .with_cause(&e.to_string()),
     }
@@ -221,7 +258,20 @@ pub async fn start_import(State(state): State<AppState>, headers: HeaderMap, Jso
 // reason: axum's Response error type is fixed; boxing it would change every call site.
 #[allow(clippy::result_large_err)]
 async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportRequest) -> Result<StartImportResponse, Response> {
+    if let Some(job_id) = body.resume_job_id.clone() {
+        return resume_import(state, body, &job_id).await;
+    }
+
     let model = fetch(&state, &body.url).await.map_err(IntoResponse::into_response)?;
+
+    // The same model page is already in the library: no download needed to know it.
+    if !body.force
+        && let Some(project_id) =
+            lima_db::queries::collection_sources::project_for_url(state.db.pool(), &model.url).await.map_err(db_error)?
+        && let Some(similar) = lima_db::queries::duplicates::describe(state.db.pool(), &project_id).await.map_err(db_error)?
+    {
+        return Err(duplicate_error(&similar));
+    }
 
     let mut files: Vec<RemoteFile> = Vec::with_capacity(body.file_ids.len());
     for id in &body.file_ids {
@@ -255,6 +305,106 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportReque
         None
     };
 
+    let project = create_import_project(&state, &model, &body).await?;
+    let cover_name = chosen_cover(&images, body.cover_index);
+    let job_id = start_job(&state, &project.id, images.len() + files.len());
+
+    tracing::info!("Importing {} into project {} ({} images, {} files)", model.url, project.id, images.len(), files.len());
+    let task = ImportTask {
+        state: state.clone(),
+        job_id: job_id.clone(),
+        project_id: project.id.clone(),
+        model,
+        images,
+        files,
+        token,
+        extract_zips: body.extract_zips,
+        keep_zips: body.keep_zips,
+        cover_name,
+        force: body.force,
+        resume_bundle: None,
+    };
+    tokio::spawn(task.run());
+
+    Ok(StartImportResponse { job_id, project_id: project.id })
+}
+
+/// **Import anyway** after a duplicate: imports from the job's already downloaded bundle.
+// reason: axum's Response error type is fixed; boxing it would change every call site.
+#[allow(clippy::result_large_err)]
+async fn resume_import(state: AppState, body: StartImportRequest, job_id: &str) -> Result<StartImportResponse, Response> {
+    let pending = {
+        let mut jobs = state.imports.lock().unwrap();
+        let job = jobs.get_mut(job_id).ok_or_else(|| {
+            ApiErrorResponse::new(StatusCode::NOT_FOUND, "job_not_found", "Import job not found.").into_response()
+        })?;
+        if job.status != "duplicate" {
+            return Err(ApiErrorResponse::new(StatusCode::CONFLICT, "not_a_duplicate", "That import isn't waiting on a duplicate.")
+                .into_response());
+        }
+        job.pending.clone().ok_or_else(|| {
+            ApiErrorResponse::new(StatusCode::GONE, "job_expired", "The downloaded files are gone; start the import again.")
+                .into_response()
+        })?
+    };
+
+    let model = pending.model.clone();
+    let project = create_import_project(&state, &model, &body).await?;
+    if let Some(job) = state.imports.lock().unwrap().get_mut(job_id) {
+        job.project_id = project.id.clone();
+        job.status = "importing".into();
+        job.current = None;
+        job.error = None;
+        job.error_code = None;
+        job.duplicate = None;
+        job.pending = None;
+        job.finished_at = None;
+    }
+    let task = ImportTask {
+        state: state.clone(),
+        job_id: job_id.to_string(),
+        project_id: project.id.clone(),
+        model,
+        images: vec![],
+        files: vec![],
+        token: None,
+        extract_zips: pending.extract_zips,
+        keep_zips: pending.keep_zips,
+        cover_name: pending.cover_name,
+        force: true,
+        resume_bundle: Some(pending.bundle_id),
+    };
+    tokio::spawn(task.run());
+
+    Ok(StartImportResponse { job_id: job_id.to_string(), project_id: project.id })
+}
+
+fn db_error(e: sqlx::Error) -> Response {
+    ApiErrorResponse::new(StatusCode::SERVICE_UNAVAILABLE, "db_failure", "Database failure").with_cause(&e.to_string()).into_response()
+}
+
+fn duplicate_error(similar: &lima_db::queries::duplicates::SimilarProject) -> Response {
+    ApiErrorResponse::new(StatusCode::CONFLICT, "duplicate_project", "This model is already in the library.")
+        .with_details(serde_json::json!({
+            "project_id": similar.project_id,
+            "name": similar.name,
+            "cover_asset_id": similar.cover_asset_id,
+        }))
+        .into_response()
+}
+
+/// The image picked in the preview, else the first (the site's own order).
+fn chosen_cover(images: &[RemoteImage], index: Option<usize>) -> Option<String> {
+    images.get(index.unwrap_or(0)).or_else(|| images.first()).map(|i| i.name.clone())
+}
+
+/// Creates the project an import goes into, recording where the model came from.
+#[allow(clippy::result_large_err)]
+async fn create_import_project(
+    state: &AppState,
+    model: &RemoteModel,
+    body: &StartImportRequest,
+) -> Result<lima_db::queries::projects_create::CreatedProject, Response> {
     let name = body.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(&model.name).to_string();
     if name.is_empty() {
         return Err(ApiErrorResponse::new(StatusCode::BAD_REQUEST, "empty_name", "Project name cannot be empty").into_response());
@@ -267,7 +417,6 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportReque
         .iter()
         .filter_map(|t| lima_domain::models::tag::normalize_tag_name(t))
         .collect();
-
     let now = now_rfc3339();
     let folder_path = crate::routes::project_create::slugify_string(&name);
     if folder_path.is_empty() {
@@ -306,32 +455,30 @@ async fn start_inner(state: AppState, headers: HeaderMap, body: StartImportReque
     {
         tracing::warn!("Could not record the source of project {}: {e}", project.id);
     }
+    Ok(project)
+}
 
+fn start_job(state: &AppState, project_id: &str, total: usize) -> String {
     let job_id = uuid::Uuid::new_v4().to_string();
     let job = ImportJobResponse {
         id: job_id.clone(),
-        project_id: project.id.clone(),
+        project_id: project_id.to_string(),
         status: "downloading".into(),
-        total: images.len() + files.len(),
+        total,
         done: 0,
         current: None,
         warnings: vec![],
         error: None,
         error_code: None,
+        duplicate: None,
         finished_at: None,
+        pending: None,
     };
-    {
-        let mut jobs = state.imports.lock().unwrap();
-        let cutoff = OffsetDateTime::now_utc().unix_timestamp() - KEEP_FINISHED_SECS;
-        jobs.retain(|_, j| j.finished_at.is_none_or(|t| t > cutoff));
-        jobs.insert(job_id.clone(), job);
-    }
-
-    tracing::info!("Importing {} into project {} ({} images, {} files)", model.url, project.id, images.len(), files.len());
-    let task = ImportTask { state: state.clone(), job_id: job_id.clone(), project_id: project.id.clone(), model, images, files, token, extract_zips: body.extract_zips, keep_zips: body.keep_zips };
-    tokio::spawn(task.run());
-
-    Ok(StartImportResponse { job_id, project_id: project.id })
+    let mut jobs = state.imports.lock().unwrap();
+    let cutoff = OffsetDateTime::now_utc().unix_timestamp() - KEEP_FINISHED_SECS;
+    jobs.retain(|_, j| j.finished_at.is_none_or(|t| t > cutoff));
+    jobs.insert(job_id.clone(), job);
+    job_id
 }
 
 #[utoipa::path(
@@ -354,6 +501,36 @@ pub async fn import_status(State(state): State<AppState>, UrlPath(job_id): UrlPa
         .ok_or_else(|| ApiErrorResponse::new(StatusCode::NOT_FOUND, "job_not_found", "Import job not found."))
 }
 
+/// Discards a job waiting on a duplicate: its downloaded files are removed.
+#[utoipa::path(
+    delete,
+    path = "/api/imports/{job_id}",
+    params(("job_id" = String, Path, description = "Import job id")),
+    responses(
+        (status = 204, description = "Job and its downloaded files removed"),
+        (status = 404, description = "Unknown job", body = ApiErrorBody),
+        (status = 409, description = "The import is running", body = ApiErrorBody),
+    )
+)]
+pub async fn discard_import(State(state): State<AppState>, UrlPath(job_id): UrlPath<String>) -> Result<StatusCode, ApiErrorResponse> {
+    let job = {
+        let mut jobs = state.imports.lock().unwrap();
+        let Some(job) = jobs.get(&job_id) else {
+            return Err(ApiErrorResponse::new(StatusCode::NOT_FOUND, "job_not_found", "Import job not found."));
+        };
+        if job.status == "downloading" || job.status == "importing" {
+            return Err(ApiErrorResponse::new(StatusCode::CONFLICT, "job_running", "The import is still running."));
+        }
+        jobs.remove(&job_id).expect("checked above")
+    };
+    if let Some(pending) = job.pending
+        && let Some(dir) = state.paths.bundle(&pending.bundle_id)
+    {
+        let _ = tokio::fs::remove_dir_all(dir).await;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(crate) fn now_rfc3339() -> String {
     OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_default()
 }
@@ -368,6 +545,18 @@ struct ImportTask {
     token: Option<String>,
     extract_zips: bool,
     keep_zips: bool,
+    /// Image file to use as the cover; `None` keeps the first one.
+    cover_name: Option<String>,
+    /// Import even when the library already has the same files.
+    force: bool,
+    /// A bundle that's already downloaded (a forced retry after a duplicate).
+    resume_bundle: Option<String>,
+}
+
+/// What a run did: imported, or stopped because the library already has the files.
+enum ImportOutcome {
+    Done,
+    Duplicate(DuplicateImport),
 }
 
 /// Imports one model into a new project right away (no job): creates the project under a
@@ -413,18 +602,32 @@ pub(crate) async fn import_model_now(
         token: bambu_token,
         extract_zips: false,
         keep_zips: false,
+        cover_name: None,
+        force: false,
+        resume_bundle: None,
     };
     let bundle_id = uuid::Uuid::new_v4().to_string();
     let bundle_dir = state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
     let result = task.download_and_import(&bundle_id, &bundle_dir).await;
     let _ = tokio::fs::remove_dir_all(&bundle_dir).await;
     match result {
-        Ok(()) => Ok(project.id),
+        Ok(ImportOutcome::Done) => Ok(project.id),
+        // The same files are already in the library: link that project instead of a second copy.
+        Ok(ImportOutcome::Duplicate(similar)) => {
+            if let Err(e) = lima_db::queries::projects_delete::delete_project(state.db.pool(), &state.paths, &project.id).await {
+                tracing::warn!("Could not remove the empty project {} after a duplicate import: {e:?}", project.id);
+            }
+            Ok(similar.project_id)
+        }
         Err(fatal) => {
             if let Err(e) = lima_db::queries::projects_delete::delete_project(state.db.pool(), &state.paths, &project.id).await {
                 tracing::error!("Could not remove project {} after a failed import: {e:?}", project.id);
             }
-            Err(if fatal.code == "bambu_login_required" { ModelImportError::LoginRequired } else { ModelImportError::Other(fatal.message) })
+            Err(match fatal.code {
+                "bambu_login_required" => ModelImportError::LoginRequired,
+                "makerworld_captcha" => ModelImportError::CaptchaRequired,
+                _ => ModelImportError::Other(fatal.message),
+            })
         }
     }
 }
@@ -433,6 +636,8 @@ pub(crate) async fn import_model_now(
 pub(crate) enum ModelImportError {
     /// The Bambu token was refused: stop, every other MakerWorld download will fail too.
     LoginRequired,
+    /// MakerWorld wants a captcha: stop, every other download will hit it too.
+    CaptchaRequired,
     Other(String),
 }
 
@@ -449,14 +654,13 @@ impl ImportTask {
     }
 
     async fn run(self) {
-        let bundle_id = uuid::Uuid::new_v4().to_string();
+        let bundle_id = self.resume_bundle.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let bundle_dir = self.state.paths.bundle(&bundle_id).expect("generated bundle ids are UUIDs");
 
         let result = self.download_and_import(&bundle_id, &bundle_dir).await;
-        let _ = tokio::fs::remove_dir_all(&bundle_dir).await;
-
         match result {
-            Ok(()) => {
+            Ok(ImportOutcome::Done) => {
+                let _ = tokio::fs::remove_dir_all(&bundle_dir).await;
                 tracing::info!("Import job {} complete", self.job_id);
                 self.update(|j| {
                     j.status = "complete".into();
@@ -464,7 +668,30 @@ impl ImportTask {
                     j.finished_at = Some(OffsetDateTime::now_utc().unix_timestamp());
                 });
             }
+            Ok(ImportOutcome::Duplicate(duplicate)) => {
+                tracing::info!("Import job {} stopped: {} already has the same files", self.job_id, duplicate.name);
+                // Nothing was imported: remove the project so Import anyway starts from its bundle.
+                if let Err(e) = lima_db::queries::projects_delete::delete_project(self.state.db.pool(), &self.state.paths, &self.project_id).await {
+                    tracing::error!("Could not remove project {} after a duplicate import: {e:?}", self.project_id);
+                }
+                // The downloaded bundle stays for a forced retry.
+                let pending = PendingImport {
+                    bundle_id,
+                    model: self.model.clone(),
+                    cover_name: self.cover_name.clone(),
+                    extract_zips: self.extract_zips,
+                    keep_zips: self.keep_zips,
+                };
+                self.update(|j| {
+                    j.status = "duplicate".into();
+                    j.current = None;
+                    j.duplicate = Some(duplicate);
+                    j.pending = Some(pending);
+                    j.finished_at = Some(OffsetDateTime::now_utc().unix_timestamp());
+                });
+            }
             Err(fatal) => {
+                let _ = tokio::fs::remove_dir_all(&bundle_dir).await;
                 tracing::warn!("Import job {} failed: {}", self.job_id, fatal.message);
                 // Nothing useful was imported: remove the project so a retry starts clean.
                 if let Err(e) = lima_db::queries::projects_delete::delete_project(self.state.db.pool(), &self.state.paths, &self.project_id).await {
@@ -481,59 +708,81 @@ impl ImportTask {
         }
     }
 
-    async fn download_and_import(&self, bundle_id: &str, dir: &Path) -> Result<(), Fatal> {
+    async fn download_and_import(&self, bundle_id: &str, dir: &Path) -> Result<ImportOutcome, Fatal> {
         tokio::fs::create_dir_all(dir)
             .await
             .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not create the download folder: {e}") })?;
 
-        let http = &self.state.http;
-        let mut metas: Vec<FileMeta> = Vec::new();
-        let mut files_ok = 0;
+        if self.resume_bundle.is_none() {
+            let http = &self.state.http;
+            let mut metas: Vec<FileMeta> = Vec::new();
+            let mut files_ok = 0;
 
-        for img in &self.images {
-            self.update(|j| j.current = Some(img.name.clone()));
-            let res = lima_importers::download_image(http, &self.model, img, dir).await;
-            self.collect(&img.name, res, &mut metas).await?;
-        }
-        for file in &self.files {
-            self.update(|j| j.current = Some(file.name.clone()));
-            let tokens = lima_importers::Tokens { bambu: self.token.as_deref(), thingiverse: self.state.thingiverse_token.as_deref() };
-            let res = lima_importers::download_file(http, &self.model, file, tokens, dir).await;
-            if self.collect(&file.name, res, &mut metas).await? {
-                files_ok += 1;
+            for img in &self.images {
+                self.update(|j| j.current = Some(img.name.clone()));
+                let res = lima_importers::download_image(http, &self.model, img, dir).await;
+                self.collect(&img.name, res, &mut metas).await?;
             }
-        }
+            for file in &self.files {
+                self.update(|j| j.current = Some(file.name.clone()));
+                let tokens = lima_importers::Tokens { bambu: self.token.as_deref(), thingiverse: self.state.thingiverse_token.as_deref() };
+                let res = lima_importers::download_file(http, &self.model, file, tokens, dir).await;
+                if self.collect(&file.name, res, &mut metas).await? {
+                    files_ok += 1;
+                }
+            }
 
-        if !self.files.is_empty() && files_ok == 0 {
-            return Err(Fatal { code: "downloads_failed", message: "None of the selected files could be downloaded.".into() });
-        }
-        self.update(|j| {
-            j.status = "importing".into();
-            j.current = None;
-        });
-        if metas.is_empty() {
-            return Ok(());
-        }
+            if !self.files.is_empty() && files_ok == 0 {
+                return Err(Fatal { code: "downloads_failed", message: "None of the selected files could be downloaded.".into() });
+            }
+            self.update(|j| {
+                j.status = "importing".into();
+                j.current = None;
+            });
+            if metas.is_empty() {
+                return Ok(ImportOutcome::Done);
+            }
 
-        crate::bundles::write_bundle_meta(dir, metas)
-            .await
-            .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not write the bundle: {e}") })?;
+            crate::bundles::write_bundle_meta(dir, metas)
+                .await
+                .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not write the bundle: {e}") })?;
 
-        if self.extract_zips {
-            // A zip that can't be extracted is imported as it is.
-            match crate::archive::extract_bundle_zips(dir, &[], self.keep_zips).await {
-                Ok(summary) => {
-                    if !summary.skipped.is_empty() {
-                        let n = summary.skipped.len();
-                        self.update(|j| j.warnings.push(format!("{n} file(s) in zips were left out (password protected or unsupported)")));
+            if self.extract_zips {
+                // A zip that can't be extracted is imported as it is.
+                match crate::archive::extract_bundle_zips(dir, &[], self.keep_zips).await {
+                    Ok(summary) => {
+                        if !summary.skipped.is_empty() {
+                            let n = summary.skipped.len();
+                            self.update(|j| j.warnings.push(format!("{n} file(s) in zips were left out (password protected or unsupported)")));
+                        }
+                    }
+                    Err(e) => {
+                        let msg = match e {
+                            crate::archive::ExtractError::Archive { name, error } => format!("{name} wasn't extracted: {error}"),
+                            crate::archive::ExtractError::Io(e) => format!("Zips weren't extracted: {e}"),
+                        };
+                        self.update(|j| j.warnings.push(msg));
                     }
                 }
-                Err(e) => {
-                    let msg = match e {
-                        crate::archive::ExtractError::Archive { name, error } => format!("{name} wasn't extracted: {error}"),
-                        crate::archive::ExtractError::Io(e) => format!("Zips weren't extracted: {e}"),
-                    };
-                    self.update(|j| j.warnings.push(msg));
+            }
+
+            // The downloaded files' hashes: is this model already in the library under another name?
+            if !self.force {
+                let meta = crate::bundles::read_bundle_meta(dir)
+                    .await
+                    .map_err(|e| Fatal { code: "filesystem_error", message: format!("Could not read the bundle: {e}") })?;
+                let hashes: Vec<String> =
+                    meta.files.iter().filter(|f| f.kind == "model").filter_map(|f| f.checksum.clone()).collect();
+                if let Some(similar) = lima_db::queries::duplicates::find_similar(self.state.db.pool(), &hashes)
+                    .await
+                    .map_err(|e| Fatal { code: "db_failure", message: format!("Could not compare with the library: {e}") })?
+                    && similar.project_id != self.project_id
+                {
+                    return Ok(ImportOutcome::Duplicate(DuplicateImport {
+                        project_id: similar.project_id,
+                        name: similar.name,
+                        cover_asset_id: similar.cover_asset_id,
+                    }));
                 }
             }
         }
@@ -546,13 +795,18 @@ impl ImportTask {
             crate::routes::project_import::generate_thumbnails(&self.state, &self.project_id, &project.folder_path, &assets).await;
         }
 
-        // Images were downloaded first, in the site's order: the first is the cover.
-        if let Some(cover) = assets.iter().find(|a| a.kind == "image")
+        // The picked image is the cover; without a pick the site's first one is.
+        let cover = self
+            .cover_name
+            .as_ref()
+            .and_then(|name| assets.iter().find(|a| a.kind == "image" && &a.file_path == name))
+            .or_else(|| assets.iter().find(|a| a.kind == "image"));
+        if let Some(cover) = cover
             && let Err(e) = lima_db::queries::projects_update::set_main_image(self.state.db.pool(), &self.project_id, &cover.id, &now_rfc3339()).await
         {
             tracing::warn!("Could not set the cover of project {}: {e}", self.project_id);
         }
-        Ok(())
+        Ok(ImportOutcome::Done)
     }
 
     /// Records one download. `Ok(true)` when it succeeded, `Ok(false)` when it
@@ -563,6 +817,12 @@ impl ImportTask {
             Ok(path) => path,
             Err(ImportError::LoginRequired) => {
                 return Err(Fatal { code: "bambu_login_required", message: "Bambu rejected the login. Log in again and retry.".into() });
+            }
+            Err(ImportError::CaptchaRequired) => {
+                return Err(Fatal {
+                    code: "makerworld_captcha",
+                    message: "MakerWorld wants a captcha. Open the model page in a browser, pass it, and retry.".into(),
+                });
             }
             Err(e) => {
                 tracing::warn!("Import job {}: {name} failed: {e}", self.job_id);

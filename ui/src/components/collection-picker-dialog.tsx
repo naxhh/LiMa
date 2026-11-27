@@ -34,6 +34,7 @@ export function CollectionPickerDialog({
   const { add, remove, create } = useCollectionMembership(projectId);
   const { toggle: toggleFavourite } = useFavourite(projectId, isFavourite);
   const [search, setSearch] = React.useState("");
+  const [value, setValue] = React.useState("");
 
   // The cache is updated optimistically, so `collections` already reflects pending changes.
   const member = new Set(collections.map((c) => c.id));
@@ -42,27 +43,59 @@ export function CollectionPickerDialog({
   const all = (allQ.data ?? []).filter((c) => !c.is_favourites);
   const typed = search.trim().replace(/\s+/g, " ");
   const exists = (allQ.data ?? []).some((c) => c.name.toLowerCase() === typed.toLowerCase());
+  const createValue = `__create__ ${typed}`;
+  const options = [favourites, ...all].filter((c): c is NonNullable<typeof c> => !!c);
+  const matches = typed ? options.filter((c) => c.name.toLowerCase().includes(typed.toLowerCase())) : options;
+  const matchCount = matches.length;
+  const onlyMatch = matchCount === 1 ? matches[0].name : null;
+
+  // With one match left, that match is the target, so Enter adds to it instead of creating.
+  React.useEffect(() => {
+    if (!open || !typed) return;
+    if (onlyMatch) setValue(onlyMatch);
+    else if (matchCount === 0 && !exists) setValue(createValue);
+  }, [open, typed, onlyMatch, matchCount, exists, createValue]);
 
   return (
     <CommandDialog
       open={open}
       onOpenChange={(o) => {
         onOpenChange(o);
-        if (!o) setSearch("");
+        if (!o) {
+          setSearch("");
+          setValue("");
+        }
       }}
       title="Collections"
       description="Pick collections to add or remove, or type a name to create one"
+      value={value}
+      onValueChange={setValue}
     >
-      <CommandInput placeholder="Search or create a collection…" value={search} onValueChange={setSearch} maxLength={100} />
+      <CommandInput
+        placeholder="Search or create a collection…"
+        value={search}
+        onValueChange={setSearch}
+        maxLength={100}
+        onKeyDown={(e) => {
+          // Up on a filtered list moves to Create, so Enter with nothing highlighted creates
+          // the typed collection instead of picking the one match.
+          if (e.key === "ArrowUp" && typed && !exists && value !== createValue) {
+            e.preventDefault();
+            e.stopPropagation();
+            setValue(createValue);
+          }
+        }}
+      />
       <CommandList>
         <CommandEmpty>{typed ? "No matching collections." : "No collections yet. Type a name to create one."}</CommandEmpty>
         {typed && !exists ? (
           <CommandGroup heading="New">
             <CommandItem
-              value={`__create__ ${typed}`}
+              value={createValue}
               onSelect={() => {
                 create.mutate(typed);
                 setSearch("");
+                setValue("");
               }}
               forceMount
             >

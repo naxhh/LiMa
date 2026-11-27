@@ -65,6 +65,32 @@ export function CollectionImport({ url, onClose, onDone }: { url: string; onClos
   const job = useCollectionJob(jobId).data;
   const running = startM.isPending || job?.status === "running";
 
+  // Starting the import (or its progress) scrolls the dialog down so it's in view.
+  const bottomRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!jobId && !startM.isPending) return;
+    bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [jobId, job?.status, job?.done, startM.isPending]);
+
+  // ⌘/Ctrl+Enter imports the ticked models from anywhere in the dialog.
+  const startRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    startRef.current = () => {
+      if (!running && chosen.size > 0 && !loginBlocking && !jobId) startM.mutate();
+    };
+  });
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key !== "Enter") return;
+      e.preventDefault();
+      startRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  const alreadyInLibrary = (preview?.models ?? []).filter((m) => chosen.has(m.id) && m.project_id).length;
+
   React.useEffect(() => {
     if (job && job.status !== "running") {
       void qc.invalidateQueries({ queryKey: ["projects"] });
@@ -120,8 +146,13 @@ export function CollectionImport({ url, onClose, onDone }: { url: string; onClos
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium">
-            Models <span className="font-mono text-xs font-normal text-muted-foreground">{chosen.size} chosen</span>
+          <div>
+            <div className="text-sm font-medium">
+              Models <span className="font-mono text-xs font-normal text-muted-foreground">{chosen.size} chosen</span>
+            </div>
+            {alreadyInLibrary > 0 ? (
+              <div className="text-xs text-muted-foreground">{alreadyInLibrary} already in the library: linked, not downloaded.</div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -171,7 +202,24 @@ export function CollectionImport({ url, onClose, onDone }: { url: string; onClos
 
       {loginBlocking && !jobId ? <BambuLogin onLoggedIn={() => setShowLogin(false)} /> : null}
       {startM.isError && apiErrorCode(startM.error) !== "bambu_login_required" ? (
-        <div className="text-sm text-destructive">{apiErrorMessage(startM.error)}</div>
+        apiErrorCode(startM.error) === "makerworld_captcha" ? (
+          <div className="space-y-1 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <div className="font-medium text-destructive">MakerWorld wants a captcha</div>
+            <div className="text-muted-foreground">
+              Open the collection page, pass the captcha there, then start the import again.
+            </div>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-signal underline-offset-4 hover:underline">
+              Open the collection page
+            </a>
+          </div>
+        ) : (
+          <div className="text-sm text-destructive">{apiErrorMessage(startM.error)}</div>
+        )
+      ) : null}
+      {job?.error_code === "makerworld_captcha" ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block text-sm text-signal underline-offset-4 hover:underline">
+          Open the collection page and pass the captcha
+        </a>
       ) : null}
       {job ? <CollectionJobProgress job={job} /> : null}
 
@@ -192,6 +240,7 @@ export function CollectionImport({ url, onClose, onDone }: { url: string; onClos
           </>
         )}
       </DialogFooter>
+      <div ref={bottomRef} aria-hidden />
     </div>
   );
 }

@@ -141,6 +141,24 @@ export function CreateProjectDialog({
   const canSubmit = name.trim().length > 0 && !!bundleId && !createProjectM.isPending;
   const uploadPercent = uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.sent / uploadProgress.total) * 100)) : 0;
 
+  // ⌘/Ctrl+Enter creates the project from anywhere in the dialog.
+  const submitRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    submitRef.current = () => {
+      if (canSubmit && !createBundleM.isPending) createProjectM.mutate();
+    };
+  });
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key !== "Enter") return;
+      e.preventDefault();
+      submitRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [isOpen]);
+
   return (
     <Dialog
       open={isOpen}

@@ -218,6 +218,68 @@ pub async fn find(pool: &Pool<Sqlite>) -> Result<Report, sqlx::Error> {
     Ok(Report { project_groups, shared_files, unhashed_files, dismissed: hidden })
 }
 
+/// A project already in the library that the model being imported looks like.
+#[derive(Debug, Clone)]
+pub struct SimilarProject {
+    pub project_id: String,
+    pub name: String,
+    /// Asset to show as its thumbnail: the cover, or a model when it has no image.
+    pub cover_asset_id: Option<String>,
+}
+
+/// The project to link to when an import's model files already exist: the one sharing
+/// at least [`SIMILARITY`] of the larger file set. `hashes` are the imported model files.
+pub async fn find_similar(pool: &Pool<Sqlite>, hashes: &[String]) -> Result<Option<SimilarProject>, sqlx::Error> {
+    if hashes.is_empty() {
+        return Ok(None);
+    }
+    let json = serde_json::to_string(hashes).expect("serialize hashes");
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT p.id, p.name, p.main_image_id
+        FROM assets a
+        JOIN projects p ON p.id = a.project_id
+        WHERE a.kind = 'model' AND a.file_hash IN (SELECT value FROM json_each(?1))
+        GROUP BY p.id
+        HAVING CAST(COUNT(DISTINCT a.file_hash) AS REAL) / MAX(
+                 CAST(?2 AS INTEGER),
+                 (SELECT COUNT(DISTINCT x.file_hash) FROM assets x
+                  WHERE x.project_id = p.id AND x.kind = 'model' AND x.file_hash IS NOT NULL)
+               ) >= ?3
+        ORDER BY COUNT(DISTINCT a.file_hash) DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&json)
+    .bind(hashes.len() as i64)
+    .bind(SIMILARITY)
+    .fetch_optional(pool)
+    .await?;
+    let Some((project_id, name, main_image_id)) = row else { return Ok(None) };
+    let cover_asset_id = cover_of(pool, &project_id, main_image_id).await?;
+    Ok(Some(SimilarProject { project_id, name, cover_asset_id }))
+}
+
+/// What to link to for a project the library already has for this model page.
+pub async fn describe(pool: &Pool<Sqlite>, project_id: &str) -> Result<Option<SimilarProject>, sqlx::Error> {
+    let row: Option<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT id, name, main_image_id FROM projects WHERE id = ?1").bind(project_id).fetch_optional(pool).await?;
+    let Some((project_id, name, main_image_id)) = row else { return Ok(None) };
+    let cover_asset_id = cover_of(pool, &project_id, main_image_id).await?;
+    Ok(Some(SimilarProject { project_id, name, cover_asset_id }))
+}
+
+async fn cover_of(pool: &Pool<Sqlite>, project_id: &str, main_image_id: Option<String>) -> Result<Option<String>, sqlx::Error> {
+    if main_image_id.is_some() {
+        return Ok(main_image_id);
+    }
+    // No image: a model's preview thumbnail stands in for it the way the cards do.
+    sqlx::query_scalar("SELECT id FROM assets WHERE project_id = ?1 AND kind = 'model' ORDER BY file_path LIMIT 1")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await
+}
+
 pub async fn dismiss(pool: &Pool<Sqlite>, key: &str, now: &str) -> Result<(), sqlx::Error> {
     sqlx::query("INSERT OR IGNORE INTO duplicate_dismissals (key, created_at) VALUES (?1, ?2)").bind(key).bind(now).execute(pool).await?;
     Ok(())
@@ -452,6 +514,33 @@ mod tests {
         assert_eq!(report.dismissed, 1);
         assert_eq!(clear_dismissed(pool).await.unwrap(), 1);
         assert_eq!(find(pool).await.unwrap().project_groups.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn finds_a_similar_project_by_hashes() {
+        let dir = std::env::temp_dir().join(format!("lima-db-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::connect(&format!("sqlite:{}?mode=rwc", dir.join("t.db").display())).await.unwrap();
+        db.migrate().await.unwrap();
+        let pool = db.pool();
+
+        let project_id = project(pool, "benchy", "").await;
+        asset(pool, &project_id, "benchy.stl", "model", "h1").await;
+        asset(pool, &project_id, "hull.stl", "model", "h2").await;
+        asset(pool, &project_id, "photo.jpg", "image", "p1").await;
+
+        let found = find_similar(pool, &["h1".into(), "h2".into()]).await.unwrap().unwrap();
+        assert_eq!(found.project_id, project_id);
+        assert_eq!(found.name, "benchy");
+        assert!(found.cover_asset_id.is_some(), "a model stands in when there is no image");
+
+        assert!(find_similar(pool, &["h1".into()]).await.unwrap().is_none(), "1 of 2 files is only 50%");
+        assert!(find_similar(pool, &[]).await.unwrap().is_none());
+
+        let described = describe(pool, &project_id).await.unwrap().unwrap();
+        assert_eq!(described.project_id, project_id);
+        assert!(describe(pool, "missing").await.unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 }

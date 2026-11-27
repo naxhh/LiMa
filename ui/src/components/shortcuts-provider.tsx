@@ -34,7 +34,16 @@ const USES_ARROWS = "[role=slider], [role=tab], [role=radio], [role=option], [ro
 
 function keyName(e: KeyboardEvent): string {
   if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") return "mod+k";
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key === "Enter") return "mod+enter";
   return e.key;
+}
+
+/** The form Ctrl/⌘+Enter submits: the focused one, else the open dialog's. */
+function formToSubmit(target: EventTarget | null): HTMLFormElement | null {
+  const focused = target instanceof Element ? target.closest("form") : null;
+  if (focused) return focused;
+  const dialog = document.querySelector("[role=dialog][data-state=open], [role=alertdialog][data-state=open]");
+  return dialog?.querySelector("form") ?? null;
 }
 
 /** Owns the window key listener, the `g` chord HUD and the `?` cheat sheet. Mount once, inside the router. */
@@ -93,6 +102,14 @@ export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
 
       // ⌘K / Ctrl+K works from anywhere, even while typing.
       if (key === "mod+k") return dispatch();
+      // ⌘Enter / Ctrl+Enter submits the form being filled in.
+      if (key === "mod+enter") {
+        const form = formToSubmit(e.target);
+        if (!form) return;
+        e.preventDefault();
+        form.requestSubmit();
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingTarget(e.target) || overlayOpen()) return;
 
@@ -156,6 +173,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     title: "Everywhere",
     rows: [
       { keys: [["/"], ["⌘", "K"]], label: "Search" },
+      { keys: [["⌘", "Enter"], ["Ctrl", "Enter"]], label: "Submit the form" },
       { keys: [["n"]], label: "Create menu" },
       { keys: [["g", "l"]], label: "Go to Library" },
       { keys: [["g", "t"]], label: "Go to Tags" },
@@ -191,6 +209,13 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
       { keys: [["f"], ["d"], ["t"], ["c"], ["a"], ["#"]], label: "Favourite, download, tags, collection, remove" },
       { keys: [["e"]], label: "Edit details" },
       { keys: [["i"]], label: "Add files" },
+    ],
+  },
+  {
+    title: "Collection page",
+    rows: [
+      { keys: [["e"]], label: "Edit details" },
+      { keys: [["d"]], label: "Delete the collection" },
     ],
   },
   {

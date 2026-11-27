@@ -93,8 +93,15 @@ pub async fn fetch(client: &reqwest::Client, id: &str) -> Result<RemoteModel> {
     if status == reqwest::StatusCode::NOT_FOUND {
         return Err(ImportError::NotFound);
     }
+    if status == reqwest::StatusCode::IM_A_TEAPOT {
+        return Err(ImportError::CaptchaRequired);
+    }
     if !status.is_success() {
-        return Err(upstream(format!("{status}: {}", res.text().await.unwrap_or_default())));
+        let body = res.text().await.unwrap_or_default();
+        if is_captcha(status, &body) {
+            return Err(ImportError::CaptchaRequired);
+        }
+        return Err(upstream(format!("{status}: {body}")));
     }
     let design: Design = res.json().await.map_err(|e| upstream(e.to_string()))?;
     // Unknown ids answer 200 with an all-empty design.
@@ -169,6 +176,10 @@ pub async fn download_url(client: &reqwest::Client, file: &RemoteFile, token: &s
         .await?;
     let status = res.status();
     let body = res.text().await?;
+    if is_captcha(status, &body) {
+        tracing::warn!("MakerWorld asked for a captcha while downloading {}", file.id);
+        return Err(ImportError::CaptchaRequired);
+    }
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         let message = serde_json::from_str::<ApiError>(&body).ok().and_then(|e| e.error).unwrap_or_default();
         tracing::warn!("MakerWorld refused download of {}: {status} {message}", file.id);
@@ -189,6 +200,11 @@ pub async fn download_url(client: &reqwest::Client, file: &RemoteFile, token: &s
 
 fn truncate(s: &str) -> String {
     s.chars().take(200).collect()
+}
+
+/// MakerWorld answers a captcha with "418 I'm a teapot", and the challenge page says so in its HTML.
+fn is_captcha(status: reqwest::StatusCode, body: &str) -> bool {
+    status == reqwest::StatusCode::IM_A_TEAPOT || body.to_ascii_lowercase().contains("captcha")
 }
 
 #[cfg(test)]
@@ -233,5 +249,12 @@ mod tests {
         let m = to_model(design);
         assert_eq!(m.images.len(), 1);
         assert_eq!(m.images[0].name, "cover.png");
+    }
+
+    #[test]
+    fn recognises_a_captcha() {
+        assert!(is_captcha(reqwest::StatusCode::IM_A_TEAPOT, ""));
+        assert!(is_captcha(reqwest::StatusCode::FORBIDDEN, "<h1>Please solve the CAPTCHA</h1>"));
+        assert!(!is_captcha(reqwest::StatusCode::FORBIDDEN, "{\"error\":\"paid model\"}"));
     }
 }

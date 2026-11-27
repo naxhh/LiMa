@@ -3,9 +3,11 @@ import { Link2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiJson } from "@/lib/api";
+import { apiGet, apiJson, apiNoBody, ApiError } from "@/lib/api";
 import type { components } from "@/gen/openapi";
 import { formatBytes } from "@/lib/format";
+import { thumbUrl } from "@/lib/media";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +22,10 @@ type Preview = components["schemas"]["ImportPreviewResponse"];
 type PreviewFile = components["schemas"]["ImportFile"];
 type StartImportResponse = components["schemas"]["StartImportResponse"];
 type ImportJob = components["schemas"]["ImportJobResponse"];
+type DuplicateImport = components["schemas"]["DuplicateImport"];
+
+/** A project the library already has: the import stopped so it isn't copied again. */
+type DuplicateInfo = { projectId: string; name: string; coverAssetId: string | null; resumeJobId: string | null };
 
 const SOURCE_LABEL: Record<string, string> = { printables: "Printables", makerworld: "MakerWorld", thingiverse: "Thingiverse" };
 
@@ -46,6 +52,26 @@ function groupFiles(files: PreviewFile[]): [string, PreviewFile[]][] {
   return [...groups.entries()];
 }
 
+/** The 409 the server answers with when the model is already in the library. */
+function duplicateFromError(e: unknown): DuplicateInfo | null {
+  if (!(e instanceof ApiError)) return null;
+  const body = e.body as { error?: { code?: string; details?: Record<string, unknown> } } | null;
+  if (body?.error?.code !== "duplicate_project") return null;
+  const d = body.error.details ?? {};
+  if (typeof d.project_id !== "string") return null;
+  return {
+    projectId: d.project_id,
+    name: typeof d.name === "string" ? d.name : "a project",
+    coverAssetId: typeof d.cover_asset_id === "string" ? d.cover_asset_id : null,
+    resumeJobId: null,
+  };
+}
+
+function duplicateFromJob(job: ImportJob): DuplicateInfo | null {
+  const d: DuplicateImport | null | undefined = job.duplicate;
+  return d ? { projectId: d.project_id, name: d.name, coverAssetId: d.cover_asset_id ?? null, resumeJobId: job.id } : null;
+}
+
 export function ImportUrlDialog({
   open,
   onOpenChange,
@@ -70,18 +96,24 @@ export function ImportUrlDialog({
   const [description, setDescription] = React.useState("");
   const [tagsText, setTagsText] = React.useState("");
   const [includeImages, setIncludeImages] = React.useState(true);
+  const [coverIndex, setCoverIndex] = React.useState(0);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [duplicate, setDuplicate] = React.useState<DuplicateInfo | null>(null);
   const [zipPrefs, setZipPrefs] = useZipPrefs();
   const [collectionUrl, setCollectionUrl] = React.useState<string | null>(null);
 
   const reset = () => {
+    // A duplicate job keeps its downloads for "Import anyway"; leaving throws them away.
+    if (duplicate?.resumeJobId) void apiNoBody("DELETE", `/imports/${duplicate.resumeJobId}`).catch(() => {});
     setUrl("");
     setPreview(null);
     setJobId(null);
     setShowLogin(false);
     setCollectionUrl(null);
+    setDuplicate(null);
+    setCoverIndex(0);
     previewM.reset();
     startM.reset();
   };
@@ -94,9 +126,11 @@ export function ImportUrlDialog({
       setDescription(p.description);
       setTagsText(p.tags.join(", "));
       setIncludeImages(true);
+      setCoverIndex(0);
       setSelected(defaultSelection(p));
       setShowLogin(false);
       setCollectionUrl(null);
+      setDuplicate(null);
     },
     onError: (e, u) => {
       // Collection links go to the collection import instead.
@@ -115,7 +149,7 @@ export function ImportUrlDialog({
   const zipCount = selectedNames.filter((n) => n.toLowerCase().endsWith(".zip")).length;
 
   const startM = useMutation({
-    mutationFn: () =>
+    mutationFn: (opts: { force?: boolean; resumeJobId?: string } = {}) =>
       apiJson<StartImportResponse>("POST", "/imports", {
         url: preview!.url,
         name: name.trim(),
@@ -123,14 +157,24 @@ export function ImportUrlDialog({
         tags: parseTags(tagsText),
         file_ids: [...selected],
         include_images: includeImages,
+        cover_index: includeImages ? coverIndex : undefined,
+        force: !!opts.force,
+        resume_job_id: opts.resumeJobId,
         ...zipFields(zipPrefs, selectedNames),
       }),
-    onSuccess: (res) => setJobId(res.job_id),
+    onSuccess: (res) => {
+      setJobId(res.job_id);
+      setDuplicate(null);
+    },
     onError: (e) => {
-      if (apiErrorCode(e) === "bambu_login_required") {
+      const code = apiErrorCode(e);
+      if (code === "bambu_login_required") {
         setShowLogin(true);
         qc.invalidateQueries({ queryKey: BAMBU_STATUS_KEY });
+        return;
       }
+      const found = duplicateFromError(e);
+      if (found) setDuplicate(found);
     },
   });
 
@@ -145,6 +189,14 @@ export function ImportUrlDialog({
   });
   const job = jobQ.data;
 
+  // Starting an import (or its progress) scrolls the dialog down so it's in view.
+  const bottomRef = React.useRef<HTMLDivElement | null>(null);
+  const hasJob = !!job;
+  React.useEffect(() => {
+    if (!isOpen || (!hasJob && !startM.isPending)) return;
+    bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [isOpen, hasJob, job?.status, job?.done, startM.isPending]);
+
   React.useEffect(() => {
     if (!job) return;
     if (job.status === "complete") {
@@ -154,6 +206,8 @@ export function ImportUrlDialog({
         reset();
         navigate(`/projects/${job.project_id}`);
       }
+    } else if (job.status === "duplicate") {
+      setDuplicate(duplicateFromJob(job));
     } else if (job.status === "failed" && job.error_code === "bambu_login_required") {
       setShowLogin(true);
       qc.invalidateQueries({ queryKey: BAMBU_STATUS_KEY });
@@ -163,7 +217,25 @@ export function ImportUrlDialog({
 
   const running = !!job && (job.status === "downloading" || job.status === "importing");
   const loginBlocking = needsLogin && (showLogin || (bambuQ.isSuccess && !loggedIn));
-  const canImport = !!preview && name.trim().length > 0 && !startM.isPending && !running && !loginBlocking;
+  const canImport = !!preview && name.trim().length > 0 && !startM.isPending && !running && !loginBlocking && !duplicate;
+
+  // ⌘/Ctrl+Enter starts the import from anywhere in the dialog, even while typing.
+  const startRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    startRef.current = () => {
+      if (canImport) startM.mutate({});
+    };
+  });
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key !== "Enter") return;
+      e.preventDefault();
+      startRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [isOpen]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -214,7 +286,13 @@ export function ImportUrlDialog({
             {previewM.isPending ? "Reading…" : "Fetch"}
           </Button>
         </form>
-        {previewM.isError && !collectionUrl ? <div className="text-sm text-destructive">{apiErrorMessage(previewM.error)}</div> : null}
+        {previewM.isError && !collectionUrl ? (
+          apiErrorCode(previewM.error) === "makerworld_captcha" ? (
+            <CaptchaNotice url={url.trim()} />
+          ) : (
+            <div className="text-sm text-destructive">{apiErrorMessage(previewM.error)}</div>
+          )
+        ) : null}
 
         {collectionUrl ? (
           <CollectionImport
@@ -243,21 +321,41 @@ export function ImportUrlDialog({
             {preview.images.length > 0 ? (
               <div className="space-y-1.5">
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {preview.images.map((img) => (
-                    <img
-                      key={img.url}
-                      src={img.url}
-                      alt={img.name}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="h-20 w-20 shrink-0 rounded-md border object-cover"
-                    />
-                  ))}
+                  {preview.images.map((img, i) => {
+                    const cover = includeImages && i === coverIndex;
+                    return (
+                      <button
+                        key={img.url}
+                        type="button"
+                        aria-label={`Use ${img.name} as the cover`}
+                        aria-pressed={cover}
+                        onClick={() => setCoverIndex(i)}
+                        className={cn(
+                          "relative h-20 w-20 shrink-0 overflow-hidden rounded-md border",
+                          cover && "border-signal ring-2 ring-signal",
+                        )}
+                      >
+                        <img
+                          src={img.url}
+                          alt={img.name}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover"
+                        />
+                        {cover ? (
+                          <span className="absolute top-1 right-1 rounded bg-signal px-1 text-[10px] font-medium text-background">
+                            Cover
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} />
                   Import the {preview.images.length} image{preview.images.length === 1 ? "" : "s"}
                 </label>
+                {includeImages ? <div className="text-xs text-muted-foreground">Click an image to make it the cover.</div> : null}
               </div>
             ) : null}
 
@@ -300,11 +398,15 @@ export function ImportUrlDialog({
 
             {loginBlocking ? <BambuLogin onLoggedIn={() => setShowLogin(false)} /> : null}
 
-            {startM.isError && apiErrorCode(startM.error) !== "existing_project" && apiErrorCode(startM.error) !== "bambu_login_required" ? (
+            {duplicate ? <DuplicateNotice duplicate={duplicate} /> : null}
+
+            {job?.error_code === "makerworld_captcha" ? <CaptchaNotice url={preview.url} /> : null}
+
+            {startM.isError && apiErrorCode(startM.error) !== "existing_project" && apiErrorCode(startM.error) !== "bambu_login_required" && apiErrorCode(startM.error) !== "duplicate_project" ? (
               <div className="text-sm text-destructive">{apiErrorMessage(startM.error)}</div>
             ) : null}
 
-            {job ? <JobProgress job={job} /> : null}
+            {duplicate ? null : job ? <JobProgress job={job} /> : null}
           </div>
         ) : null}
 
@@ -320,6 +422,27 @@ export function ImportUrlDialog({
             >
               Open project
             </Button>
+          ) : duplicate ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setOpen(false);
+                  reset();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={startM.isPending}
+                onClick={() => {
+                  setJobId(null);
+                  startM.mutate(duplicate.resumeJobId ? { force: true, resumeJobId: duplicate.resumeJobId } : { force: true });
+                }}
+              >
+                {startM.isPending ? "Importing…" : "Import anyway"}
+              </Button>
+            </>
           ) : (
             <>
               <Button variant="outline" onClick={() => setOpen(false)} disabled={running}>
@@ -329,7 +452,7 @@ export function ImportUrlDialog({
                 disabled={!canImport}
                 onClick={() => {
                   setJobId(null);
-                  startM.mutate();
+                  startM.mutate({});
                 }}
               >
                 {startM.isPending || running ? "Importing…" : job?.status === "failed" ? "Retry" : "Import"}
@@ -338,6 +461,7 @@ export function ImportUrlDialog({
           )}
         </DialogFooter>
         )}
+        <div ref={bottomRef} aria-hidden />
       </DialogContent>
     </Dialog>
   );
@@ -371,6 +495,58 @@ function JobProgress({ job }: { job: ImportJob }) {
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/** The library already has this model: link it instead of importing a second copy. */
+function DuplicateNotice({ duplicate }: { duplicate: DuplicateInfo }) {
+  return (
+    <div className="rounded-xl border border-signal/50 bg-signal/5 p-3 text-sm">
+      <div className="flex gap-3">
+        {duplicate.coverAssetId ? (
+          <img
+            src={thumbUrl(duplicate.projectId, duplicate.coverAssetId)}
+            alt=""
+            loading="lazy"
+            className="h-16 w-16 shrink-0 rounded-md border object-cover"
+          />
+        ) : (
+          <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md border bg-thumb text-xs text-dim">No image</div>
+        )}
+        <div className="min-w-0 space-y-1">
+          <div>
+            This import looks a duplicate of{" "}
+            <a
+              href={`/projects/${duplicate.projectId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-signal underline-offset-4 hover:underline"
+            >
+              “{duplicate.name}”
+            </a>
+          </div>
+          <div className="text-muted-foreground">Confirm you want to import a copy anyway.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** MakerWorld answered 418 and wants a captcha passed in a browser. */
+function CaptchaNotice({ url }: { url: string }) {
+  return (
+    <div className="space-y-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm">
+      <div className="font-medium text-destructive">MakerWorld wants a captcha</div>
+      <div className="text-muted-foreground">
+        Open the model page, pass the captcha there, then retry. LiMa downloads with your Bambu login and can’t answer it
+        for you.
+      </div>
+      <Button asChild variant="outline" size="sm">
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          Open the model page
+        </a>
+      </Button>
     </div>
   );
 }

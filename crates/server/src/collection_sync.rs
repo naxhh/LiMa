@@ -285,6 +285,12 @@ async fn run(state: &AppState, s: &SourceRow, job_id: &str, selected: Option<Has
             Err(ModelImportError::LoginRequired) => {
                 return Err(RunError::new("bambu_login_required", "MakerWorld needs a Bambu login to download files. Log in and sync again."));
             }
+            Err(ModelImportError::CaptchaRequired) => {
+                return Err(RunError::new(
+                    "makerworld_captcha",
+                    "MakerWorld wants a captcha. Open the model page in a browser and pass it, then sync again.",
+                ));
+            }
             Err(ModelImportError::Other(e)) => {
                 tracing::warn!("Collection {}: importing {} failed: {e}", s.collection_id, m.url);
                 item.last_error = Some(e.clone());
