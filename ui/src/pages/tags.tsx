@@ -66,7 +66,7 @@ export function TagsPage() {
           <div className="text-sm text-destructive">Failed to load tags: {apiErrorMessage(tagsQ.error)}</div>
         ) : null}
         {!tagsQ.isLoading && tags.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
             No tags yet. Create one here or add tags from a project page.
           </div>
         ) : null}
@@ -78,7 +78,7 @@ export function TagsPage() {
           {shown.map((t) => {
             const pct = totalProjects > 0 ? Math.round((t.project_count / totalProjects) * 100) : 0;
             return (
-              <article key={t.id} className="flex flex-col gap-3.5 rounded-[14px] border bg-card p-4">
+              <article key={t.id} className="flex flex-col gap-3.5 rounded-xl border bg-card p-4">
                 <div className="flex items-center gap-3">
                   <span
                     className="grid size-9 shrink-0 place-items-center rounded-[10px]"

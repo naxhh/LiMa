@@ -163,9 +163,9 @@ export function AdminSyncPage() {
                 actions={<DataSyncButtons busy={busy} running={running} onStart={(mode) => startM.mutate(mode)} />}
               />
             ) : statusQ.isLoading ? (
-              <div className="bg-dots h-64 animate-pulse rounded-2xl border bg-card" />
+              <div className="bg-dots h-64 animate-pulse rounded-xl border bg-card" />
             ) : (
-              <section className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+              <section className="flex flex-col gap-4 rounded-xl border bg-card p-5 sm:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-display text-xl font-semibold">Sync data directories</h2>
                   <DataSyncButtons busy={busy} running={running} onStart={(mode) => startM.mutate(mode)} />
@@ -215,7 +215,7 @@ function WatcherCard({ watcher }: { watcher: WatcherStatus }) {
       : pending.slice(0, 3).join(", ") + (pending.length > 3 ? ` +${pending.length - 3}` : "");
 
   return (
-    <section aria-labelledby="watcher-h" className="flex flex-col gap-3.5 rounded-2xl border bg-card p-4.5">
+    <section aria-labelledby="watcher-h" className="flex flex-col gap-3.5 rounded-xl border bg-card p-4.5">
       <div className="flex items-center justify-between gap-3">
         <h2 id="watcher-h" className="font-display text-[17px] font-semibold">
           Folder watcher
@@ -266,7 +266,7 @@ function IgnoredFolders() {
   if (ignoredQ.isLoading || (ignoredQ.isSuccess && items.length === 0)) return null;
 
   return (
-    <section aria-labelledby="ignored-h" className="flex flex-col gap-3 rounded-2xl border bg-card p-4.5">
+    <section aria-labelledby="ignored-h" className="flex flex-col gap-3 rounded-xl border bg-card p-4.5">
       <div className="flex items-center justify-between gap-3">
         <h2 id="ignored-h" className="font-display text-[17px] font-semibold">
           Ignored folders
@@ -304,7 +304,7 @@ function IgnoredFolders() {
 
 function EmptyPanel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-dots flex items-center justify-center rounded-2xl border border-dashed p-10 text-sm text-muted-foreground">
+    <div className="bg-dots flex items-center justify-center rounded-xl border border-dashed p-10 text-sm text-muted-foreground">
       {children}
     </div>
   );
@@ -348,7 +348,7 @@ function RunsList({ selectedId, live }: { selectedId?: string; live: boolean }) 
   const items = runsQ.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <section aria-labelledby="history-h" className="overflow-hidden rounded-2xl border bg-card">
+    <section aria-labelledby="history-h" className="overflow-hidden rounded-xl border bg-card">
       <div className="flex items-center justify-between px-4.5 pt-3 pb-2">
         <h2 id="history-h" className="font-display text-[17px] font-semibold">
           Run history
@@ -495,7 +495,7 @@ function CollectionsSync({ selectedRunId }: { selectedRunId?: string }) {
   }, [running, qc]);
 
   return (
-    <section aria-labelledby="collections-sync-h" className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+    <section aria-labelledby="collections-sync-h" className="flex flex-col gap-4 rounded-xl border bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 id="collections-sync-h" className="font-display text-xl font-semibold">
           Sync collections
@@ -657,10 +657,10 @@ function RunDetail({ runId, isLatest, actions }: { runId: string; isLatest: bool
   const live = run?.status === "running";
   const now = useNow(live);
 
-  if (runQ.isLoading) return <div className="bg-dots h-64 animate-pulse rounded-2xl border bg-card" />;
+  if (runQ.isLoading) return <div className="bg-dots h-64 animate-pulse rounded-xl border bg-card" />;
   if (runQ.isError || !run) {
     return (
-      <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+      <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
         Failed to load run: {errorMessage(runQ.error)}
       </div>
     );
@@ -674,7 +674,7 @@ function RunDetail({ runId, isLatest, actions }: { runId: string; isLatest: bool
     <>
       <section
         aria-label="Run"
-        className="bg-grid flex flex-col gap-5 rounded-2xl border border-line-strong bg-card p-5 [background-size:32px_32px] sm:p-6"
+        className="bg-grid flex flex-col gap-5 rounded-xl border border-line-strong bg-card p-5 [background-size:32px_32px] sm:p-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold">Sync data directories</h2>
@@ -730,11 +730,11 @@ function RunDetail({ runId, isLatest, actions }: { runId: string; isLatest: bool
 }
 
 const levelStyles: Record<string, string> = {
-  error: "text-[#FF7A7A]",
-  warn: "text-[#F5B544]",
-  info: "text-[#7DD3FC]",
-  debug: "text-[#7A8597]",
-  trace: "text-[#7A8597]",
+  error: "text-destructive",
+  warn: "text-warn",
+  info: "text-info",
+  debug: "text-dim",
+  trace: "text-dim",
 };
 
 /** Loads the whole event log, tailing new events while the run is live. */
@@ -800,23 +800,23 @@ function EventLog({ runId, live }: { runId: string; live: boolean }) {
   }, [shown.length, live]);
 
   return (
-    <section aria-labelledby="log-h" className="dark overflow-hidden rounded-2xl border border-[#1C232D] bg-terminal text-[#C9D1DC]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1C232D] px-4 py-3">
-        <h2 id="log-h" className="font-mono text-xs font-medium tracking-[0.1em] text-[#9AA4B5]">
+    <section aria-labelledby="log-h" data-theme="dark" className="overflow-hidden rounded-xl border border-line-strong bg-terminal text-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-strong px-4 py-3">
+        <h2 id="log-h" className="font-mono text-xs font-medium tracking-[0.1em] text-muted-foreground">
           EVENT LOG · {events.length}
           {live ? " · LIVE" : ""}
         </h2>
-        <label className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-[#9AA4B5]">
+        <label className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <input
             type="checkbox"
             checked={onlyProblems}
             onChange={(e) => setOnlyProblems(e.target.checked)}
-            className="accent-[#4FE3C1]"
+            className="accent-signal"
           />
           warnings &amp; errors only
         </label>
       </div>
-      {error ? <div className="px-4 pt-3 text-sm text-[#FF7A7A]">Failed to load events: {errorMessage(error)}</div> : null}
+      {error ? <div className="px-4 pt-3 text-sm text-destructive">Failed to load events: {errorMessage(error)}</div> : null}
       <div
         ref={boxRef}
         onScroll={(e) => {
@@ -825,15 +825,15 @@ function EventLog({ runId, live }: { runId: string; live: boolean }) {
         }}
         className="max-h-[28rem] overflow-auto px-4 py-3 font-mono text-xs leading-relaxed"
       >
-        {loading ? <div className="text-[#7A8597]">loading…</div> : null}
-        {!loading && shown.length === 0 ? <div className="text-[#7A8597]">no events</div> : null}
+        {loading ? <div className="text-dim">loading…</div> : null}
+        {!loading && shown.length === 0 ? <div className="text-dim">no events</div> : null}
         <ol className="flex flex-col gap-1">
           {shown.map((e) => (
             <li key={e.id} className="flex gap-3.5">
-              <span className="shrink-0 text-[#7A8597]">{new Date(e.created_at).toLocaleTimeString()}</span>
+              <span className="shrink-0 text-dim">{new Date(e.created_at).toLocaleTimeString()}</span>
               <span className={cn("w-11 shrink-0 uppercase", levelStyles[e.level])}>{e.level}</span>
               <span className="min-w-0 break-words">
-                <span className="text-[#E7ECF3]">{e.kind}</span> <span className="text-[#9AA4B5]">{describeEvent(e)}</span>
+                <span className="text-foreground">{e.kind}</span> <span className="text-muted-foreground">{describeEvent(e)}</span>
               </span>
             </li>
           ))}

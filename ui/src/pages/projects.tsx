@@ -217,7 +217,7 @@ export function ProjectsPage() {
         ) : null}
 
         {!projectsQ.isLoading && !projectsQ.isError && items.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">{hasQuery ? "Nothing matches" : "The bay is empty"}</div>
             <p className="mt-2 text-sm text-muted-foreground">
               {hasQuery ? (

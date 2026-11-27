@@ -135,20 +135,20 @@ function CollectionDetailInner({ id }: { id: string }) {
   return (
     <div>
       <section className="bg-grid border-b">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-4 pt-5 pb-8 sm:px-8">
+        <div className="mx-auto flex max-w-[1320px] flex-col gap-5 px-4 pt-5 pb-8 sm:px-8">
           <PromptBreadcrumb segments={[{ label: "~/collections", to: "/collections" }, { label: c?.name ?? "…" }]} />
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="flex min-w-0 max-w-3xl flex-col gap-2.5">
               <span className="flex items-center gap-1.5 font-mono text-xs tracking-[0.12em] text-signal">
                 {c?.is_favourites ? (
                   <>
-                    <Star className="size-3.5 fill-[#FFB547] text-[#FFB547]" /> // FAVOURITES
+                    <Star className="size-3.5 fill-warn text-warn" /> // FAVOURITES
                   </>
                 ) : (
                   "// COLLECTION"
                 )}
               </span>
-              <h1 className="font-display text-4xl leading-none font-semibold tracking-[-0.03em] break-words sm:text-[52px]">
+              <h1 className="font-display text-[clamp(2.5rem,6vw,3.25rem)] leading-[1.1] font-semibold tracking-[-0.03em] break-words">
                 {c?.name ?? " "}
               </h1>
               {c?.description ? (
@@ -190,7 +190,7 @@ function CollectionDetailInner({ id }: { id: string }) {
 
       <PageBody className="pt-7 pb-16">
         {c && c.projects.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">Nothing here yet</div>
             <p className="mt-2 text-sm text-muted-foreground">
               {c.is_favourites ? (

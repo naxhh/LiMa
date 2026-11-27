@@ -34,7 +34,7 @@ export function BulkBar({ selection, total, onSelectAll }: { selection: Selectio
       <div
         role="toolbar"
         aria-label="Selected projects"
-        className="fixed inset-x-4 bottom-[88px] z-40 mx-auto flex max-w-3xl flex-wrap items-center gap-1 rounded-2xl sm:gap-1.5 border border-line-strong bg-card/95 p-2 shadow-2xl backdrop-blur sm:bottom-6"
+        className="fixed inset-x-4 bottom-[88px] z-40 mx-auto flex max-w-3xl flex-wrap items-center gap-1 rounded-xl sm:gap-1.5 border border-line-strong bg-card/95 p-2 shadow-[var(--shadow-overlay)] backdrop-blur sm:bottom-6"
       >
         <div className="flex items-center gap-2 px-2">
           <span className="font-mono text-sm tabular-nums">{n}</span>

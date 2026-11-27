@@ -31,7 +31,7 @@ export function CollectionsPage() {
         ) : null}
 
         {!collectionsQ.isLoading && !collectionsQ.isError && collections.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">No collections yet</div>
             <p className="mt-2 text-sm text-muted-foreground">
               Group projects however you like: a gift list, printer upgrades, things to print next.
@@ -46,13 +46,13 @@ export function CollectionsPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] sm:gap-5">
           {collectionsQ.isLoading
             ? Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="bg-dots aspect-[4/3] animate-pulse rounded-[14px] border bg-card" aria-hidden />
+                <div key={i} className="bg-dots aspect-[4/3] animate-pulse rounded-xl border bg-card" aria-hidden />
               ))
             : collections.map((c) => (
                 <Link
                   key={c.id}
                   to={`/collections/${c.id}`}
-                  className="group flex flex-col overflow-hidden rounded-[14px] border bg-card transition hover:-translate-y-0.5 hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  className="group flex flex-col overflow-hidden rounded-xl border bg-card transition hover:-translate-y-0.5 hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                   <div className="corners relative border-b">
                     <CollectionMosaic covers={c.covers} className="aspect-[4/3]" />
@@ -62,7 +62,7 @@ export function CollectionsPage() {
                   </div>
                   <div className="flex flex-1 flex-col gap-1.5 px-4 pt-3.5 pb-4">
                     <h2 className="font-display line-clamp-2 flex items-center gap-1.5 text-[17px] leading-tight font-semibold tracking-tight">
-                      {c.is_favourites ? <Star className="size-4 shrink-0 fill-[#FFB547] text-[#FFB547]" aria-hidden /> : null}
+                      {c.is_favourites ? <Star className="size-4 shrink-0 fill-warn text-warn" aria-hidden /> : null}
                       {c.name}
                     </h2>
                     {c.description || c.is_favourites ? (

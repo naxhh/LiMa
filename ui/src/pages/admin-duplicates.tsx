@@ -73,7 +73,7 @@ export function AdminDuplicatesPage() {
         ) : null}
 
         {d && groups.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">No duplicate projects</div>
             <p className="mt-2 text-sm text-muted-foreground">Projects whose model files are the same (or 80% the same) show up here.</p>
           </div>
@@ -100,7 +100,7 @@ function GroupCard({ group }: { group: DuplicateGroup }) {
   const name = React.useId();
 
   return (
-    <section aria-label={`Duplicates of ${group.projects[0].name}`} className="overflow-hidden rounded-2xl border bg-card">
+    <section aria-label={`Duplicates of ${group.projects[0].name}`} className="overflow-hidden rounded-xl border bg-card">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4.5 py-3">
         <Copy className="size-4 text-dim" />
         <span className="font-medium">{formatCount(group.projects.length, "copy", "copies")}</span>
@@ -254,7 +254,7 @@ function ResolveDialog({ open, keep, others, onClose }: { open: boolean; keep: D
 
 function SharedFiles({ files }: { files: SharedFileGroup[] }) {
   return (
-    <section aria-label="Shared files" className="overflow-hidden rounded-2xl border bg-card">
+    <section aria-label="Shared files" className="overflow-hidden rounded-xl border bg-card">
       <header className="border-b px-4.5 py-3">
         <div className="font-medium">Same file in different projects</div>
         <p className="text-sm text-muted-foreground">These projects aren't copies of each other, they just share a file. Shown for reference.</p>

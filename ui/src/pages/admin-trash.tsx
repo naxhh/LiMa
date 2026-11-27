@@ -118,7 +118,7 @@ export function AdminTrashPage() {
         />
         {trashQ.isError ? <div className="text-sm text-destructive">{apiErrorMessage(trashQ.error)}</div> : null}
         {trashQ.isSuccess && items.length === 0 ? (
-          <div className="bg-dots rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-dots rounded-xl border border-dashed p-10 text-center">
             <div className="font-display text-xl font-semibold">The trash is empty</div>
             <p className="mt-2 text-sm text-muted-foreground">Deleted projects and files show up here so you can bring them back.</p>
           </div>
@@ -130,7 +130,7 @@ export function AdminTrashPage() {
               {items.length} item{items.length === 1 ? "" : "s"} · {formatBytes(totalBytes)}
             </div>
             {goneSoon.length > 0 ? (
-              <section aria-label="Gone soon" className="overflow-hidden rounded-2xl border bg-card">
+              <section aria-label="Gone soon" className="overflow-hidden rounded-xl border bg-card">
                 <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-4.5 py-3">
                   <MicroLabel className="text-warn">Gone soon</MicroLabel>
                   <span className="font-mono text-[11px] text-dim">deleted for good within 7 days</span>
@@ -139,7 +139,7 @@ export function AdminTrashPage() {
               </section>
             ) : null}
             {later.length > 0 ? (
-              <section aria-label="Later" className="overflow-hidden rounded-2xl border bg-card">
+              <section aria-label="Later" className="overflow-hidden rounded-xl border bg-card">
                 <header className="border-b px-4.5 py-3">
                   <MicroLabel>Later</MicroLabel>
                 </header>

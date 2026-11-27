@@ -1,99 +1,37 @@
 @import "tailwindcss";
+@import "./design-tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/space-grotesk";
 @import "@fontsource-variable/jetbrains-mono";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/*
- * "Print bay" theme: dark-first, hairline borders, one signal accent (teal),
- * mono micro-labels. Light theme mirrors it with the same structure.
- */
+/* Charts are the one multi-hue exception: they stay app-specific (LiMa),
+   outside the design system's one-accent rule. */
 :root {
-  --radius: 0.75rem;
-
-  --background: #f4f6f9;
-  --foreground: #0e1217;
-  --card: #ffffff;
-  --card-foreground: #0e1217;
-  --popover: #ffffff;
-  --popover-foreground: #0e1217;
-  --primary: #0e9f83;
-  --primary-foreground: #ffffff;
-  --secondary: #ebeff4;
-  --secondary-foreground: #0e1217;
-  --muted: #ebeff4;
-  --muted-foreground: #4f5a6b;
-  --accent: #ebeff4;
-  --accent-foreground: #0e1217;
-  --destructive: #c62828;
-  --border: #dfe4eb;
-  --input: #c9d1dc;
-  --ring: #0e9f83;
-
-  /* Extra tokens used by the LiMa components. */
-  --line-strong: #c9d1dc;
-  --dim: #5e6878;
-  --signal: #0e9f83;
-  --signal-soft: rgb(14 159 131 / 0.12);
-  --warn: #a86500;
-  --info: #0369a1;
-  --terminal: #0b0e12;
-  --thumb: #e4eaf1;
-  --dot: rgb(0 0 0 / 0.1);
-
   --chart-1: #0e9f83;
   --chart-2: #0369a1;
   --chart-3: #a86500;
   --chart-4: #7c3aed;
   --chart-5: #c62828;
-
-  color-scheme: light;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
-
-.dark {
-  --background: #07090c;
-  --foreground: #e7ecf3;
-  --card: #0e1217;
-  --card-foreground: #e7ecf3;
-  --popover: #0e1217;
-  --popover-foreground: #e7ecf3;
-  --primary: #4fe3c1;
-  --primary-foreground: #04110d;
-  --secondary: #141922;
-  --secondary-foreground: #e7ecf3;
-  --muted: #141922;
-  --muted-foreground: #9aa4b5;
-  --accent: #141922;
-  --accent-foreground: #e7ecf3;
-  --destructive: #ff7a7a;
-  --border: #1c232d;
-  --input: #2a3340;
-  --ring: #4fe3c1;
-
-  --line-strong: #2a3340;
-  --dim: #7a8597;
-  --signal: #4fe3c1;
-  --signal-soft: rgb(79 227 193 / 0.12);
-  --warn: #f5b544;
-  --info: #7dd3fc;
-  --terminal: #05070a;
-  --thumb: #10161d;
-  --dot: rgb(255 255 255 / 0.09);
-
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #4fe3c1;
+    --chart-2: #7dd3fc;
+    --chart-3: #f5b544;
+    --chart-4: #a78bfa;
+    --chart-5: #ff7a7a;
+  }
+}
+[data-theme="dark"] {
   --chart-1: #4fe3c1;
   --chart-2: #7dd3fc;
   --chart-3: #f5b544;
   --chart-4: #a78bfa;
   --chart-5: #ff7a7a;
-
-  color-scheme: dark;
 }
 
 @theme inline {
@@ -101,13 +39,6 @@
   --font-display: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -123,6 +54,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

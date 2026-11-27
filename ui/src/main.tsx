@@ -12,7 +12,7 @@ const queryClient = new QueryClient();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+    <ThemeProvider attribute="data-theme" enableSystem>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />

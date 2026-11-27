@@ -134,7 +134,7 @@ function ProjectDetailInner({ projectId }: { projectId: string }) {
   if (projectQ.isLoading) {
     return (
       <PageBody className="py-6">
-        <div className="bg-dots aspect-[16/9] max-h-[60vh] animate-pulse rounded-2xl border bg-thumb" />
+        <div className="bg-dots aspect-[16/9] max-h-[60vh] animate-pulse rounded-xl border bg-thumb" />
       </PageBody>
     );
   }
@@ -504,7 +504,7 @@ function Gallery({
 
   return (
     <section aria-label="Images and 3D preview" className="flex min-w-0 flex-[999_1_560px] flex-col gap-3">
-      <div className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-2xl border bg-card [--corner-inset:16px] [--corner-size:22px]">
+      <div className="corners bg-dots relative aspect-[16/11] overflow-hidden rounded-xl border bg-card [--corner-inset:16px] [--corner-size:22px]">
         {current && format ? (
           <ModelViewer
             url={libraryUrl(project.folder_path, current.file_path)}

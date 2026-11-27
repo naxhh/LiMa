@@ -1,4 +1,26 @@
-# React + TypeScript + Vite
+# LiMa UI
+
+React + TypeScript + Vite front end.
+
+## Design system
+
+The visual tokens come from the Tolstoy design system
+([`nax/design`](https://git.tolstoy.eu/nax/design)). `src/design-tokens.css` is
+generated, not edited: after a design release, run
+
+```bash
+npm run sync:design -- ../../nax/design/css/tolstoy.css
+```
+
+from `ui/` (or set `DESIGN_CSS`). The generated file is committed so CI and
+other checkouts do not need the design repo. `src/index.css` only adds the
+Tailwind mappings and the LiMa-specific chart colours.
+
+Theming uses `data-theme="light|dark"` on `<html>` (next-themes sets it), which
+matches the design guide. Dialogs, menus and toasts use the design's single
+`--shadow-overlay`; form controls and surfaces use the design radius scale.
+
+---
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

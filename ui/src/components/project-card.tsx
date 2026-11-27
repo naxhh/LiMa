@@ -62,7 +62,7 @@ export function ProjectCard({
         }}
         aria-pressed={selection ? selection.selected : undefined}
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-[14px] border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          "flex h-full flex-col overflow-hidden rounded-xl border bg-card text-card-foreground transition-colors group-hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           selection?.selected && "border-signal ring-2 ring-signal group-hover:border-signal",
           selection && "select-none",
           focused && "ring-2 ring-signal ring-offset-2 ring-offset-background",
@@ -83,7 +83,7 @@ export function ProjectCard({
               {p.model_formats.slice(0, 3).map((f) => (
                 <span
                   key={f}
-                  className="rounded-[5px] border border-white/15 bg-black/70 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide text-white"
+                  className="rounded-sm border border-white/15 bg-black/70 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide text-white"
                 >
                   {f}
                 </span>
@@ -125,7 +125,7 @@ export function ProjectCard({
         <span
           aria-hidden
           className={cn(
-            "pointer-events-none absolute top-2.5 left-2.5 z-10 grid size-7 place-items-center rounded-lg border-2 shadow",
+            "pointer-events-none absolute top-2.5 left-2.5 z-10 grid size-7 place-items-center rounded-lg border-2",
             selection.selected ? "border-signal bg-signal text-primary-foreground" : "border-white/70 bg-black/40",
           )}
         >
@@ -194,7 +194,7 @@ export function ProjectCard({
 
 export function ProjectCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-[14px] border bg-card" aria-hidden>
+    <div className="overflow-hidden rounded-xl border bg-card" aria-hidden>
       <div className="bg-dots aspect-[4/3] animate-pulse bg-thumb" />
       <div className="space-y-3 p-4">
         <div className="h-4 w-2/3 rounded bg-muted" />

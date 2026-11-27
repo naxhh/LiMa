@@ -132,7 +132,7 @@ export function AdminTagsPage() {
         ) : visible.length === 0 ? (
           <div className="font-mono text-sm text-dim">No tags used by {maxCount} or fewer projects.</div>
         ) : (
-          <section className="overflow-hidden rounded-2xl border bg-card">
+          <section className="overflow-hidden rounded-xl border bg-card">
             <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input

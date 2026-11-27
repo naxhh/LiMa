@@ -156,7 +156,7 @@ export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
       {chord !== null ? (
         <div
           role="status"
-          className="fixed bottom-[88px] left-4 z-50 rounded-md border bg-card/90 px-2.5 py-1.5 font-mono text-xs shadow backdrop-blur md:bottom-4"
+          className="fixed bottom-[88px] left-4 z-50 rounded-lg border bg-card/90 px-2.5 py-1.5 font-mono text-xs shadow-[var(--shadow-overlay)] backdrop-blur md:bottom-4"
         >
           {chord ? `g → ${chord}` : "g…"}
         </div>

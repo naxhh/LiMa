@@ -171,7 +171,7 @@ export function AppHeader() {
   const location = useLocation();
   return (
     <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8">
+      <div className="mx-auto flex max-w-[1320px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8">
         <Logo />
         <nav aria-label="Main" className="hidden gap-1 md:flex">
           {NAV.map((item) => (
@@ -286,12 +286,12 @@ export function PageHero({
 }) {
   return (
     <section className="bg-grid border-b">
-      <div className="mx-auto flex min-h-[164px] max-w-[1440px] flex-wrap items-end justify-between gap-6 px-4 pt-10 pb-8 sm:min-h-[188px] sm:px-8 sm:pt-12">
+      <div className="mx-auto flex min-h-[164px] max-w-[1320px] flex-wrap items-end justify-between gap-6 px-4 pt-10 pb-8 sm:min-h-[188px] sm:px-8 sm:pt-12">
         <div className="flex min-w-0 flex-col gap-2.5">
           <span className="font-mono text-xs tracking-[0.12em] text-signal">
             // {index} — {label.toUpperCase()}
           </span>
-          <h1 className="font-display text-4xl leading-none font-semibold tracking-[-0.03em] sm:text-[52px]">{title}</h1>
+          <h1 className="font-display text-[clamp(2.5rem,6vw,3.25rem)] leading-[1.1] font-semibold tracking-[-0.03em]">{title}</h1>
           <div className="min-h-[2lh] font-mono text-[13px] text-muted-foreground line-clamp-2 sm:min-h-0 sm:truncate">{subtitle ?? "\u00A0"}</div>
         </div>
         {children ? <div className="hidden shrink-0 sm:flex">{children}</div> : null}
@@ -302,7 +302,7 @@ export function PageHero({
 
 /** Centered page body with the standard gutters. */
 export function PageBody({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={cn("mx-auto max-w-[1440px] px-4 sm:px-8", className)}>{children}</div>;
+  return <div className={cn("mx-auto max-w-[1320px] px-4 sm:px-8", className)}>{children}</div>;
 }
 
 /** Small uppercase mono label. */

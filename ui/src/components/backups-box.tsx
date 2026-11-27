@@ -55,7 +55,7 @@ export function BackupsBox() {
   };
 
   return (
-    <section aria-labelledby="backups-h" className="flex flex-col gap-4 rounded-2xl border bg-card p-5 sm:p-6">
+    <section aria-labelledby="backups-h" className="flex flex-col gap-4 rounded-xl border bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 id="backups-h" className="font-display text-xl font-semibold">

@@ -102,7 +102,7 @@ export function TagChipInput({ value, onChange }: Props) {
       }}
     >
       <div
-        className="flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-sm focus-within:border-ring"
+        className="flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-lg border border-input bg-card px-2 py-1.5 text-sm focus-within:border-ring"
         onClick={() => inputRef.current?.focus()}
       >
         {value.map((name) => {
@@ -183,7 +183,7 @@ export function TagChipInput({ value, onChange }: Props) {
       </div>
 
       {open ? (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-line-strong bg-popover text-popover-foreground shadow-[var(--shadow-overlay)]">
           {options.length === 0 ? (
             <div className="px-2 py-3 text-sm text-muted-foreground">
               {allQ.isError

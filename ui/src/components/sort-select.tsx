@@ -1,7 +1,7 @@
 import type { SortOption } from "@/lib/view-prefs";
 
 const SELECT_CLASS =
-  "h-8 rounded-lg border border-input bg-background px-2 font-mono text-xs text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60";
+  "h-8 rounded-lg border border-input bg-card px-2 font-mono text-xs text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60";
 
 /** Sort select for a project grid. */
 export function SortSelect({

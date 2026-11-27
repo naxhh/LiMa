@@ -32,7 +32,7 @@ export function FavouriteButton({
         variant === "overlay"
           ? "size-8 rounded-full border border-white/15 bg-black/60 text-white backdrop-blur hover:bg-black/80"
           : "size-10 rounded-lg border border-input bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
-        on && "text-[#FFB547] hover:text-[#FFB547]",
+        on && "text-warn hover:text-warn",
         className,
       )}
     >

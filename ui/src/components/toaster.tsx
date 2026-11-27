@@ -12,7 +12,7 @@ export function Toaster() {
       mobileOffset={{ bottom: 84 }}
       toastOptions={{
         classNames: {
-          toast: "!bg-card !text-card-foreground !border !border-line-strong !rounded-xl !font-sans",
+          toast: "!bg-card !text-card-foreground !border !border-line-strong !rounded-xl !font-sans !shadow-[var(--shadow-overlay)]",
           description: "!text-muted-foreground",
           error: "[&_[data-icon]]:!text-destructive",
         },
